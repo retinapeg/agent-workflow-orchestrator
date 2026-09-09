@@ -1,0 +1,43 @@
+schema_version = 1
+
+[run]
+artifact_root = "../../.agent-arena-runs"
+require_clean_source = true
+protected_paths = [".git", ".git/**", "tests/acceptance/**"]
+
+[engineers.codex]
+kind = "openai_api"
+model = "gpt-6-astra"
+max_output_tokens = 16000
+[engineers.codex.options]
+api_key_env = "OPENAI_API_KEY"
+# Required acknowledgement that SDK timeouts are not a hard wall-clock kill.
+# See docs/PROVIDER_LIMITS.md.
+allow_sdk_timeout_only = true
+
+[engineers.claude]
+kind = "anthropic_api"
+# Replace this placeholder with an exact Messages API model ID available to your account.
+model = "YOUR_CLAUDE_MODEL_ID"
+max_output_tokens = 16000
+[engineers.claude.options]
+api_key_env = "ANTHROPIC_API_KEY"
+# Required acknowledgement that SDK timeouts are not a hard wall-clock kill.
+# See docs/PROVIDER_LIMITS.md.
+allow_sdk_timeout_only = true
+
+[[checks]]
+id = "tests"
+category = "test"
+command = ["python3", "-m", "pytest", "-q"]
+required = true
+weight = "100"
+
+[modes.hackathon]
+revision_rounds = 1
+
+[modes.engineering]
+revision_rounds = 2
+
+[judge]
+enabled = false

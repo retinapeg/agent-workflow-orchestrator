@@ -1,0 +1,38 @@
+{
+  "implement": {
+    "text": "Implemented an initial candidate and demo documentation.",
+    "operations": [
+      {
+        "op": "write",
+        "path": "calculator.py",
+        "content": "def add(left: int, right: int) -> int:\n    return left - right\n"
+      },
+      {
+        "op": "write",
+        "path": "README.md",
+        "content": "# Calculator\n\n## Quick Start\n\nRun `python3 -m unittest discover -s tests -q`.\n"
+      },
+      {
+        "op": "write",
+        "path": "DEMO_CHECKLIST.md",
+        "content": "# Demo Checklist\n\n## Startup command\nRun the test command.\n\n## Primary demo flow\nCall add.\n\n## Demo data\nUse 1 and 2.\n\n## Expected output\nThe result is 3.\n\n## Required environment variables\nNone.\n\n## Fallback demo mode\nNo external services are used.\n\n## Known limitations\nThis is a tiny offline fixture.\n"
+      }
+    ]
+  },
+  "review": {
+    "text": "{\"target\":\"codex\",\"summary\":\"The candidate appears correct for the stated integer contract.\",\"findings\":[],\"attack_tests\":[\"Test negative and zero operands.\"]}"
+  },
+  "revise": [
+    {
+      "text": "Deliberately weak fixture remains incorrect so deterministic evaluation can select a winner.",
+      "operations": []
+    },
+    {
+      "text": "Second fixture revision remains incorrect.",
+      "operations": []
+    }
+  ],
+  "judge": {
+    "text": "{\"winner\":\"candidate-a\",\"reason\":\"Clearer implementation\",\"confidence\":0.6}"
+  }
+}

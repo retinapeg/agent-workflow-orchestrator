@@ -1,0 +1,112 @@
+schema_version = 1
+
+# Keep run artifacts outside the source repository. Relative paths resolve from this file.
+[run]
+artifact_root = "../.agent-arena-runs"
+require_clean_source = true
+keep_private_clone = true
+max_workers = 2
+max_run_seconds = 7200
+prefer_smaller_diff = true
+protected_paths = [
+  ".git",
+  ".git/**",
+  ".github/workflows/**",
+  "tests/acceptance/**",
+]
+allowed_paths = []
+# These patterns affect only untracked runtime/dependency artifacts in the private clone. Tracked
+# files and explicitly force-added files remain visible to policy checks and candidate diffs.
+untracked_artifact_excludes = ["**/__pycache__/", "*.py[cod]", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/", ".coverage", ".coverage.*", ".DS_Store", ".venv/", "venv/", "node_modules/"]
+# Optional coordinator-owned tests copied over each fresh evaluation checkout:
+# trusted_overlay = "./acceptance-overlay"
+# trusted_overlay_destination = "."
+# USER and LOGNAME let macOS CLI credential-store lookups resolve the same signed-in user.
+# Existing custom allowlists should preserve both names on POSIX systems.
+provider_env_passthrough = ["PATH", "HOME", "USER", "LOGNAME", "LANG", "LC_ALL", "TMPDIR", "VIRTUAL_ENV", "CODEX_HOME"]
+check_env_passthrough = ["PATH", "LANG", "LC_ALL", "TMPDIR", "VIRTUAL_ENV"]
+
+[limits]
+provider_timeout_seconds = 1200
+check_timeout_seconds = 600
+max_output_bytes = 1000000
+max_prompt_bytes = 1500000
+max_diff_bytes = 2000000
+max_changed_files = 250
+max_api_context_bytes = 750000
+max_api_file_bytes = 200000
+max_api_response_bytes = 2000000
+max_api_operations = 100
+max_output_tokens = 16000
+termination_grace_seconds = 5
+
+[engineers.codex]
+kind = "codex_cli"
+# Per invocation: team hack/engineer ... --codex-model MODEL (also accepted by doctor).
+model = "gpt-6-astra"
+timeout_seconds = 1200
+max_output_tokens = 16000
+# To bypass an older `codex` earlier on PATH, uncomment and set the exact current executable:
+# [engineers.codex.options]
+# executable = "/absolute/path/to/codex"
+
+[engineers.claude]
+kind = "claude_cli"
+# Omit model to use the model configured in Claude Code, or set an exact model ID.
+# Per invocation: team hack/engineer ... --claude-model MODEL (also accepted by doctor).
+timeout_seconds = 1200
+max_cost_usd = "5.00"
+# Optional exact CLI path:
+# [engineers.claude.options]
+# executable = "/absolute/path/to/claude"
+
+# Replace these commands with the authoritative commands for the target repository.
+# Every command is an argv array and is executed without a shell.
+[[checks]]
+id = "tests"
+category = "test"
+command = ["python3", "-m", "pytest", "-q"]
+required = true
+weight = "55"
+
+[[checks]]
+id = "lint"
+category = "lint"
+command = ["python3", "-m", "ruff", "check", "."]
+required = true
+weight = "20"
+
+[[checks]]
+id = "types"
+category = "typecheck"
+command = ["python3", "-m", "mypy", "src"]
+required = true
+weight = "25"
+
+# A benchmark command must print: ARENA_METRIC {"latency_ms": 12.34}
+# [[benchmarks]]
+# id = "latency"
+# command = ["python3", "benchmarks/latency.py"]
+# metric_key = "latency_ms"
+# direction = "lower"
+# best = "10"
+# worst = "100"
+# gate = "150"
+# required = false
+# weight = "10"
+# warmups = 1
+# repetitions = 5
+
+[modes.hackathon]
+revision_rounds = 1
+check_weights = { tests = "60", lint = "20", types = "20" }
+
+[modes.engineering]
+revision_rounds = 2
+check_weights = { tests = "55", lint = "20", types = "25" }
+
+[judge]
+enabled = false
+engineer = "codex"
+score_band_basis_points = 0
+timeout_seconds = 300
