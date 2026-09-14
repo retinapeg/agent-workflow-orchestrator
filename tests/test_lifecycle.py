@@ -7,10 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from agent_arena.audit import rebuild_manifest, sha256_file, verify_manifest
+from agent_arena.audit import AuditStore, rebuild_manifest, sha256_file, verify_manifest
+from agent_arena.cli import _status_payload
 from agent_arena.config import load_config
-from agent_arena.errors import IntegrityError, RepositoryError
+from agent_arena.errors import ArenaError, IntegrityError, RepositoryError
 from agent_arena.integration import integrate_winner
+from agent_arena.models import Phase
 from agent_arena.orchestrator import ArenaOrchestrator
 
 from .conftest import git
@@ -70,6 +72,90 @@ def test_full_hackathon_loop_and_safe_integration(arena_fixture: dict[str, Path]
     assert receipt["pushed"] is False
     assert "return left + right" in (integration_path / "calculator.py").read_text()
     assert git(source, "rev-parse", "HEAD") == original_head
+    verify_manifest(run_dir)
+
+
+def test_hackathon_refuses_to_start_without_demo_contract(
+    arena_fixture: dict[str, Path],
+) -> None:
+    source = arena_fixture["source"]
+    (source / "DEMO.md").unlink()
+    git(source, "add", "DEMO.md")
+    git(source, "commit", "-m", "remove demo contract")
+    config = load_config(arena_fixture["config"])
+
+    with pytest.raises(ArenaError, match="DEMO.md"):
+        ArenaOrchestrator(config, "hackathon").run(source, arena_fixture["task"])
+
+
+def test_engineering_mode_records_bounded_live_status(arena_fixture: dict[str, Path]) -> None:
+    config = load_config(arena_fixture["config"])
+    run_dir = ArenaOrchestrator(config, "engineering").run(
+        arena_fixture["source"], arena_fixture["task"]
+    )
+
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    common = json.loads((run_dir / "common-inputs.json").read_text(encoding="utf-8"))
+    assert run["state"] == "complete"
+    assert run["mode"] == "engineering"
+    assert run["source_repo"] == str(arena_fixture["source"].resolve())
+    assert run["provider_timeout_seconds"] == 5
+    assert run["max_run_seconds"] == 60
+    assert run["active_providers"] == []
+    assert run["deadline_at"] > run["started_at"]
+    assert common["mode"] == "engineering"
+    assert common["revision_rounds"] == 2
+    status = _status_payload(run_dir)
+    assert status["elapsed_seconds"] >= 0
+    assert status["remaining_seconds"] >= 0
+    assert status["seconds_since_progress"] >= 0
+    assert status["last_event"]["event"] == "state_changed"
+    verify_manifest(run_dir)
+
+
+def test_active_provider_and_deadline_are_visible_before_completion(
+    arena_fixture: dict[str, Path], tmp_path: Path
+) -> None:
+    config = load_config(arena_fixture["config"])
+    orchestrator = ArenaOrchestrator(config, "engineering")
+    audit = AuditStore(tmp_path / "live-run", "live-run")
+    orchestrator.audit = audit
+    engineer = config.engineer("codex")
+    request = orchestrator._request(
+        engineer,
+        Phase.IMPLEMENT,
+        arena_fixture["source"],
+        "perform the bounded test",
+    )
+
+    orchestrator._provider_status_start(engineer, request, "engineers/codex/initial")
+    status = _status_payload(audit.run_dir)
+    assert request.timeout_seconds == 5
+    assert status["active_providers"][0]["engineer_id"] == "codex"
+    assert status["active_providers"][0]["phase"] == "implement"
+    assert status["active_providers"][0]["deadline_at"]
+
+    orchestrator._provider_status_finish("codex")
+    assert _status_payload(audit.run_dir)["active_providers"] == []
+
+
+def test_short_provider_success_fails_closed(arena_fixture: dict[str, Path]) -> None:
+    config = load_config(arena_fixture["config"])
+    strict_engineering = replace(config.mode("engineering"), min_response_bytes=5_000)
+    config = replace(config, modes={**config.modes, "engineering": strict_engineering})
+
+    run_dir = ArenaOrchestrator(config, "engineering").run(
+        arena_fixture["source"], arena_fixture["task"]
+    )
+
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert run["state"] == "no_winner"
+    for engineer in ("codex", "claude"):
+        result = json.loads(
+            (run_dir / f"engineers/{engineer}/initial/result.json").read_text(encoding="utf-8")
+        )
+        assert result["status"] == "failed"
+        assert "substantive response bytes" in result["error"]
     verify_manifest(run_dir)
 
 

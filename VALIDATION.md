@@ -1,5 +1,25 @@
 # Validation Record
 
+## Bounded-mode controls — 14 September 2026
+
+Validated in the isolated `agent-workflow-orchestrator` clone on macOS without invoking a model:
+
+- Ruff formatting: pass, 47 files.
+- Ruff lint: pass.
+- MyPy strict over all 20 source modules: pass.
+- Pytest: 128 passed in 87.58 seconds.
+- The full offline lifecycle used scripted providers only; it made no Codex, Claude, or Devin call.
+- Added and exercised per-mode provider/run deadlines, live active-provider status, Hackathon's
+  pre-provider `DEMO.md`/`NOT.md` gate, and fail-closed minimum substantive output.
+- Editable tool install: `adversarial-engineering-arena==0.2.0`; commands `team` and `agent-arena`.
+- Wheel: `adversarial_engineering_arena-0.2.0-py3-none-any.whl`, SHA-256
+  `8d184685c284f00319907cedaebaeab48cd9862a0bd2a70d2079a6dd734fe69d`.
+- Source distribution: `adversarial_engineering_arena-0.2.0.tar.gz`, SHA-256
+  `3c8b81fef84df153c2612cfa9e4325487eb27d679c6cfa1c729d4aea38bc5cfb`.
+
+The earlier 9 September record below remains the evidence for the original 0.1.0 live
+Codex-versus-Claude run; it was not rerun for this extension.
+
 Validated on 9 September 2026 on macOS with Python 3.11, Git, Codex CLI, and Claude Code CLI.
 
 ## Release checks

@@ -35,9 +35,15 @@ weight = "100"
 
 [modes.hackathon]
 revision_rounds = 1
+provider_timeout_seconds = 300
+max_run_seconds = 2700
+min_response_bytes = 80
 
 [modes.engineering]
 revision_rounds = 2
+provider_timeout_seconds = 900
+max_run_seconds = 7200
+min_response_bytes = 200
 
 [judge]
 enabled = false

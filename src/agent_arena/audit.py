@@ -37,14 +37,18 @@ class AuditStore:
         os.chmod(self.run_dir, 0o700)
         self._sequence = 0
         self._event_lock = threading.Lock()
+        self._run_lock = threading.Lock()
+        now = utc_now()
         self.write_json(
             "run.json",
             {
                 "schema_version": 1,
                 "run_id": run_id,
                 "state": RunState.CREATED.value,
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
+                "created_at": now,
+                "updated_at": now,
+                "last_progress_at": now,
+                "active_providers": [],
                 "error": None,
             },
         )
@@ -101,13 +105,20 @@ class AuditStore:
             os.chmod(path, 0o600)
 
     def transition(self, state: RunState, *, error: str | None = None) -> None:
-        run_path = self.path("run.json")
-        data = json.loads(run_path.read_text(encoding="utf-8"))
-        data["state"] = state.value
-        data["updated_at"] = utc_now()
-        data["error"] = error
-        self.write_json("run.json", data)
+        self.update_run(state=state.value, error=error)
         self.event("state_changed", state=state.value, error=error)
+
+    def update_run(self, **fields: Any) -> None:
+        """Atomically refresh the small live status record."""
+
+        with self._run_lock:
+            run_path = self.path("run.json")
+            data = json.loads(run_path.read_text(encoding="utf-8"))
+            now = utc_now()
+            data.update(jsonable(fields))
+            data["updated_at"] = now
+            data["last_progress_at"] = now
+            self.write_json("run.json", data)
 
     def build_manifest(self) -> dict[str, Any]:
         return rebuild_manifest(self.run_dir, self.run_id)

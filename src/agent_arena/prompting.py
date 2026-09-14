@@ -96,7 +96,9 @@ Priority: end-to-end demo, judging criteria, demo reliability, visible UX, criti
 useful tests, then architecture. Cut scope aggressively. Prefer a one-command start, obvious UX,
 graceful fallbacks, and deterministic validation of important AI outputs. Major architecture work is
 justified only when it fixes a critical demo blocker. Ask continually: if judging started in 30
-minutes, what would prevent a convincing demonstration? Maintain DEMO_CHECKLIST.md with startup,
+minutes, what would prevent a convincing demonstration? Before broad work, create or preserve
+DEMO.md with the literal three-minute demo flow and NOT.md with prohibited scope. Build the first
+runnable vertical slice before performing broad audits. Maintain DEMO_CHECKLIST.md with startup,
 demo flow/data, expected outputs, environment variables, fallback mode, and known limitations.""",
     "engineering": """MODE: ENGINEERING
 Primary objective: build the strongest correct, maintainable, production-quality implementation.
@@ -104,7 +106,9 @@ Priority: correctness, completeness, reliability, security, maintainability, arc
 performance, UX, and documentation. Do not accept success only on demo data. Seek evidence across
 unit, integration, regression, edge/property, type, lint, security, concurrency, failure-mode,
 dependency/API, performance, and architecture concerns where relevant. Refactor only when it
-materially improves those outcomes.""",
+materially improves those outcomes. For defects, reproduce first, find the shared root cause, make
+the smallest safe fix, and retain focused regression evidence. Separate verified facts from
+hypotheses, and do not redesign unrelated code.""",
 }
 
 
@@ -113,6 +117,9 @@ def acceptance_contract(config: ArenaConfig, mode: str) -> str:
     lines = [
         MODE_GUIDANCE[mode],
         f"Configured adversarial revision rounds: {profile.revision_rounds}.",
+        f"Each provider phase is capped at {profile.provider_timeout_seconds} seconds.",
+        f"The complete run is capped at {profile.max_run_seconds} seconds.",
+        f"A successful provider response must contain at least {profile.min_response_bytes} bytes.",
         "Every required check must pass. Optional checks and benchmarks affect the deterministic "
         "score.",
         "Commands are run by the coordinator as argv arrays without a shell in fresh checkouts.",

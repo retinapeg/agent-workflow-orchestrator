@@ -19,6 +19,8 @@ def test_loads_exact_two_mode_profiles(arena_fixture: dict[str, Path]) -> None:
     assert set(config.modes) == {"hackathon", "engineering"}
     assert config.mode("hackathon").revision_rounds == 1
     assert config.mode("engineering").revision_rounds == 2
+    assert config.mode("hackathon").provider_timeout_seconds == 5
+    assert config.mode("engineering").max_run_seconds == 60
 
 
 def test_default_provider_environment_preserves_posix_identity(

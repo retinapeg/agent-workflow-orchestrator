@@ -11,8 +11,8 @@ do not call a model and do not prove that the selected model is enabled for the 
 
 | Provider | Time control | Output-token control | Dollar control |
 | --- | --- | --- | --- |
-| Codex CLI | Parent process deadline | Observed usage only; `max_output_tokens` is not a hard CLI cap | No guaranteed per-call cap |
-| Claude CLI | Parent process deadline | Observed usage only; `max_output_tokens` is not a hard CLI cap | Configured `--max-budget-usd`, as enforced by Claude Code |
+| Codex CLI | Parent process deadline, capped again by selected mode | Observed usage only; `max_output_tokens` is not a hard CLI cap | No guaranteed per-call cap |
+| Claude CLI | Parent process deadline, capped again by selected mode | Observed usage only; `max_output_tokens` is not a hard CLI cap | Configured `--max-budget-usd`, as enforced by Claude Code |
 | OpenAI API | SDK network-operation timeout, with explicit opt-in | `max_output_tokens` per request | `max_cost_usd` is rejected |
 | Anthropic API | SDK network-operation timeout, with explicit opt-in | `max_tokens` per request | `max_cost_usd` is rejected |
 
@@ -31,6 +31,13 @@ network-operation timeout only; no parent wall-clock deadline`. Setting any `max
 zero, is rejected for a direct API provider even with this opt-in. API retries are disabled. Choose a
 CLI provider when the parent-enforced deadline is required. Limits apply per invocation, not as a
 cumulative dollar allowance for the competition. Remote billing can finish after local cancellation.
+
+The shipped mode caps are five minutes per provider phase for Hackathon and fifteen for Engineering.
+`team status` shows the active provider, phase, phase deadline, total-run deadline, and
+seconds since the last state change. These fields prove what the local coordinator is waiting for;
+they do not prove progress inside a remote provider. A remote integration must separately capture
+its session/task ID and URL and distinguish stopping the local waiter from terminating the remote
+session.
 
 API mode uses whole-file JSON operations. It appends the exact required response schema to every
 request and validates that schema locally. Coding responses must contain exactly `summary` (string)

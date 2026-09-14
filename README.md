@@ -82,6 +82,17 @@ team integrate /path/to/run \
 That command creates a new branch and physical worktree. It does not push, force-update, or merge
 into the source branch.
 
+`team status` is deliberately one-shot. It reports the current mode, run directory, deadline,
+seconds remaining, seconds since real progress, and every active provider/phase. Provider phases are
+mode-capped in addition to the global run deadline, so a configured 20-minute provider cannot keep a
+Hackathon run opaque for 20 minutes. The shipped defaults cap one provider phase at 5 minutes for
+Hackathon and 15 minutes for Engineering; the example Hackathon run has a 45-minute hard stop.
+
+This command is the safe execution substrate for one frozen task. It does not choose the next task
+or repeat across a backlog by itself; an adaptive controller must perform that observe, select,
+dispatch, verify, and repeat loop. This distinction is deliberate so a fixed lifecycle is never
+misreported as autonomous progress.
+
 ## What a run does
 
 For every run, the coordinator:
@@ -116,8 +127,8 @@ The state machine and invariants are described in [Architecture](docs/ARCHITECTU
 | Objective | Convincing, reliable live demo quickly | Strongest correct, maintainable production result |
 | Default adversarial rounds | 1 | 2 |
 | Configurable rounds | 1–2 | 2–4 |
-| Scope preference | Aggressively cut non-demo scope | Permit justified deeper work/refactoring |
-| Built-in documentation gate | `DEMO_CHECKLIST.md` plus README Quick Start | None |
+| Scope preference | Only demo-critical scope | Root cause and affected callers only; justified deeper work only when evidence demands it |
+| Built-in documentation gate | `DEMO.md`, `NOT.md`, `DEMO_CHECKLIST.md`, README Quick Start | Reproduction and exact evidence for defects |
 | Typical evidence emphasis | E2E demo, reliability, UX, critical correctness | Correctness, regression, security, architecture, performance |
 
 Hackathon candidates must maintain a `DEMO_CHECKLIST.md` covering the startup command, primary demo
@@ -126,7 +137,8 @@ limitations. The harness verifies those topics and a short README Quick Start se
 the actual main flow, fallback behaviour, and visible UX still need real configured acceptance
 commands; documentation alone cannot prove them.
 
-Mode-specific weights are configured under `[modes.hackathon]` and `[modes.engineering]`. A practical
+Mode-specific limits and weights are configured under `[modes.hackathon]` and
+`[modes.engineering]`. A practical
 task-specific Hackathon setup can map checks to approximately 40% E2E demo, 20% regression/recovery,
 15% UX completion, 10% edge correctness, 10% benchmark, and 5% simplicity. An Engineering setup can
 map approximately 30% functional correctness, 20% regression/edge behaviour, 15% architecture,

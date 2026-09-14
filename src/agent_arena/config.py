@@ -133,6 +133,9 @@ class JudgeConfig:
 @dataclass(frozen=True)
 class ModeConfig:
     revision_rounds: int
+    provider_timeout_seconds: int
+    max_run_seconds: int
+    min_response_bytes: int
     check_weights: dict[str, Decimal] = field(default_factory=dict)
     benchmark_weights: dict[str, Decimal] = field(default_factory=dict)
 
@@ -653,28 +656,40 @@ def load_config(path: str | Path) -> ArenaConfig:
         raise ConfigError("judge.engineer must name a configured engineer when judge is enabled")
 
     modes_raw = _table(raw, "modes")
-    unknown_modes = set(modes_raw) - {"hackathon", "engineering"}
+    mode_names = ("hackathon", "engineering")
+    unknown_modes = set(modes_raw) - set(mode_names)
     if unknown_modes:
         raise ConfigError(
             f"only hackathon and engineering modes are supported: {sorted(unknown_modes)}"
         )
-    default_rounds = {"hackathon": 1, "engineering": 2}
+    defaults = {
+        "hackathon": (1, 1, 2, 300, min(run.max_run_seconds, 2700), 80),
+        "engineering": (2, 2, 4, 900, run.max_run_seconds, 200),
+    }
     modes: dict[str, ModeConfig] = {}
-    for mode_name in ("hackathon", "engineering"):
+    for mode_name in mode_names:
+        default_rounds, minimum, maximum, provider_timeout, max_run, min_response = defaults[
+            mode_name
+        ]
         item = modes_raw.get(mode_name, {})
         if not isinstance(item, dict):
             raise ConfigError(f"[modes.{mode_name}] must be a table")
         _reject_unknown(
             item,
-            {"revision_rounds", "check_weights", "benchmark_weights"},
+            {
+                "revision_rounds",
+                "provider_timeout_seconds",
+                "max_run_seconds",
+                "min_response_bytes",
+                "check_weights",
+                "benchmark_weights",
+            },
             f"[modes.{mode_name}]",
         )
         rounds = _positive_int(
-            item.get("revision_rounds", default_rounds[mode_name]),
+            item.get("revision_rounds", default_rounds),
             f"modes.{mode_name}.revision_rounds",
         )
-        maximum = 2 if mode_name == "hackathon" else 4
-        minimum = 1 if mode_name == "hackathon" else 2
         if not minimum <= rounds <= maximum:
             raise ConfigError(
                 f"modes.{mode_name}.revision_rounds must be between {minimum} and {maximum}"
@@ -698,6 +713,17 @@ def load_config(path: str | Path) -> ArenaConfig:
             )
         modes[mode_name] = ModeConfig(
             revision_rounds=rounds,
+            provider_timeout_seconds=_positive_int(
+                item.get("provider_timeout_seconds", provider_timeout),
+                f"modes.{mode_name}.provider_timeout_seconds",
+            ),
+            max_run_seconds=_positive_int(
+                item.get("max_run_seconds", max_run), f"modes.{mode_name}.max_run_seconds"
+            ),
+            min_response_bytes=_positive_int(
+                item.get("min_response_bytes", min_response),
+                f"modes.{mode_name}.min_response_bytes",
+            ),
             check_weights=check_weights,
             benchmark_weights=benchmark_weights,
         )

@@ -7,7 +7,9 @@ import subprocess
 import sys
 import tempfile
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any, cast
 
 from . import __version__
 from .audit import verify_manifest
@@ -48,7 +50,7 @@ def _add_run_arguments(parser: argparse.ArgumentParser) -> None:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="team",
-        description="Run Codex and Claude as isolated, adversarial engineering competitors.",
+        description="Run isolated, evidence-gated agent workflows for hackathons and engineering.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -121,6 +123,42 @@ def _resolve_run(value: str | None, config_path: str) -> Path:
     return _latest_run(load_config(config_path))
 
 
+def _parse_time(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def _status_payload(run_dir: Path) -> dict[str, Any]:
+    loaded: object = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    if not isinstance(loaded, dict):
+        raise ArenaError(f"run status is not a JSON object: {run_dir / 'run.json'}")
+    data = cast(dict[str, Any], loaded)
+    now = datetime.now(UTC)
+    started = _parse_time(data.get("started_at") or data.get("created_at"))
+    deadline = _parse_time(data.get("deadline_at"))
+    progress = _parse_time(data.get("last_progress_at") or data.get("updated_at"))
+    data["elapsed_seconds"] = max(0, int((now - started).total_seconds())) if started else None
+    data["remaining_seconds"] = max(0, int((deadline - now).total_seconds())) if deadline else None
+    data["seconds_since_progress"] = (
+        max(0, int((now - progress).total_seconds())) if progress else None
+    )
+    events_path = run_dir / "events.jsonl"
+    if events_path.is_file():
+        lines = events_path.read_text(encoding="utf-8").splitlines()
+        if lines:
+            try:
+                data["last_event"] = json.loads(lines[-1])
+            except json.JSONDecodeError:
+                data["last_event"] = None
+    data["run_dir"] = str(run_dir)
+    return data
+
+
 def _run_task(args: argparse.Namespace, mode: str) -> int:
     config = _invocation_config(args)
     orchestrator = ArenaOrchestrator(config, mode)
@@ -189,11 +227,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command in {"status", "results"}:
             run_dir = _resolve_run(args.run, args.config)
             if args.command == "status":
-                data = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+                data = _status_payload(run_dir)
                 if args.json:
                     print(json.dumps(data, indent=2, sort_keys=True))
                 else:
                     print(f"{data['run_id']}: {data['state']}")
+                    print(f"Mode: {data.get('mode', 'unknown')}")
+                    print(f"Run: {data['run_dir']}")
+                    print(f"Deadline: {data.get('deadline_at', 'unknown')}")
+                    print(f"Remaining: {data.get('remaining_seconds')}s")
+                    print(f"Last progress: {data.get('seconds_since_progress')}s ago")
+                    active = data.get("active_providers") or []
+                    if active:
+                        for provider in active:
+                            print(
+                                "Active: "
+                                f"{provider.get('engineer_id')} / {provider.get('phase')} "
+                                f"until {provider.get('deadline_at')}"
+                            )
+                    else:
+                        print("Active: none")
                     if data.get("error"):
                         print(f"Error: {data['error']}")
             else:

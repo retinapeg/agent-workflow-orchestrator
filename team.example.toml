@@ -99,10 +99,16 @@ weight = "25"
 
 [modes.hackathon]
 revision_rounds = 1
+provider_timeout_seconds = 300
+max_run_seconds = 2700
+min_response_bytes = 80
 check_weights = { tests = "60", lint = "20", types = "20" }
 
 [modes.engineering]
 revision_rounds = 2
+provider_timeout_seconds = 900
+max_run_seconds = 7200
+min_response_bytes = 200
 check_weights = { tests = "55", lint = "20", types = "25" }
 
 [judge]

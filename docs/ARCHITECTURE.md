@@ -10,7 +10,7 @@
 6. The coordinator owns checks, benchmarks, score arithmetic, and eligibility.
 7. Every check starts from an immutable candidate commit in a fresh detached worktree.
 8. Required failures make a candidate ineligible; the judge cannot override them.
-9. Each mode has a bounded, configured number of adversarial rounds.
+9. Each mode has bounded provider phases, a bounded total run, and configured review rounds.
 10. Integration reproduces exactly one winner tree; implementations are never blindly merged.
 11. Failure preserves all completed evidence and records a terminal state.
 12. Worktrees are not represented as a hostile-process security boundary.

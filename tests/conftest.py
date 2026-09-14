@@ -88,6 +88,14 @@ def arena_fixture(tmp_path: Path) -> dict[str, Path]:
     (source / "calculator.py").write_text(
         "def add(left: int, right: int) -> int:\n    return left - right\n", encoding="utf-8"
     )
+    (source / "DEMO.md").write_text(
+        "# Demo\n\nRun the test, show the failure, apply the fix, and show the pass.\n",
+        encoding="utf-8",
+    )
+    (source / "NOT.md").write_text(
+        "# Not in scope\n\nNo UI, service, deployment, or unrelated refactor.\n",
+        encoding="utf-8",
+    )
     tests = source / "tests"
     tests.mkdir()
     (tests / "test_calculator.py").write_text(
@@ -160,10 +168,16 @@ weight = "100"
 
 [modes.hackathon]
 revision_rounds = 1
+provider_timeout_seconds = 5
+max_run_seconds = 60
+min_response_bytes = 1
 check_weights = {{ tests = "100" }}
 
 [modes.engineering]
 revision_rounds = 2
+provider_timeout_seconds = 5
+max_run_seconds = 60
+min_response_bytes = 1
 check_weights = {{ tests = "100" }}
 
 [judge]

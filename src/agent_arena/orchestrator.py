@@ -4,12 +4,13 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 import time
 import uuid
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -140,10 +141,13 @@ class ArenaOrchestrator:
         self.runner = ProcessRunner(config.limits.termination_grace_seconds)
         self.prompt_book = PromptBook(config)
         self.started = time.monotonic()
-        self.deadline = self.started + config.run.max_run_seconds
+        self.max_run_seconds = min(config.run.max_run_seconds, self.mode_config.max_run_seconds)
+        self.deadline = self.started + self.max_run_seconds
         self.audit: AuditStore | None = None
         self.repository: RepositoryManager | None = None
         self.providers: dict[str, Provider] = {}
+        self._active_providers: dict[str, dict[str, Any]] = {}
+        self._active_lock = threading.Lock()
 
     def doctor(self) -> dict[str, Any]:
         details: dict[str, Any] = {"ok": True, "engineers": {}}
@@ -170,10 +174,8 @@ class ArenaOrchestrator:
     def run(self, source: Path, task_path: Path, base_ref: str = "HEAD") -> Path:
         self.runner.reset_cancellation()
         self.started = time.monotonic()
-        self.deadline = self.started + self.config.run.max_run_seconds
-        source_top = _git_top_level(
-            source.expanduser().resolve(), min(30, self.config.run.max_run_seconds)
-        )
+        self.deadline = self.started + self.max_run_seconds
+        source_top = _git_top_level(source.expanduser().resolve(), min(30, self.max_run_seconds))
         artifact_root = self.config.run.artifact_root.resolve()
         if artifact_root == source_top or source_top in artifact_root.parents:
             raise RepositoryError(
@@ -190,16 +192,42 @@ class ArenaOrchestrator:
         artifact_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         audit = AuditStore(artifact_root / run_id, run_id)
         self.audit = audit
-        repository = RepositoryManager(source_top, base_ref, self.config, audit, self.deadline)
-        self.repository = repository
+        started_at = datetime.now(UTC)
+        audit.update_run(
+            mode=self.mode,
+            source_repo=str(source_top),
+            base_ref=base_ref,
+            started_at=started_at.isoformat(),
+            deadline_at=(started_at + timedelta(seconds=self.max_run_seconds)).isoformat(),
+            max_run_seconds=self.max_run_seconds,
+            provider_timeout_seconds=self.mode_config.provider_timeout_seconds,
+            min_response_bytes=self.mode_config.min_response_bytes,
+        )
         try:
+            if self.mode == "hackathon":
+                missing = [
+                    name
+                    for name in ("DEMO.md", "NOT.md")
+                    if not (source_top / name).is_file()
+                    or (source_top / name).is_symlink()
+                    or (source_top / name).stat().st_size == 0
+                ]
+                if missing:
+                    raise ArenaError(
+                        "hackathon mode requires nonempty, regular DEMO.md and NOT.md files "
+                        f"before any provider starts; missing or invalid: {', '.join(missing)}"
+                    )
+            repository = RepositoryManager(source_top, base_ref, self.config, audit, self.deadline)
+            self.repository = repository
             return self._run_lifecycle(repository, audit, task)
         except KeyboardInterrupt:
             self.runner.cancel_all()
+            audit.update_run(active_providers=[])
             audit.transition(RunState.CANCELLED, error="interrupted by user")
             audit.build_manifest()
             raise
         except Exception as exc:
+            audit.update_run(active_providers=[])
             audit.write_text("failure.txt", f"{type(exc).__name__}: {exc}\n")
             audit.transition(RunState.FAILED, error=f"{type(exc).__name__}: {exc}")
             audit.build_manifest()
@@ -507,10 +535,38 @@ class ArenaOrchestrator:
         remaining = int(self.deadline - time.monotonic())
         if remaining <= 0:
             raise DeadlineExceeded("the total run deadline was exhausted")
-        configured = (
-            override or engineer.timeout_seconds or self.config.limits.provider_timeout_seconds
+        configured = min(
+            override or self.config.limits.provider_timeout_seconds,
+            engineer.timeout_seconds or self.config.limits.provider_timeout_seconds,
+            self.mode_config.provider_timeout_seconds,
         )
         return min(configured, remaining)
+
+    def _provider_status_start(
+        self, engineer: EngineerConfig, request: AgentRequest, relative_dir: str
+    ) -> None:
+        assert self.audit is not None
+        started_at = datetime.now(UTC)
+        with self._active_lock:
+            self._active_providers[engineer.engineer_id] = {
+                "engineer_id": engineer.engineer_id,
+                "provider_kind": engineer.kind,
+                "phase": request.phase.value,
+                "artifact_dir": relative_dir,
+                "started_at": started_at.isoformat(),
+                "deadline_at": (
+                    started_at + timedelta(seconds=request.timeout_seconds)
+                ).isoformat(),
+            }
+            active = [self._active_providers[key] for key in sorted(self._active_providers)]
+        self.audit.update_run(active_providers=active)
+
+    def _provider_status_finish(self, engineer_id: str) -> None:
+        assert self.audit is not None
+        with self._active_lock:
+            self._active_providers.pop(engineer_id, None)
+            active = [self._active_providers[key] for key in sorted(self._active_providers)]
+        self.audit.update_run(active_providers=active)
 
     def _request(
         self,
@@ -541,6 +597,7 @@ class ArenaOrchestrator:
         assert self.audit is not None
         artifact_dir = self.audit.mkdir(relative_dir)
         self.audit.write_text(f"{relative_dir}/prompt.md", request.prompt)
+        self._provider_status_start(engineer, request, relative_dir)
         self.audit.event(
             "provider_started",
             engineer_id=engineer.engineer_id,
@@ -566,15 +623,25 @@ class ArenaOrchestrator:
                 if path.is_symlink() or not path.is_file():
                     continue
                 os.chmod(path, 0o600)
-        self._save_agent_result(result, relative_dir)
-        self.audit.event(
-            "provider_finished",
-            engineer_id=engineer.engineer_id,
-            phase=request.phase.value,
-            status=result.status,
-            error=result.error,
-        )
-        return result
+        response_bytes = len(result.text.strip().encode("utf-8"))
+        if result.ok and response_bytes < self.mode_config.min_response_bytes:
+            result.status = "failed"
+            result.error = (
+                f"provider returned {response_bytes} substantive response bytes; "
+                f"mode requires at least {self.mode_config.min_response_bytes}"
+            )
+        try:
+            self._save_agent_result(result, relative_dir)
+            self.audit.event(
+                "provider_finished",
+                engineer_id=engineer.engineer_id,
+                phase=request.phase.value,
+                status=result.status,
+                error=result.error,
+            )
+            return result
+        finally:
+            self._provider_status_finish(engineer.engineer_id)
 
     def _save_agent_result(self, result: AgentResult, relative_dir: str) -> None:
         assert self.audit is not None
