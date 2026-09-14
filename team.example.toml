@@ -14,7 +14,8 @@ protected_paths = [
   ".github/workflows/**",
   "tests/acceptance/**",
 ]
-allowed_paths = []
+# Required for adaptive modes. Keep this list narrow and replace it for the target repository.
+allowed_paths = ["src/**", "tests/**", "README.md"]
 # These patterns affect only untracked runtime/dependency artifacts in the private clone. Tracked
 # files and explicitly force-added files remain visible to policy checks and candidate diffs.
 untracked_artifact_excludes = ["**/__pycache__/", "*.py[cod]", ".pytest_cache/", ".mypy_cache/", ".ruff_cache/", ".coverage", ".coverage.*", ".DS_Store", ".venv/", "venv/", "node_modules/"]

@@ -120,7 +120,7 @@ def _redact_remote(url: str) -> str:
     return urlunsplit((parts.scheme, netloc, parts.path, "<redacted>" if parts.query else "", ""))
 
 
-def _path_matches(path: str, patterns: tuple[str, ...]) -> bool:
+def path_matches(path: str, patterns: tuple[str, ...]) -> bool:
     return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
 
 
@@ -463,9 +463,9 @@ class RepositoryManager:
                     raise RepositoryError("candidate diff object bytes exceed the safety limit")
         violations: list[str] = []
         for path in changed_files:
-            if _path_matches(path, self.config.run.protected_paths):
+            if path_matches(path, self.config.run.protected_paths):
                 violations.append(f"protected path changed: {path}")
-            if self.config.run.allowed_paths and not _path_matches(
+            if self.config.run.allowed_paths and not path_matches(
                 path, self.config.run.allowed_paths
             ):
                 violations.append(f"path outside allowed scope: {path}")

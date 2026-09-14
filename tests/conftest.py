@@ -124,6 +124,7 @@ def arena_fixture(tmp_path: Path) -> dict[str, Path]:
 [run]
 artifact_root = {json.dumps(str(tmp_path / "runs"))}
 protected_paths = ["tests/**"]
+allowed_paths = ["*.py", "*.md", "*.txt"]
 max_workers = 2
 
 [limits]

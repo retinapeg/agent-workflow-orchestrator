@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -9,6 +10,7 @@ import pytest
 
 from agent_arena.adaptive import (
     AdaptiveController,
+    _matches_owned,
     adaptive_status,
     request_stop,
     resolve_adaptive_run,
@@ -21,6 +23,7 @@ from agent_arena.errors import ArenaError, DeadlineExceeded, IntegrityError, Pro
 from agent_arena.evaluator import Evaluator
 from agent_arena.gitops import RepositoryManager
 from agent_arena.integration import integrate_last_green
+from agent_arena.providers.scripted import ScriptedProvider
 
 from .conftest import git
 
@@ -284,7 +287,110 @@ def test_hackathon_plan_cannot_edit_the_feature_contract(
 def test_hackathon_plan_rejects_repo_wide_scope_and_partial_beat(path: str, beat: str) -> None:
     plan = _plan("bad-plan", "Broaden the MVP.", path, beat=beat)
     with pytest.raises(ProviderError):
-        _validate_plan(plan, "hackathon", set(), "## Beat 1\nShow the result.\n")
+        _validate_plan(
+            plan,
+            "hackathon",
+            set(),
+            "## Beat 1\nShow the result.\n",
+            ("calculator.py",),
+        )
+
+
+def test_adaptive_requires_configured_allowed_paths_before_provider_preflight(
+    arena_fixture: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = load_config(arena_fixture["config"])
+    config = replace(config, run=replace(config.run, allowed_paths=()))
+    called = False
+
+    def unexpected_preflight(self: ScriptedProvider) -> dict[str, object]:
+        nonlocal called
+        called = True
+        return {}
+
+    monkeypatch.setattr(ScriptedProvider, "preflight", unexpected_preflight)
+    with pytest.raises(ArenaError, match="allowed_paths"):
+        AdaptiveController(config, "engineering").run(
+            arena_fixture["source"], "Make addition correct."
+        )
+    assert called is False
+
+
+def test_planner_paths_must_be_config_authorized_and_exact() -> None:
+    plan = _plan("bad-path", "Read a secret.", "secrets.env")
+    with pytest.raises(ProviderError, match="run.allowed_paths"):
+        _validate_plan(plan, "engineering", set(), "", ("*.py",))
+    assert _matches_owned("docs/note.md", ["docs"]) is False
+
+
+def test_hackathon_reviews_use_fresh_snapshot_worktrees(
+    arena_fixture: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _write_adaptive_scripts(
+        arena_fixture,
+        [
+            _plan("make-beat-real", "Make the addition beat pass.", "calculator.py", beat="Beat 1"),
+            _done(),
+        ],
+        [
+            {
+                "text": "Implemented the beat without expanding the feature contract.",
+                "operations": [
+                    {
+                        "op": "write",
+                        "path": "calculator.py",
+                        "content": (
+                            "def add(left: int, right: int) -> int:\n    return left + right\n"
+                        ),
+                    },
+                    {
+                        "op": "write",
+                        "path": "__pycache__/poison.pyc",
+                        "content": "ignored writer residue",
+                    },
+                ],
+            }
+        ],
+        mode="hackathon",
+    )
+    config = load_config(arena_fixture["config"])
+    baseline = git(arena_fixture["source"], "rev-parse", "HEAD")
+    observed: list[tuple[str, str, str, bool]] = []
+    invoke = AdaptiveController._invoke
+
+    def observe(
+        self: AdaptiveController,
+        provider: object,
+        engineer: object,
+        request: object,
+        relative_dir: str,
+        role: str,
+        task_id: str | None,
+    ) -> object:
+        if role in {"planner", "scope-review"}:
+            workspace = request.workspace
+            observed.append(
+                (
+                    role,
+                    git(workspace, "rev-parse", "HEAD"),
+                    git(workspace, "rev-parse", "--abbrev-ref", "HEAD"),
+                    (workspace / "__pycache__/poison.pyc").exists(),
+                )
+            )
+        return invoke(self, provider, engineer, request, relative_dir, role, task_id)
+
+    monkeypatch.setattr(AdaptiveController, "_invoke", observe)
+    run_dir = AdaptiveController(config, "hackathon", max_steps=2).run(
+        arena_fixture["source"], "Deliver only the contracted MVP."
+    )
+
+    last_green = adaptive_status(run_dir)["last_green_sha"]
+    assert [item[0] for item in observed] == ["planner", "scope-review", "planner"]
+    assert [item[1] for item in observed] == [baseline, last_green, last_green]
+    assert all(item[2] == "HEAD" and item[3] is False for item in observed)
+    assert (run_dir / "private/worktrees/engineers/claude/__pycache__/poison.pyc").is_file()
+    ephemeral = run_dir / "private/worktrees/ephemeral"
+    assert not ephemeral.exists() or not any(ephemeral.iterdir())
 
 
 def test_deadline_during_rejection_still_exports_last_green(

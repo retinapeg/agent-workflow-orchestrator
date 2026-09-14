@@ -14,6 +14,8 @@
 10. Integration reproduces exactly one winner tree; implementations are never blindly merged.
 11. Failure preserves all completed evidence and records a terminal state.
 12. Worktrees are not represented as a hostile-process security boundary.
+13. Adaptive planning and scope review use fresh detached snapshots, never the writer worktree.
+14. Adaptive planner-owned files must match a non-empty coordinator-owned allowlist.
 
 ## Components
 

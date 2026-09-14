@@ -11,8 +11,8 @@ Use the installed `team` controller. Do not recreate its orchestration in chat.
 Before starting, require one compact `DEMO.md` containing the outcome, one to three literal `Beat N`
 entries, one surprising moment, `Not building`, the smoke command, and a labelled fallback. A
 separate `NOT.md` may elaborate scope but is optional. Together they are the frozen MVP feature
-contract for that run. Verify that `team.toml` contains the real demo smoke and project checks. The
-adaptive path uses Codex as the read-only planner/reviewer and Claude as the sole isolated MVP
+contract for that run. Verify that `team.toml` contains the real demo smoke, project checks, and a
+narrow, non-empty `run.allowed_paths`. The adaptive path uses Codex as the read-only planner/reviewer and Claude as the sole isolated MVP
 writer; do not add Devin, duplicate implementations, swarms, or a third QA mode.
 
 Start one detached loop and return immediately with its run path and compact status:

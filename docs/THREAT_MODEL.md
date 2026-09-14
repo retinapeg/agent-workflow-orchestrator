@@ -20,6 +20,9 @@ injection through task text, runaway output, and ordinary timeout descendants.
 - Private no-local/no-hardlink clone; origin removed; object alternates rejected.
 - Generated safe run, branch, and worktree identifiers.
 - Separate physical worktrees and immutable coordinator freeze commits.
+- Adaptive planners and scope reviewers receive fresh detached worktrees at the exact last-green or
+  candidate commit; ignored writer residue is never reused as review input.
+- Adaptive planner ownership is limited to exact files inside a required coordinator allowlist.
 - Direct argv execution without a shell.
 - Separate provider and candidate-test environment allowlists. Credential environment values are
   not intentionally copied into configuration evidence or candidate-test environments.

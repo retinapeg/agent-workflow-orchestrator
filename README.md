@@ -31,8 +31,8 @@ cp team.example.toml team.toml
 team doctor --config team.toml
 ```
 
-Edit the `[[checks]]` commands in `team.toml` so they are the real commands for the target project.
-Then start one bounded autonomous loop:
+Edit the `[[checks]]` commands and narrow, non-empty `run.allowed_paths` in `team.toml` for the
+target project. Then start one bounded autonomous loop:
 
 ```bash
 team hackathon start goal.md --repo /absolute/path/to/project --config team.toml
@@ -112,9 +112,9 @@ After one start command, the controller repeats:
    coordinates Engineering; Codex coordinates Hackathon.
 2. The mode's sole writer owns that task in one isolated worktree: Codex for Engineering, Claude for
    Hackathon. No second implementation is launched by default.
-3. The coordinator freezes the candidate, rejects changes outside the planned concrete path or
-   directory prefixes, and runs only the configuration-owned checks and benchmarks in fresh
-   validation worktrees.
+3. The coordinator freezes the candidate, rejects changes outside the planner's exact files or the
+   trusted `run.allowed_paths` globs, and runs only the configuration-owned checks and benchmarks in
+   fresh validation worktrees.
 4. A passing candidate advances a private last-green branch/SHA. A rejected candidate is preserved
    as evidence and the writer returns to last-green.
 5. The controller re-observes and selects the next task. A planner's `done` is accepted only after
@@ -228,7 +228,8 @@ Important run controls:
 - `require_clean_source = true` prevents accidental omission of uncommitted work.
 - `protected_paths` disqualifies edits to trusted tests, workflow policy, or other coordinator-owned
   paths.
-- `allowed_paths`, when non-empty, makes any edit outside the listed globs a policy violation.
+- `allowed_paths` contains trusted configuration globs. It must be non-empty for adaptive modes;
+  every planner-owned exact file and every candidate change must match it.
 - `untracked_artifact_excludes` keeps common interpreter caches, tool caches, local environments, and
   dependency trees out of candidate commits when a source repository lacks its own ignore rules.
   These Git-ignore patterns apply only inside the private clone and cannot hide edits to tracked files

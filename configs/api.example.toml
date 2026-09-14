@@ -4,6 +4,7 @@ schema_version = 1
 artifact_root = "../../.agent-arena-runs"
 require_clean_source = true
 protected_paths = [".git", ".git/**", "tests/acceptance/**"]
+allowed_paths = ["src/**", "tests/**", "README.md"]
 
 [engineers.codex]
 kind = "openai_api"

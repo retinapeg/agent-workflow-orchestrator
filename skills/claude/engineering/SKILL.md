@@ -9,7 +9,8 @@ disable-model-invocation: true
 Use the installed `team` controller. Do not recreate its orchestration in chat.
 
 Before starting, read the repository instructions and verify that `team.toml` names only the real
-project-owned checks needed for acceptance. The adaptive path requires engineers named `claude`
+project-owned checks needed for acceptance and has a narrow, non-empty `run.allowed_paths`. The
+adaptive path requires engineers named `claude`
 (read-only planner) and `codex` (sole isolated writer). Do not add Devin, a second writer, a swarm,
 or model-written shell commands.
 
