@@ -7,19 +7,26 @@ import shutil
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-from .audit import rebuild_manifest, sha256_file, verify_manifest
+from .audit import rebuild_manifest, sha256_bytes, sha256_file, verify_manifest
 from .errors import IntegrityError, RepositoryError
+from .process import sanitized_environment
 
 
-def _git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess[bytes]:
+def _git(
+    repo: Path,
+    *args: str,
+    check: bool = True,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[bytes]:
     result = subprocess.run(
-        ["git", "-C", str(repo), *args],
+        ["git", "-c", f"core.hooksPath={os.devnull}", "-C", str(repo), *args],
         stdin=subprocess.DEVNULL,
         capture_output=True,
         timeout=180,
         check=False,
+        env=env,
     )
     if check and result.returncode != 0:
         raise RepositoryError(
@@ -43,6 +50,60 @@ def _write_receipt(run_dir: Path, receipt: dict[str, Any]) -> Path:
     run_data = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     rebuild_manifest(run_dir, str(run_data["run_id"]))
     return target
+
+
+def _commit_environment() -> dict[str, str]:
+    return sanitized_environment(
+        ("PATH", "LANG", "LC_ALL", "TMPDIR"),
+        {
+            "GIT_AUTHOR_NAME": "Agent Arena",
+            "GIT_AUTHOR_EMAIL": "agent-arena@localhost",
+            "GIT_COMMITTER_NAME": "Agent Arena",
+            "GIT_COMMITTER_EMAIL": "agent-arena@localhost",
+        },
+    )
+
+
+def _verified_evaluation(
+    run_dir: Path,
+    relative: str,
+    engineer_id: str,
+    generation: str,
+    commit: str,
+    required_checks: set[str],
+    required_benchmarks: set[str],
+) -> dict[str, Any]:
+    path = (run_dir / relative).resolve()
+    if run_dir not in path.parents or not path.is_file():
+        raise IntegrityError("adaptive evaluation path is missing or unsafe")
+    evaluation = json.loads(path.read_text(encoding="utf-8"))
+    if (
+        evaluation.get("engineer_id") != engineer_id
+        or evaluation.get("generation") != generation
+        or evaluation.get("commit") != commit
+        or evaluation.get("valid_candidate") is not True
+        or evaluation.get("provider_ok") is not True
+    ):
+        raise IntegrityError("adaptive evaluation conflicts with accepted-task evidence")
+    checks = evaluation.get("checks")
+    benchmarks = evaluation.get("benchmarks")
+    if not isinstance(checks, list) or not all(isinstance(item, dict) for item in checks):
+        raise IntegrityError("adaptive evaluation checks are malformed")
+    if not isinstance(benchmarks, list) or not all(isinstance(item, dict) for item in benchmarks):
+        raise IntegrityError("adaptive evaluation benchmarks are malformed")
+    if any(item.get("required") and not item.get("passed") for item in checks):
+        raise IntegrityError("adaptive evaluation contains a failed required check")
+    if any(item.get("required") and not item.get("passed") for item in benchmarks):
+        raise IntegrityError("adaptive evaluation contains a failed required benchmark")
+    passed_checks = {item.get("check_id") for item in checks if item.get("passed") is True}
+    passed_benchmarks = {
+        item.get("benchmark_id") for item in benchmarks if item.get("passed") is True
+    }
+    if not required_checks.issubset(passed_checks):
+        raise IntegrityError("adaptive evaluation omits a passing required check")
+    if not required_benchmarks.issubset(passed_benchmarks):
+        raise IntegrityError("adaptive evaluation omits a passing required benchmark")
+    return cast(dict[str, Any], evaluation)
 
 
 def integrate_winner(
@@ -167,37 +228,15 @@ def integrate_winner(
             if winner_patch.stat().st_size == 0:
                 raise IntegrityError("changed winner unexpectedly has an empty patch")
             _git(destination, "apply", "--index", "--binary", str(winner_patch))
-        env = os.environ.copy()
-        env.update(
-            {
-                "GIT_AUTHOR_NAME": "Agent Arena",
-                "GIT_AUTHOR_EMAIL": "agent-arena@localhost",
-                "GIT_COMMITTER_NAME": "Agent Arena",
-                "GIT_COMMITTER_EMAIL": "agent-arena@localhost",
-            }
+        _git(
+            destination,
+            "commit",
+            "--allow-empty",
+            "--no-gpg-sign",
+            "-m",
+            f"arena: integrate winner from {run_data['run_id']}",
+            env=_commit_environment(),
         )
-        result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(destination),
-                "commit",
-                "--allow-empty",
-                "--no-gpg-sign",
-                "-m",
-                f"arena: integrate winner from {run_data['run_id']}",
-            ],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=180,
-            check=False,
-            env=env,
-        )
-        if result.returncode != 0:
-            raise RepositoryError(
-                "integration commit failed: "
-                + result.stderr.decode("utf-8", errors="replace")[:2000]
-            )
         integrated_tree = _text(destination, "rev-parse", "HEAD^{tree}")
         if integrated_tree != winner["tree"]:
             raise IntegrityError(
@@ -254,6 +293,38 @@ def integrate_last_green(
         raise IntegrityError("adaptive run must be terminal with a verified last-green result")
     repository = json.loads((run_dir / "repository.json").read_text(encoding="utf-8"))
     last_green = json.loads((run_dir / "last-green.json").read_text(encoding="utf-8"))
+    effective = json.loads((run_dir / "effective-config.json").read_text(encoding="utf-8"))
+    acceptance = json.loads((run_dir / "acceptance.json").read_text(encoding="utf-8"))
+    if effective.get("selected_mode") != run_data.get("mode"):
+        raise IntegrityError("adaptive effective configuration has the wrong mode")
+    contract = acceptance.get("contract")
+    if (
+        acceptance.get("mode") != run_data.get("mode")
+        or not isinstance(contract, str)
+        or sha256_bytes(contract.encode()) != acceptance.get("contract_sha256")
+    ):
+        raise IntegrityError("adaptive acceptance contract is invalid")
+    effective_config = effective.get("config")
+    if not isinstance(effective_config, dict):
+        raise IntegrityError("adaptive effective configuration is malformed")
+    configured_checks = effective_config.get("checks")
+    configured_benchmarks = effective_config.get("benchmarks")
+    if not isinstance(configured_checks, list) or not all(
+        isinstance(item, dict) for item in configured_checks
+    ):
+        raise IntegrityError("adaptive configured checks are malformed")
+    if not isinstance(configured_benchmarks, list) or not all(
+        isinstance(item, dict) for item in configured_benchmarks
+    ):
+        raise IntegrityError("adaptive configured benchmarks are malformed")
+    required_checks = {
+        str(item["check_id"]) for item in configured_checks if item.get("required") is True
+    }
+    if run_data.get("mode") == "hackathon":
+        required_checks.add("arena-demo-readiness")
+    required_benchmarks = {
+        str(item["benchmark_id"]) for item in configured_benchmarks if item.get("required") is True
+    }
     patch = run_dir / "last-green.patch"
     if last_green.get("base_commit") != repository.get("base_commit"):
         raise IntegrityError("last-green baseline conflicts with repository evidence")
@@ -270,6 +341,68 @@ def integrate_last_green(
         raise IntegrityError("last-green commit does not match the final accepted task")
     if not accepted and last_green["commit"] != repository.get("base_commit"):
         raise IntegrityError("a changed last-green commit has no accepted task evidence")
+    writer = run_data.get("writer")
+    if not isinstance(writer, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", writer):
+        raise IntegrityError("adaptive run has no valid writer identity")
+    for record in accepted:
+        if not isinstance(record, dict):
+            raise IntegrityError("adaptive accepted-task evidence is malformed")
+        step = record.get("step")
+        commit = record.get("commit")
+        if isinstance(step, bool) or not isinstance(step, int) or step < 1:
+            raise IntegrityError("adaptive accepted task has an invalid step")
+        if not isinstance(commit, str) or not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+            raise IntegrityError("adaptive accepted task has an invalid commit")
+        generation = f"step-{step}"
+        candidate = json.loads(
+            (run_dir / f"engineers/{writer}/{generation}/candidate.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        if (
+            candidate.get("engineer_id") != writer
+            or candidate.get("generation") != generation
+            or candidate.get("commit") != commit
+            or candidate.get("valid") is not True
+            or candidate.get("changed_files") != record.get("changed_files")
+        ):
+            raise IntegrityError("accepted task conflicts with its frozen candidate")
+        _verified_evaluation(
+            run_dir,
+            f"evaluations/{writer}/{generation}/evaluation.json",
+            writer,
+            generation,
+            commit,
+            required_checks,
+            required_benchmarks,
+        )
+        if run_data.get("mode") == "hackathon":
+            scope_review = json.loads(
+                (run_dir / f"steps/step-{step}/scope-review.json").read_text(encoding="utf-8")
+            )
+            if (
+                scope_review.get("task_id") != record.get("task_id")
+                or scope_review.get("commit") != commit
+                or scope_review.get("demo_beat") != record.get("demo_beat")
+                or scope_review.get("verdict") != "approve"
+                or not isinstance(scope_review.get("rationale"), str)
+                or not scope_review["rationale"].strip()
+            ):
+                raise IntegrityError("accepted Hackathon task lacks an approving scope review")
+    verification = last_green.get("verification")
+    expected_generation = f"step-{accepted[-1]['step']}" if accepted else "last-green"
+    expected_verification = f"evaluations/{writer}/{expected_generation}/evaluation.json"
+    if verification != expected_verification:
+        raise IntegrityError("last-green does not name its required evaluation evidence")
+    _verified_evaluation(
+        run_dir,
+        verification,
+        writer,
+        expected_generation,
+        last_green["commit"],
+        required_checks,
+        required_benchmarks,
+    )
 
     top = Path(_text(source, "rev-parse", "--show-toplevel")).resolve()
     recorded = Path(repository["source_path"]).resolve()
@@ -306,37 +439,15 @@ def integrate_last_green(
             if patch.stat().st_size == 0:
                 raise IntegrityError("changed last-green unexpectedly has an empty patch")
             _git(destination, "apply", "--index", "--binary", str(patch))
-        env = os.environ.copy()
-        env.update(
-            {
-                "GIT_AUTHOR_NAME": "Agent Arena",
-                "GIT_AUTHOR_EMAIL": "agent-arena@localhost",
-                "GIT_COMMITTER_NAME": "Agent Arena",
-                "GIT_COMMITTER_EMAIL": "agent-arena@localhost",
-            }
+        _git(
+            destination,
+            "commit",
+            "--allow-empty",
+            "--no-gpg-sign",
+            "-m",
+            f"arena: integrate last-green from {run_data['run_id']}",
+            env=_commit_environment(),
         )
-        result = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(destination),
-                "commit",
-                "--allow-empty",
-                "--no-gpg-sign",
-                "-m",
-                f"arena: integrate last-green from {run_data['run_id']}",
-            ],
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            timeout=180,
-            check=False,
-            env=env,
-        )
-        if result.returncode != 0:
-            raise RepositoryError(
-                "integration commit failed: "
-                + result.stderr.decode("utf-8", errors="replace")[:2000]
-            )
         if _text(destination, "rev-parse", "HEAD^{tree}") != last_green["tree"]:
             raise IntegrityError("integrated tree does not match verified last-green tree")
         commit = _text(destination, "rev-parse", "HEAD")

@@ -136,11 +136,17 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _latest_run(config: ArenaConfig) -> Path:
+def _latest_run(config: ArenaConfig, required_artifact: str | None = None) -> Path:
     root = config.run.artifact_root
     candidates = (
         sorted(
-            (path for path in root.iterdir() if path.is_dir() and (path / "run.json").is_file()),
+            (
+                path
+                for path in root.iterdir()
+                if path.is_dir()
+                and (path / "run.json").is_file()
+                and (required_artifact is None or (path / required_artifact).is_file())
+            ),
             reverse=True,
         )
         if root.is_dir()
@@ -151,13 +157,15 @@ def _latest_run(config: ArenaConfig) -> Path:
     return candidates[0]
 
 
-def _resolve_run(value: str | None, config_path: str) -> Path:
+def _resolve_run(value: str | None, config_path: str, required_artifact: str | None = None) -> Path:
     if value:
         path = Path(value).expanduser().resolve()
         if not (path / "run.json").is_file():
             raise ArenaError(f"not an Agent Arena run directory: {path}")
+        if required_artifact is not None and not (path / required_artifact).is_file():
+            raise ArenaError(f"run has no {required_artifact}: {path}")
         return path
-    return _latest_run(load_config(config_path))
+    return _latest_run(load_config(config_path), required_artifact)
 
 
 def _parse_time(value: object) -> datetime | None:
@@ -346,7 +354,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     print(f"{engineer_id}: {'OK' if details['ok'] else details['error']}")
             return 0 if result["ok"] else 2
         if args.command in {"status", "results"}:
-            run_dir = _resolve_run(args.run, args.config)
+            run_dir = _resolve_run(
+                args.run, args.config, "report.md" if args.command == "results" else None
+            )
             if args.command == "status":
                 data = _status_payload(run_dir)
                 if args.json:

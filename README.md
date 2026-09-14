@@ -70,10 +70,11 @@ team engineering stop --config team.toml
 team hackathon status --config team.toml
 ```
 
-The stop request takes effect at the current bounded provider/check phase boundary. Hackathon steps
-have a five-minute total cap and Engineering steps have a ten-minute total cap, so a local waiter
-cannot remain opaque for 20 minutes. The compact status shows the clock, last-green SHA, accepted
-tasks or beats, active provider/task/deadline, blocker, next action, and freeze.
+The stop request is checked after every bounded provider phase and again after verification.
+Hackathon provider phases have a five-minute cap and Engineering provider phases have a ten-minute
+cap, so a local waiter cannot remain opaque for 20 minutes. The compact status shows the clock,
+last-green SHA, accepted tasks or beats, active provider/task/deadline, blocker, next action, and
+scope state.
 
 Inspect an older one-task adversarial run with:
 
@@ -106,14 +107,18 @@ Hackathon and 10 minutes for Engineering; the example Hackathon run has a 45-min
 
 After one start command, the controller repeats:
 
-1. Claude reads the current private last-green repository and returns one schema-validated task,
-   `done`, or `blocked`. The plan contains no executable command.
-2. Codex owns that task in one isolated worktree. No second implementation is launched by default.
-3. The coordinator freezes the candidate, rejects changes outside the planned paths, and runs only
-   the configuration-owned checks and benchmarks in fresh validation worktrees.
+1. The read-only coordinator reads the current private last-green repository and returns one
+   schema-validated task, `done`, or `blocked`. The plan contains no executable command. Claude
+   coordinates Engineering; Codex coordinates Hackathon.
+2. The mode's sole writer owns that task in one isolated worktree: Codex for Engineering, Claude for
+   Hackathon. No second implementation is launched by default.
+3. The coordinator freezes the candidate, rejects changes outside the planned concrete path or
+   directory prefixes, and runs only the configuration-owned checks and benchmarks in fresh
+   validation worktrees.
 4. A passing candidate advances a private last-green branch/SHA. A rejected candidate is preserved
    as evidence and the writer returns to last-green.
-5. The controller re-observes and selects the next task. It stops on `done`, the deadline,
+5. The controller re-observes and selects the next task. A planner's `done` is accepted only after
+   the current last-green passes the configured checks. It also stops on the deadline,
    `--max-steps`, an explicit stop, an authority blocker, or two consecutive rejected tasks.
 
 The original source branch is never merged, reset, pushed, deployed, or published. Last-green is
@@ -162,6 +167,11 @@ literal beats, a surprising moment, what is not being built, the smoke command, 
 fallback. A separate `NOT.md` may elaborate non-goals but is optional. Clean startup, the actual main
 flow, fallback behaviour, and visible UX still need real configured acceptance commands;
 documentation alone cannot prove them.
+
+For an adaptive Hackathon run, `DEMO.md` and `NOT.md` are a frozen, user-controlled MVP feature
+contract whose hashes are recorded at startup. Claude writes the MVP but cannot edit that contract
+or add capabilities outside it. A new feature requires the user to update and commit the contract
+before starting another run.
 
 Mode-specific limits and weights are configured under `[modes.hackathon]` and
 `[modes.engineering]`. A practical

@@ -16,7 +16,7 @@ from .audit import AuditStore
 from .config import ArenaConfig
 from .errors import DeadlineExceeded, RepositoryError
 from .models import CandidateSnapshot
-from .process import ProcessRunner
+from .process import ProcessRunner, sanitized_environment
 
 SAFE_LABEL = re.compile(r"^[a-zA-Z0-9_.-]+$")
 
@@ -35,7 +35,15 @@ def _run_git(
         if remaining <= 0:
             raise DeadlineExceeded("the total run deadline was exhausted during a Git operation")
         timeout = min(timeout, remaining)
-    command = ["git", "--literal-pathspecs", "-C", str(repo), *args]
+    command = [
+        "git",
+        "-c",
+        f"core.hooksPath={os.devnull}",
+        "--literal-pathspecs",
+        "-C",
+        str(repo),
+        *args,
+    ]
     try:
         process = subprocess.Popen(
             command,
@@ -462,14 +470,14 @@ class RepositoryManager:
             ):
                 violations.append(f"path outside allowed scope: {path}")
 
-        env = os.environ.copy()
-        env.update(
+        env = sanitized_environment(
+            ("PATH", "LANG", "LC_ALL", "TMPDIR"),
             {
                 "GIT_AUTHOR_NAME": "Agent Arena",
                 "GIT_AUTHOR_EMAIL": "agent-arena@localhost",
                 "GIT_COMMITTER_NAME": "Agent Arena",
                 "GIT_COMMITTER_EMAIL": "agent-arena@localhost",
-            }
+            },
         )
         self._run(
             workspace,

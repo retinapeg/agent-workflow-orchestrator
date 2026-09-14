@@ -309,7 +309,7 @@ def test_each_engineering_round_uses_and_evaluates_the_previous_generation(
 
 
 def test_no_change_winner_can_be_integrated_as_an_explicit_empty_commit(
-    arena_fixture: dict[str, Path],
+    arena_fixture: dict[str, Path], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     source = arena_fixture["source"]
     correct_source = "def add(left: int, right: int) -> int:\n    return left + right\n"
@@ -347,12 +347,24 @@ def test_no_change_winner_can_be_integrated_as_an_explicit_empty_commit(
     assert winner["tree"] == git(source, "rev-parse", "HEAD^{tree}")
     assert (run_dir / "winner.patch").read_bytes() == b""
 
+    sentinel = arena_fixture["root"] / "integration-hook-secret.txt"
+    hooks = arena_fixture["root"] / "integration-hooks"
+    hooks.mkdir()
+    hook = hooks / "pre-commit"
+    hook.write_text(f"#!/bin/sh\nprintf '%s' \"$ARENA_TEST_SECRET\" > {sentinel}\n")
+    hook.chmod(0o700)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(hooks))
+    monkeypatch.setenv("ARENA_TEST_SECRET", "must-not-reach-integration-hook")
+
     integration_path = arena_fixture["root"] / "integrated-no-change"
     receipt = integrate_winner(run_dir, source, "arena/no-change", integration_path)
     assert receipt["no_changes"] is True
     assert receipt["integration_commit"] != baseline
     assert git(integration_path, "rev-parse", "HEAD^{tree}") == winner["tree"]
     assert git(source, "rev-parse", "HEAD") == baseline
+    assert not sentinel.exists()
     second = integrate_winner(
         run_dir,
         source,

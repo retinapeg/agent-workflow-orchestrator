@@ -7,19 +7,21 @@ Validated in the isolated `agent-workflow-orchestrator` clone on macOS without i
 - Ruff formatting: pass, 51 files.
 - Ruff lint: pass.
 - MyPy strict over all 21 source modules: pass.
-- Pytest: 135 passed in 101.08 seconds.
+- Pytest: 146 passed in 101.01 seconds.
 - The full offline lifecycle used scripted providers only; it made no Codex, Claude, or Devin call.
 - Deterministic adaptive validation covered two different accepted Engineering tasks followed by
-  `done`, one accepted Hackathon beat, two rejected steps, a timed-out writer result, compact
-  status/stop, detached background start, cumulative last-green export, and exact-tree integration.
-- Added and exercised hard per-step/run deadlines, structured non-command planner output, narrow
-  path ownership, live provider/task status, one-file Hackathon demo gating, and fail-closed
-  substantive output.
+  `done`, one Claude-written Hackathon beat with Codex scope approval, scope rejection, two rejected
+  steps, a timed-out writer result, compact status/stop, isolated detached background start,
+  cumulative last-green export, and exact-tree integration.
+- Added and exercised hard per-phase/run deadlines, deadline-safe last-green export, structured
+  non-command planner output, concrete path ownership, hashed MVP contracts, exact demo-beat
+  selection, coordinator-owned acceptance evidence, Git-hook suppression, minimal generated-commit
+  environments, live provider/task status, and fail-closed substantive output.
 - Both Claude skill drafts have valid YAML frontmatter. The bundled `quick_validate.py` could not run
   because its environment lacks PyYAML; no dependency was installed solely for that optional check.
-- Editable tool install: `adversarial-engineering-arena==0.3.0`; commands `team` and `agent-arena`.
-- Wheel: `adversarial_engineering_arena-0.3.0-py3-none-any.whl`, SHA-256
-  `351a920445eb670607267ff23b46e241c963ab7475fd7d9ed550e74c3fb026ea`.
+- Editable tool install: `adversarial-engineering-arena==0.3.1`; commands `team` and `agent-arena`.
+- Wheel: `adversarial_engineering_arena-0.3.1-py3-none-any.whl`, SHA-256
+  `6cb8d98f0ea61492179d31b28f7952d7869348cada83901323eed67b4e951b14`.
 - Source distribution build: pass; its final hash is reported outside this self-containing file.
 
 The earlier 9 September record below remains the evidence for the original 0.1.0 live

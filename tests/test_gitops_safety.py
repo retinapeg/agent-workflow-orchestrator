@@ -126,6 +126,30 @@ def test_git_output_limit_is_enforced(arena_fixture: dict[str, Path]) -> None:
         _run_git(arena_fixture["source"], "log", "--format=" + "x" * 5000, max_output_bytes=128)
 
 
+def test_candidate_freeze_disables_inherited_git_hooks(
+    arena_fixture: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repository, workspace, baseline = manager(arena_fixture)
+    sentinel = arena_fixture["root"] / "hook-secret.txt"
+    hooks = arena_fixture["root"] / "malicious-hooks"
+    hooks.mkdir()
+    hook = hooks / "pre-commit"
+    hook.write_text(f"#!/bin/sh\nprintf '%s' \"$ARENA_TEST_SECRET\" > {sentinel}\n")
+    hook.chmod(0o700)
+    monkeypatch.setenv("GIT_CONFIG_COUNT", "1")
+    monkeypatch.setenv("GIT_CONFIG_KEY_0", "core.hooksPath")
+    monkeypatch.setenv("GIT_CONFIG_VALUE_0", str(hooks))
+    monkeypatch.setenv("ARENA_TEST_SECRET", "must-not-reach-hook")
+    (workspace / "calculator.py").write_text(
+        "def add(left: int, right: int) -> int:\n    return left + right\n", encoding="utf-8"
+    )
+
+    snapshot = repository.freeze_candidate("codex", "initial", workspace, baseline, baseline)
+
+    assert snapshot.valid
+    assert not sentinel.exists()
+
+
 def test_remote_credentials_and_query_are_redacted() -> None:
     remote = _redact_remote("https://user:USERSECRET@example.com/repo?token=QUERYSECRET#FRAGMENT")
     assert "USERSECRET" not in remote
