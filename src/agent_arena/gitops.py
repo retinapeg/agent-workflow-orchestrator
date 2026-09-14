@@ -307,6 +307,31 @@ class RepositoryManager:
             for engineer_id in sorted(self._engineer_workspaces)
         )
 
+    def advance_last_green(self, commit: str, previous: str | None = None) -> str:
+        """Advance this run's private last-green ref, optionally as a compare-and-swap."""
+
+        ref = f"refs/heads/arena/{self.audit.run_id}/last-green"
+        arguments = ["update-ref", ref, commit]
+        if previous is not None:
+            arguments.append(previous)
+        self._run(self.private_repo, *arguments)
+        return ref
+
+    def reset_engineer_worktree(self, engineer_id: str, workspace: Path, commit: str) -> None:
+        """Discard a rejected private candidate while its committed evidence remains reachable."""
+
+        expected_branch = self._branches.get(engineer_id)
+        actual_top = Path(self._text(workspace, "rev-parse", "--show-toplevel")).resolve()
+        actual_branch = self._text(workspace, "symbolic-ref", "--quiet", "--short", "HEAD")
+        if (
+            expected_branch is None
+            or actual_top != workspace.resolve()
+            or actual_branch != expected_branch
+        ):
+            raise RepositoryError(f"refusing to reset an unverified worktree for {engineer_id}")
+        self._run(workspace, "reset", "--hard", commit)
+        self._run(workspace, "clean", "-fd")
+
     def create_detached_worktree(self, label: str, commit: str) -> Path:
         if not SAFE_LABEL.fullmatch(label):
             raise RepositoryError(f"unsafe worktree label: {label}")
@@ -515,6 +540,19 @@ class RepositoryManager:
             os.chmod(destination, 0o600)
         finally:
             self._run(self.private_repo, "update-ref", "-d", temporary_ref, check=False)
+
+    def export_patch(self, baseline: str, commit: str, destination: Path) -> None:
+        patch = self._run(
+            self.private_repo,
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--binary",
+            baseline,
+            commit,
+            max_output_bytes=self.config.limits.max_diff_bytes,
+        ).stdout
+        self.audit.write_bytes(destination.relative_to(self.audit.run_dir), patch)
 
     def tree_for(self, commit: str) -> str:
         return self._text(self.private_repo, "rev-parse", f"{commit}^{{tree}}")

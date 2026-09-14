@@ -41,7 +41,7 @@ min_response_bytes = 80
 
 [modes.engineering]
 revision_rounds = 2
-provider_timeout_seconds = 900
+provider_timeout_seconds = 600
 max_run_seconds = 7200
 min_response_bytes = 200
 

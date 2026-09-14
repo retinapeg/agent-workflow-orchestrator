@@ -42,7 +42,7 @@ termination_grace_seconds = 5
 
 [engineers.codex]
 kind = "codex_cli"
-# Per invocation: team hack/engineer ... --codex-model MODEL (also accepted by doctor).
+# Per invocation: team engineering/hackathon start ... --codex-model MODEL.
 model = "gpt-6-astra"
 timeout_seconds = 1200
 max_output_tokens = 16000
@@ -53,7 +53,7 @@ max_output_tokens = 16000
 [engineers.claude]
 kind = "claude_cli"
 # Omit model to use the model configured in Claude Code, or set an exact model ID.
-# Per invocation: team hack/engineer ... --claude-model MODEL (also accepted by doctor).
+# Per invocation: team engineering/hackathon start ... --claude-model MODEL.
 timeout_seconds = 1200
 max_cost_usd = "5.00"
 # Optional exact CLI path:
@@ -106,7 +106,7 @@ check_weights = { tests = "60", lint = "20", types = "20" }
 
 [modes.engineering]
 revision_rounds = 2
-provider_timeout_seconds = 900
+provider_timeout_seconds = 600
 max_run_seconds = 7200
 min_response_bytes = 200
 check_weights = { tests = "55", lint = "20", types = "25" }

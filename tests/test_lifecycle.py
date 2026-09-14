@@ -88,6 +88,21 @@ def test_hackathon_refuses_to_start_without_demo_contract(
         ArenaOrchestrator(config, "hackathon").run(source, arena_fixture["task"])
 
 
+def test_hackathon_accepts_demo_contract_without_separate_not_file(
+    arena_fixture: dict[str, Path],
+) -> None:
+    source = arena_fixture["source"]
+    (source / "NOT.md").unlink()
+    git(source, "add", "NOT.md")
+    git(source, "commit", "-m", "keep non-goals in demo contract")
+    config = load_config(arena_fixture["config"])
+
+    run_dir = ArenaOrchestrator(config, "hackathon").run(source, arena_fixture["task"])
+
+    assert json.loads((run_dir / "run.json").read_text())["state"] == "complete"
+    verify_manifest(run_dir)
+
+
 def test_engineering_mode_records_bounded_live_status(arena_fixture: dict[str, Path]) -> None:
     config = load_config(arena_fixture["config"])
     run_dir = ArenaOrchestrator(config, "engineering").run(

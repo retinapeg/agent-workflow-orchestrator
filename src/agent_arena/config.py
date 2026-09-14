@@ -664,7 +664,7 @@ def load_config(path: str | Path) -> ArenaConfig:
         )
     defaults = {
         "hackathon": (1, 1, 2, 300, min(run.max_run_seconds, 2700), 80),
-        "engineering": (2, 2, 4, 900, run.max_run_seconds, 200),
+        "engineering": (2, 2, 4, 600, run.max_run_seconds, 200),
     }
     modes: dict[str, ModeConfig] = {}
     for mode_name in mode_names:

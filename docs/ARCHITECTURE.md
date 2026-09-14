@@ -22,6 +22,7 @@
 | `config` | Strict TOML parsing, exact modes, limits, checks, benchmarks and redacted audit view |
 | `gitops` | Source proof, private clone, branches/worktrees, ancestry checks, immutable freezes and bundles |
 | `providers` | Codex CLI, Claude CLI, OpenAI API, Anthropic API, generic CLI and scripted adapters |
+| `adaptive` | Claude planning, one Codex writer, bounded task loop, last-green advancement and stop/status |
 | `process` | Shell-free argv execution, capped concurrent output drains, deadlines and process-group termination |
 | `prompting` | Shared task/acceptance framing and phase-specific structured contracts |
 | `evaluator` | Fresh validation trees, trusted overlays, checks, repeated benchmarks and fail-closed parsing |
@@ -29,7 +30,7 @@
 | `orchestrator` | Lifecycle, concurrency, reciprocal review, bounded revisions, judge and winner export |
 | `audit` | Atomic artifacts, ordered events, hashes and integrity verification |
 | `integration` | Separate exact-tree branch/worktree creation with rollback on failure |
-| `cli` | Small `team hack`, `team engineer`, status, results, open, verify and integrate surface |
+| `cli` | Adaptive Engineering/Hackathon start-status-stop plus one-task comparison controls |
 
 ## State machine
 

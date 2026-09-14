@@ -6,12 +6,13 @@ revision rounds, evaluates immutable candidates with coordinator-owned checks, a
 strongest eligible result. It keeps the original checkout unchanged unless you later run the
 explicit `integrate` command.
 
-The installed command is `team`. There is one orchestrator and exactly two selectable operating
-modes:
+The installed command is `team`. There are exactly two adaptive operating modes:
 
-- `team hack ...` — a fast, demo-first competition with one revision round by default.
-- `team engineer ...` — a deeper, production-quality competition with two revision rounds by
-  default and a configurable maximum of four.
+- `team hackathon start ...` — repeatedly select and ship the next demo-critical slice.
+- `team engineering start ...` — repeatedly select and verify the next durable repository task.
+
+The older `team hack ...` and `team engineer ...` commands remain available as one-task adversarial
+comparisons. They do not perform the adaptive multi-task loop.
 
 The provider layer is independent of orchestration. Codex CLI, Claude Code CLI, OpenAI Responses
 API, Anthropic Messages API, a generic CLI seam, and a deterministic offline provider all implement
@@ -31,21 +32,21 @@ team doctor --config team.toml
 ```
 
 Edit the `[[checks]]` commands in `team.toml` so they are the real commands for the target project.
-Then run either mode:
+Then start one bounded autonomous loop:
 
 ```bash
-team hack task.md --repo /absolute/path/to/project --config team.toml
-team engineer "Fix the cache race without changing the public API" \
+team hackathon start goal.md --repo /absolute/path/to/project --config team.toml
+team engineering start "Fix the cache race and verify the repository" \
   --repo /absolute/path/to/project --config team.toml
 ```
 
-Choose the models separately for any invocation with `--codex-model MODEL` and
-`--claude-model MODEL`. Both modes and `doctor` accept these options:
+Choose the models separately for any start or one-task invocation with `--codex-model MODEL` and
+`--claude-model MODEL`. The start commands, old one-task commands, and `doctor` accept these options:
 
 ```bash
-team hack task.md --repo /absolute/path/to/project --config team.toml \
+team hackathon start goal.md --repo /absolute/path/to/project --config team.toml \
   --codex-model gpt-6-astra --claude-model sonnet
-team engineer task.md --repo /absolute/path/to/project --config team.toml \
+team engineering start goal.md --repo /absolute/path/to/project --config team.toml \
   --codex-model gpt-6-astra --claude-model opus
 team doctor --config team.toml --codex-model gpt-6-astra --claude-model sonnet
 ```
@@ -61,7 +62,20 @@ models individually in the configuration for those ambiguous teams. `doctor` che
 availability and saved CLI authentication in the same sanitized environment used for a run; it
 does not make a model call or prove access to a selected model or billing entitlement.
 
-Inspect the most recent run without finding its directory manually:
+Inspect or stop the most recent adaptive run without finding its directory manually:
+
+```bash
+team engineering status --config team.toml
+team engineering stop --config team.toml
+team hackathon status --config team.toml
+```
+
+The stop request takes effect at the current bounded provider/check phase boundary. Hackathon steps
+have a five-minute total cap and Engineering steps have a ten-minute total cap, so a local waiter
+cannot remain opaque for 20 minutes. The compact status shows the clock, last-green SHA, accepted
+tasks or beats, active provider/task/deadline, blocker, next action, and freeze.
+
+Inspect an older one-task adversarial run with:
 
 ```bash
 team status --config team.toml
@@ -82,18 +96,30 @@ team integrate /path/to/run \
 That command creates a new branch and physical worktree. It does not push, force-update, or merge
 into the source branch.
 
-`team status` is deliberately one-shot. It reports the current mode, run directory, deadline,
+The older `team status` is deliberately one-shot. It reports the current mode, run directory, deadline,
 seconds remaining, seconds since real progress, and every active provider/phase. Provider phases are
 mode-capped in addition to the global run deadline, so a configured 20-minute provider cannot keep a
 Hackathon run opaque for 20 minutes. The shipped defaults cap one provider phase at 5 minutes for
-Hackathon and 15 minutes for Engineering; the example Hackathon run has a 45-minute hard stop.
+Hackathon and 10 minutes for Engineering; the example Hackathon run has a 45-minute hard stop.
 
-This command is the safe execution substrate for one frozen task. It does not choose the next task
-or repeat across a backlog by itself; an adaptive controller must perform that observe, select,
-dispatch, verify, and repeat loop. This distinction is deliberate so a fixed lifecycle is never
-misreported as autonomous progress.
+## What an adaptive run does
 
-## What a run does
+After one start command, the controller repeats:
+
+1. Claude reads the current private last-green repository and returns one schema-validated task,
+   `done`, or `blocked`. The plan contains no executable command.
+2. Codex owns that task in one isolated worktree. No second implementation is launched by default.
+3. The coordinator freezes the candidate, rejects changes outside the planned paths, and runs only
+   the configuration-owned checks and benchmarks in fresh validation worktrees.
+4. A passing candidate advances a private last-green branch/SHA. A rejected candidate is preserved
+   as evidence and the writer returns to last-green.
+5. The controller re-observes and selects the next task. It stops on `done`, the deadline,
+   `--max-steps`, an explicit stop, an authority blocker, or two consecutive rejected tasks.
+
+The original source branch is never merged, reset, pushed, deployed, or published. Last-green is
+exported as an auditable bundle for deliberate review.
+
+## What a one-task adversarial run does
 
 For every run, the coordinator:
 
@@ -128,14 +154,14 @@ The state machine and invariants are described in [Architecture](docs/ARCHITECTU
 | Default adversarial rounds | 1 | 2 |
 | Configurable rounds | 1–2 | 2–4 |
 | Scope preference | Only demo-critical scope | Root cause and affected callers only; justified deeper work only when evidence demands it |
-| Built-in documentation gate | `DEMO.md`, `NOT.md`, `DEMO_CHECKLIST.md`, README Quick Start | Reproduction and exact evidence for defects |
+| Built-in documentation gate | One compact `DEMO.md`; optional separate `NOT.md` | Reproduction and exact evidence for defects |
 | Typical evidence emphasis | E2E demo, reliability, UX, critical correctness | Correctness, regression, security, architecture, performance |
 
-Hackathon candidates must maintain a `DEMO_CHECKLIST.md` covering the startup command, primary demo
-flow, demo/sample data, expected outputs, environment variables, fallback mode, and known
-limitations. The harness verifies those topics and a short README Quick Start section. Clean startup,
-the actual main flow, fallback behaviour, and visible UX still need real configured acceptance
-commands; documentation alone cannot prove them.
+Hackathon candidates must maintain one compact `DEMO.md` containing the outcome, one to three
+literal beats, a surprising moment, what is not being built, the smoke command, and a labelled
+fallback. A separate `NOT.md` may elaborate non-goals but is optional. Clean startup, the actual main
+flow, fallback behaviour, and visible UX still need real configured acceptance commands;
+documentation alone cannot prove them.
 
 Mode-specific limits and weights are configured under `[modes.hackathon]` and
 `[modes.engineering]`. A practical

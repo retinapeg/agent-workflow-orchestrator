@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import statistics
 import tempfile
@@ -25,6 +26,28 @@ from .models import (
     jsonable,
 )
 from .process import ProcessRunner, sanitized_environment
+
+
+def demo_contract_errors(path: Path) -> list[str]:
+    """Return structural problems in the one-file Hackathon demo contract."""
+
+    if not path.is_file() or path.is_symlink():
+        return ["missing regular DEMO.md"]
+    if path.stat().st_size > 32_768:
+        return ["DEMO.md exceeds the 32 KiB compact-contract limit"]
+    text = path.read_text(encoding="utf-8", errors="replace")
+    lowered = text.lower()
+    errors = [
+        f"DEMO.md missing {label}"
+        for label in ("outcome", "surprising moment", "not building", "smoke command", "fallback")
+        if label not in lowered
+    ]
+    beats = re.findall(r"(?mi)^(?:#{1,6}\s*)?(?:[-*]\s*)?beat\s+([1-9]\d*)\b", text)
+    if not 1 <= len(beats) <= 3:
+        errors.append("DEMO.md must define one to three literal Beat N entries")
+    if any(int(beat) > 3 for beat in beats):
+        errors.append("DEMO.md beat numbers must not exceed 3")
+    return errors
 
 
 @dataclass(frozen=True)
@@ -262,30 +285,7 @@ class Evaluator:
         workspace = self.repository.create_detached_worktree(label, snapshot.commit)
         missing: list[str] = []
         try:
-            checklist = workspace / "DEMO_CHECKLIST.md"
-            readme = workspace / "README.md"
-            if not checklist.is_file():
-                missing.append("DEMO_CHECKLIST.md")
-            else:
-                lowered = checklist.read_text(encoding="utf-8", errors="replace").lower()
-                required_concepts = {
-                    "startup command": ("startup", "command"),
-                    "primary demo flow": ("demo", "flow"),
-                    "demo/sample data": ("data",),
-                    "expected outputs": ("expected", "output"),
-                    "required environment variables": ("environment",),
-                    "fallback/demo mode": ("fallback",),
-                    "known limitations": ("known", "limitation"),
-                }
-                for label_name, terms in required_concepts.items():
-                    if not all(term in lowered for term in terms):
-                        missing.append(f"DEMO_CHECKLIST.md section: {label_name}")
-            if not readme.is_file():
-                missing.append("README.md")
-            else:
-                lowered_readme = readme.read_text(encoding="utf-8", errors="replace").lower()
-                if "quick start" not in lowered_readme and "quick-start" not in lowered_readme:
-                    missing.append("README.md short Quick Start section")
+            missing.extend(demo_contract_errors(workspace / "DEMO.md"))
         finally:
             self.repository.remove_worktree(workspace)
         message = "PASS\n" if not missing else "Missing: " + "; ".join(missing) + "\n"

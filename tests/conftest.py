@@ -49,17 +49,6 @@ def write_script(path: Path, target: str, final_source: str) -> None:
                     "path": "README.md",
                     "content": "# Calculator\n\n## Quick Start\n\nRun `python3 -m unittest`.\n",
                 },
-                {
-                    "op": "write",
-                    "path": "DEMO_CHECKLIST.md",
-                    "content": (
-                        "# Demo Checklist\n\n## Startup command\n`python3 -m unittest`\n\n"
-                        "## Primary demo flow\nCall add.\n\n## Demo data\n1 and 2.\n\n"
-                        "## Expected output\n3.\n\n## Required environment variables\nNone.\n\n"
-                        "## Fallback demo mode\nNo external dependency.\n\n"
-                        "## Known limitations\nInteger example only.\n"
-                    ),
-                },
             ],
         },
         "review": {"text": review},
@@ -89,7 +78,9 @@ def arena_fixture(tmp_path: Path) -> dict[str, Path]:
         "def add(left: int, right: int) -> int:\n    return left - right\n", encoding="utf-8"
     )
     (source / "DEMO.md").write_text(
-        "# Demo\n\nRun the test, show the failure, apply the fix, and show the pass.\n",
+        "# Demo\n\n## Outcome\nReliable addition.\n\n## Beat 1\nShow 1 + 2 = 3.\n\n"
+        "## Surprising moment\nNegative values work.\n\n## Not building\nNo UI.\n\n"
+        "## Smoke command\n`python3 -m unittest`\n\n## Fallback\nUse the local fixture.\n",
         encoding="utf-8",
     )
     (source / "NOT.md").write_text(

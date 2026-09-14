@@ -96,10 +96,10 @@ Priority: end-to-end demo, judging criteria, demo reliability, visible UX, criti
 useful tests, then architecture. Cut scope aggressively. Prefer a one-command start, obvious UX,
 graceful fallbacks, and deterministic validation of important AI outputs. Major architecture work is
 justified only when it fixes a critical demo blocker. Ask continually: if judging started in 30
-minutes, what would prevent a convincing demonstration? Before broad work, create or preserve
-DEMO.md with the literal three-minute demo flow and NOT.md with prohibited scope. Build the first
-runnable vertical slice before performing broad audits. Maintain DEMO_CHECKLIST.md with startup,
-demo flow/data, expected outputs, environment variables, fallback mode, and known limitations.""",
+minutes, what would prevent a convincing demonstration? Before broad work, create or preserve one
+compact DEMO.md with the outcome, no more than three literal beats, a surprising moment, what is not
+being built, the smoke command, and a labelled fallback. Build the first runnable vertical slice
+before performing broad audits. A separate NOT.md may elaborate non-goals but is not required.""",
     "engineering": """MODE: ENGINEERING
 Primary objective: build the strongest correct, maintainable, production-quality implementation.
 Priority: correctness, completeness, reliability, security, maintainability, architecture, testing,

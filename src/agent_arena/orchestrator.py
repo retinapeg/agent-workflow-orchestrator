@@ -17,7 +17,12 @@ from typing import Any
 from .audit import AuditStore, sha256_bytes
 from .config import ArenaConfig, EngineerConfig
 from .errors import ArenaError, DeadlineExceeded, ProviderError, RepositoryError
-from .evaluator import Evaluator, freeze_trusted_overlay, trusted_overlay_manifest
+from .evaluator import (
+    Evaluator,
+    demo_contract_errors,
+    freeze_trusted_overlay,
+    trusted_overlay_manifest,
+)
 from .gitops import RepositoryManager, SourceEvidence
 from .models import (
     AgentRequest,
@@ -205,17 +210,11 @@ class ArenaOrchestrator:
         )
         try:
             if self.mode == "hackathon":
-                missing = [
-                    name
-                    for name in ("DEMO.md", "NOT.md")
-                    if not (source_top / name).is_file()
-                    or (source_top / name).is_symlink()
-                    or (source_top / name).stat().st_size == 0
-                ]
-                if missing:
+                demo_errors = demo_contract_errors(source_top / "DEMO.md")
+                if demo_errors:
                     raise ArenaError(
-                        "hackathon mode requires nonempty, regular DEMO.md and NOT.md files "
-                        f"before any provider starts; missing or invalid: {', '.join(missing)}"
+                        "hackathon mode requires a compact DEMO.md before any provider starts: "
+                        + "; ".join(demo_errors)
                     )
             repository = RepositoryManager(source_top, base_ref, self.config, audit, self.deadline)
             self.repository = repository

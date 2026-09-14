@@ -1,21 +1,26 @@
 # Validation Record
 
-## Bounded-mode controls — 14 September 2026
+## Adaptive Engineering and Hackathon controller — 14 September 2026
 
 Validated in the isolated `agent-workflow-orchestrator` clone on macOS without invoking a model:
 
-- Ruff formatting: pass, 47 files.
+- Ruff formatting: pass, 51 files.
 - Ruff lint: pass.
-- MyPy strict over all 20 source modules: pass.
-- Pytest: 128 passed in 87.58 seconds.
+- MyPy strict over all 21 source modules: pass.
+- Pytest: 135 passed in 101.08 seconds.
 - The full offline lifecycle used scripted providers only; it made no Codex, Claude, or Devin call.
-- Added and exercised per-mode provider/run deadlines, live active-provider status, Hackathon's
-  pre-provider `DEMO.md`/`NOT.md` gate, and fail-closed minimum substantive output.
-- Editable tool install: `adversarial-engineering-arena==0.2.0`; commands `team` and `agent-arena`.
-- Wheel: `adversarial_engineering_arena-0.2.0-py3-none-any.whl`, SHA-256
-  `8d184685c284f00319907cedaebaeab48cd9862a0bd2a70d2079a6dd734fe69d`.
-- Source distribution: `adversarial_engineering_arena-0.2.0.tar.gz`, SHA-256
-  `3c8b81fef84df153c2612cfa9e4325487eb27d679c6cfa1c729d4aea38bc5cfb`.
+- Deterministic adaptive validation covered two different accepted Engineering tasks followed by
+  `done`, one accepted Hackathon beat, two rejected steps, a timed-out writer result, compact
+  status/stop, detached background start, cumulative last-green export, and exact-tree integration.
+- Added and exercised hard per-step/run deadlines, structured non-command planner output, narrow
+  path ownership, live provider/task status, one-file Hackathon demo gating, and fail-closed
+  substantive output.
+- Both Claude skill drafts have valid YAML frontmatter. The bundled `quick_validate.py` could not run
+  because its environment lacks PyYAML; no dependency was installed solely for that optional check.
+- Editable tool install: `adversarial-engineering-arena==0.3.0`; commands `team` and `agent-arena`.
+- Wheel: `adversarial_engineering_arena-0.3.0-py3-none-any.whl`, SHA-256
+  `351a920445eb670607267ff23b46e241c963ab7475fd7d9ed550e74c3fb026ea`.
+- Source distribution build: pass; its final hash is reported outside this self-containing file.
 
 The earlier 9 September record below remains the evidence for the original 0.1.0 live
 Codex-versus-Claude run; it was not rerun for this extension.

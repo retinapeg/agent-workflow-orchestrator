@@ -32,8 +32,10 @@ zero, is rejected for a direct API provider even with this opt-in. API retries a
 CLI provider when the parent-enforced deadline is required. Limits apply per invocation, not as a
 cumulative dollar allowance for the competition. Remote billing can finish after local cancellation.
 
-The shipped mode caps are five minutes per provider phase for Hackathon and fifteen for Engineering.
-`team status` shows the active provider, phase, phase deadline, total-run deadline, and
+For adaptive runs, the shipped mode cap is the complete step deadline: five minutes for Hackathon
+and ten for Engineering, including planning, writing, and configured verification. The older
+one-task executor applies the same value to each provider phase. `team status` shows the active
+provider, phase, phase deadline, total-run deadline, and
 seconds since the last state change. These fields prove what the local coordinator is waiting for;
 they do not prove progress inside a remote provider. A remote integration must separately capture
 its session/task ID and URL and distinguish stopping the local waiter from terminating the remote

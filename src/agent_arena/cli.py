@@ -12,10 +12,17 @@ from pathlib import Path
 from typing import Any, cast
 
 from . import __version__
+from .adaptive import (
+    AdaptiveController,
+    adaptive_status,
+    request_stop,
+    resolve_adaptive_run,
+    start_background,
+)
 from .audit import verify_manifest
 from .config import ArenaConfig, load_config, with_model_overrides
 from .errors import ArenaError
-from .integration import integrate_winner
+from .integration import integrate_last_green, integrate_winner
 from .orchestrator import ArenaOrchestrator
 
 
@@ -61,6 +68,36 @@ def _parser() -> argparse.ArgumentParser:
         "engineer", help="deeper production-quality adversarial engineering"
     )
     _add_run_arguments(engineer)
+
+    for mode in ("engineering", "hackathon"):
+        adaptive = commands.add_parser(mode, help=f"adaptive {mode} controller")
+        actions = adaptive.add_subparsers(dest="adaptive_action", required=True)
+        start = actions.add_parser("start", help="start an autonomous bounded-task loop")
+        start.add_argument("goal", help="goal Markdown file, or an inline goal string")
+        start.add_argument("--repo", default=".", help="source Git repository")
+        start.add_argument("--config", default="team.toml")
+        start.add_argument("--max-steps", type=int, default=8)
+        start.add_argument("--background", action="store_true", help="run detached and return")
+        start.add_argument("--run-id", help=argparse.SUPPRESS)
+        start.add_argument("--launch-log", help=argparse.SUPPRESS)
+        start.add_argument("--json", action="store_true")
+        _add_model_arguments(start)
+        for action in ("status", "stop"):
+            control = actions.add_parser(action, help=f"{action} an adaptive run")
+            control.add_argument(
+                "run", nargs="?", help="run directory; defaults to latest mode run"
+            )
+            control.add_argument("--config", default="team.toml")
+            control.add_argument("--json", action="store_true")
+        integrate_adaptive = actions.add_parser(
+            "integrate", help="materialize verified last-green in a new branch/worktree"
+        )
+        integrate_adaptive.add_argument("run", help="adaptive run directory")
+        integrate_adaptive.add_argument("--config", default="team.toml")
+        integrate_adaptive.add_argument("--source", required=True)
+        integrate_adaptive.add_argument("--branch", required=True)
+        integrate_adaptive.add_argument("--worktree", required=True)
+        integrate_adaptive.add_argument("--json", action="store_true")
 
     doctor = commands.add_parser("doctor", help="validate configuration and provider availability")
     doctor.add_argument("--config", default="team.toml")
@@ -191,6 +228,88 @@ def _run_task(args: argparse.Namespace, mode: str) -> int:
     return 0 if payload["winner"] else 3
 
 
+def _print_adaptive_status(data: dict[str, Any]) -> None:
+    active = data.get("active_providers") or []
+    accepted = data.get("accepted_tasks") or []
+    print(
+        f"{data['run_id']}: {data['state']} | elapsed {data.get('elapsed_seconds')}s | "
+        f"remaining {data.get('remaining_seconds')}s"
+    )
+    print(
+        f"Run: {data['run_dir']}"
+        + (f" | log: {data['launch_log']}" if data.get("launch_log") else "")
+    )
+    print(f"Last green: {data.get('last_green_sha', 'not established')}")
+    print(
+        "Accepted: "
+        + (", ".join(item.get("task_id", "?") for item in accepted) if accepted else "none")
+    )
+    if active:
+        item = active[0]
+        print(
+            f"Active: {item.get('provider')} / {item.get('role')} / "
+            f"{item.get('task_id') or 'planning'} / {item.get('state')} / "
+            f"deadline {item.get('deadline_at')}"
+        )
+    else:
+        print("Active: none")
+    print(f"Blocker: {data.get('blocker') or 'none'}")
+    print(f"Next: {data.get('next_action') or 'none'} | freeze: {data.get('freeze', 'none')}")
+    if data.get("stop_requested"):
+        print("Stop: requested; takes effect at the current bounded phase boundary")
+
+
+def _run_adaptive(args: argparse.Namespace) -> int:
+    mode = args.command
+    background_started = False
+    if args.adaptive_action == "start":
+        config = _invocation_config(args)
+        if args.background:
+            if args.run_id or args.launch_log:
+                raise ArenaError("internal launch arguments cannot be combined with --background")
+            run_dir = start_background(
+                config,
+                mode,
+                args.goal,
+                Path(args.repo),
+                args.max_steps,
+                args.codex_model,
+                args.claude_model,
+            )
+            background_started = True
+        else:
+            run_dir = AdaptiveController(config, mode, args.max_steps).run(
+                Path(args.repo),
+                args.goal,
+                run_id=args.run_id,
+                launch_log=args.launch_log,
+            )
+    else:
+        config = load_config(args.config)
+        run_dir = resolve_adaptive_run(config, mode, args.run)
+        if args.adaptive_action == "integrate":
+            receipt = integrate_last_green(
+                run_dir, Path(args.source), args.branch, Path(args.worktree)
+            )
+            if args.json:
+                print(json.dumps(receipt, indent=2, sort_keys=True))
+            else:
+                print(f"Created {receipt['branch']} at {receipt['worktree']}")
+                print(f"Commit: {receipt['integration_commit']}")
+                print("Nothing was pushed or merged into the original branch.")
+            return 0
+        if args.adaptive_action == "stop":
+            request_stop(run_dir)
+    data = adaptive_status(run_dir)
+    if args.json:
+        print(json.dumps(data, indent=2, sort_keys=True))
+    else:
+        _print_adaptive_status(data)
+    if args.adaptive_action != "start":
+        return 0
+    return 0 if background_started or data.get("state") == "complete" else 3
+
+
 def _open_path(path: Path, print_only: bool) -> None:
     print(path)
     if print_only:
@@ -214,6 +333,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return _run_task(args, "hackathon")
         if args.command == "engineer":
             return _run_task(args, "engineering")
+        if args.command in {"engineering", "hackathon"}:
+            return _run_adaptive(args)
         if args.command == "doctor":
             config = _invocation_config(args)
             result = ArenaOrchestrator(config, args.mode).doctor()

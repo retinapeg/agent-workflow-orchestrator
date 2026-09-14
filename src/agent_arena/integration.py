@@ -229,3 +229,139 @@ def integrate_winner(
     }
     receipt_path = _write_receipt(run_dir, receipt)
     return {**receipt, "receipt": str(receipt_path)}
+
+
+def integrate_last_green(
+    run_dir: Path,
+    source: Path,
+    branch: str,
+    worktree: Path,
+) -> dict[str, Any]:
+    """Materialize an adaptive run's verified last-green tree without touching source HEAD."""
+
+    run_dir = run_dir.expanduser().resolve()
+    source = source.expanduser().resolve()
+    destination = worktree.expanduser().resolve()
+    verify_manifest(run_dir)
+    run_data = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    if run_data.get("controller") != "adaptive" or run_data.get("state") not in {
+        "complete",
+        "blocked",
+        "deadline",
+        "max_steps",
+        "stopped",
+    }:
+        raise IntegrityError("adaptive run must be terminal with a verified last-green result")
+    repository = json.loads((run_dir / "repository.json").read_text(encoding="utf-8"))
+    last_green = json.loads((run_dir / "last-green.json").read_text(encoding="utf-8"))
+    patch = run_dir / "last-green.patch"
+    if last_green.get("base_commit") != repository.get("base_commit"):
+        raise IntegrityError("last-green baseline conflicts with repository evidence")
+    for field in ("base_commit", "commit", "tree", "patch_sha256"):
+        value = last_green.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{40,64}", value):
+            raise IntegrityError(f"last-green {field} is invalid")
+    if sha256_file(patch) != last_green["patch_sha256"]:
+        raise IntegrityError("last-green.patch does not match last-green.json")
+    accepted = run_data.get("accepted_tasks")
+    if not isinstance(accepted, list) or accepted != last_green.get("accepted_tasks"):
+        raise IntegrityError("last-green accepted-task record conflicts with run status")
+    if accepted and accepted[-1].get("commit") != last_green["commit"]:
+        raise IntegrityError("last-green commit does not match the final accepted task")
+    if not accepted and last_green["commit"] != repository.get("base_commit"):
+        raise IntegrityError("a changed last-green commit has no accepted task evidence")
+
+    top = Path(_text(source, "rev-parse", "--show-toplevel")).resolve()
+    recorded = Path(repository["source_path"]).resolve()
+    if top != recorded:
+        raise RepositoryError(
+            f"source identity mismatch: run recorded {recorded}, but command resolved {top}"
+        )
+    if _text(top, "status", "--porcelain=v1", "--untracked-files=all"):
+        raise RepositoryError("source repository is dirty; integration refused")
+    current_head = _text(top, "rev-parse", "HEAD")
+    if current_head != repository.get("head"):
+        raise RepositoryError("source HEAD moved after the adaptive run; re-evaluate")
+    if not branch or re.search(r"[\x00\r\n]", branch):
+        raise RepositoryError("integration branch name is invalid")
+    if _git(top, "check-ref-format", "--branch", branch, check=False).returncode != 0:
+        raise RepositoryError(f"integration branch name is invalid: {branch!r}")
+    if _git(top, "show-ref", "--verify", f"refs/heads/{branch}", check=False).returncode == 0:
+        raise RepositoryError(f"integration branch already exists: {branch}")
+    if destination.exists():
+        raise RepositoryError(f"integration worktree destination already exists: {destination}")
+    if destination == top or top in destination.parents:
+        raise RepositoryError("integration worktree must be outside the source checkout")
+
+    baseline = last_green["base_commit"]
+    no_changes = last_green["tree"] == repository.get("base_tree")
+    created = False
+    try:
+        _git(top, "worktree", "add", "-b", branch, str(destination), baseline)
+        created = True
+        if no_changes:
+            if patch.stat().st_size != 0:
+                raise IntegrityError("unchanged last-green unexpectedly has a non-empty patch")
+        else:
+            if patch.stat().st_size == 0:
+                raise IntegrityError("changed last-green unexpectedly has an empty patch")
+            _git(destination, "apply", "--index", "--binary", str(patch))
+        env = os.environ.copy()
+        env.update(
+            {
+                "GIT_AUTHOR_NAME": "Agent Arena",
+                "GIT_AUTHOR_EMAIL": "agent-arena@localhost",
+                "GIT_COMMITTER_NAME": "Agent Arena",
+                "GIT_COMMITTER_EMAIL": "agent-arena@localhost",
+            }
+        )
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(destination),
+                "commit",
+                "--allow-empty",
+                "--no-gpg-sign",
+                "-m",
+                f"arena: integrate last-green from {run_data['run_id']}",
+            ],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=180,
+            check=False,
+            env=env,
+        )
+        if result.returncode != 0:
+            raise RepositoryError(
+                "integration commit failed: "
+                + result.stderr.decode("utf-8", errors="replace")[:2000]
+            )
+        if _text(destination, "rev-parse", "HEAD^{tree}") != last_green["tree"]:
+            raise IntegrityError("integrated tree does not match verified last-green tree")
+        commit = _text(destination, "rev-parse", "HEAD")
+    except Exception:
+        if created:
+            _git(top, "worktree", "remove", "--force", str(destination), check=False)
+            if destination.exists():
+                shutil.rmtree(destination)
+            _git(top, "branch", "-D", branch, check=False)
+        raise
+
+    receipt = {
+        "schema_version": 1,
+        "timestamp": datetime.now(UTC).isoformat(),
+        "run_id": run_data["run_id"],
+        "source": str(top),
+        "branch": branch,
+        "worktree": str(destination),
+        "baseline": baseline,
+        "last_green": last_green["commit"],
+        "last_green_tree": last_green["tree"],
+        "integration_commit": commit,
+        "no_changes": no_changes,
+        "pushed": False,
+        "merged_into_original_branch": False,
+    }
+    receipt_path = _write_receipt(run_dir, receipt)
+    return {**receipt, "receipt": str(receipt_path)}
