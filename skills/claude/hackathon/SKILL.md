@@ -1,6 +1,7 @@
 ---
 name: hackathon
 description: Start or inspect the lean Claude-written adaptive Hackathon MVP loop that preserves a last-green judge demo and a user-controlled feature boundary. Use only when the user explicitly invokes Hackathon mode.
+disable-model-invocation: true
 ---
 
 # Hackathon

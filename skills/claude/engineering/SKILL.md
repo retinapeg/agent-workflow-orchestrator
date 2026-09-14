@@ -1,6 +1,7 @@
 ---
 name: engineering
 description: Start or inspect the lean Claude-planned, Codex-written adaptive engineering loop for a real repository. Use only when the user explicitly invokes engineering mode.
+disable-model-invocation: true
 ---
 
 # Engineering
