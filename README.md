@@ -3,13 +3,13 @@
 The Python package is `agent_arena` and the installed command is `team`. The distribution name in
 `pyproject.toml`, `adversarial-engineering-arena`, is the project's earlier title.
 
-A local, auditable harness that makes coding agents compete on the same task. In the core flow
-(`team hack` / `team engineer`) each engineer, Codex and Claude by default, gets the same task in
-its own Git worktree cut from one frozen commit. Each then reviews the other's frozen diff, the
-authors revise for a bounded number of rounds, and every candidate is re-checked in a fresh
-checkout and scored with hard eligibility gates and deterministic `Decimal` arithmetic. The winner
-is exported as a patch and Git bundle; the source checkout is not modified unless you run the
-explicit `integrate` command.
+A local, auditable harness that makes coding agents compete on the same task. In the one-task
+comparison (`team hack` / `team engineer`) each engineer, Codex and Claude by default, gets the
+same task in its own Git worktree cut from one frozen commit. Each then reviews the other's frozen
+diff, the authors revise for a bounded number of rounds, and every candidate is re-checked in a
+fresh checkout and scored with hard eligibility gates and deterministic `Decimal` arithmetic. The
+winner is exported as a patch and Git bundle; the source checkout is not modified unless you run
+the explicit `integrate` command.
 
 - **Tests:** 150 offline tests, plus `ruff` and strict `mypy` over the 21 source modules. They use
   scripted providers and fake runners, so no credentials or model calls are needed. Results are

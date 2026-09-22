@@ -5,11 +5,12 @@
 Validated in a fresh clone on macOS with Python 3.11 without invoking a model:
 
 - The documented offline demo, `examples/offline/run_demo.py`, predated the Hackathon `DEMO.md`
-  contract and the minimum-response gate, so it failed before any provider started. It now
-  commits a valid `DEMO.md` in its disposable baseline and sets `min_response_bytes = 1` for its
-  short scripted replies, as the test fixture does. Result: state `COMPLETE`, winner `codex` at
-  10000/10000, `claude` ineligible because the required test failed, and manifest verification
-  passed.
+  contract and the minimum-response gate. It failed before any provider started because `DEMO.md`
+  was missing; with that supplied, both candidates were disqualified because the scripted replies
+  were shorter than the 80-byte default. It now commits a valid `DEMO.md` in its disposable
+  baseline and sets `min_response_bytes = 1` for its short scripted replies, as the test fixture
+  does. Result: state `COMPLETE`, winner `codex` at 10000/10000, `claude` ineligible because the
+  required test failed, and manifest verification passed.
 - New regression test `tests/test_offline_demo.py` runs the demo end to end.
 - Pytest: 150 passed in 127.82 seconds.
 - Ruff lint: pass. Ruff formatting: pass, 52 files.
