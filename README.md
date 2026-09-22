@@ -1,24 +1,61 @@
-# Adversarial Engineering Arena
+# agent-workflow-orchestrator
 
-Adversarial Engineering Arena is a local Python CLI that makes Codex and Claude solve the same
-software task independently, attacks each implementation with the other engineer, allows bounded
-revision rounds, evaluates immutable candidates with coordinator-owned checks, and exports only the
-strongest eligible result. It keeps the original checkout unchanged unless you later run the
+The Python package is `agent_arena` and the installed command is `team`. The distribution name in
+`pyproject.toml`, `adversarial-engineering-arena`, is the project's earlier title.
+
+A local, auditable harness that makes coding agents compete on the same task. In the core flow
+(`team hack` / `team engineer`) each engineer, Codex and Claude by default, gets the same task in
+its own Git worktree cut from one frozen commit. Each then reviews the other's frozen diff, the
+authors revise for a bounded number of rounds, and every candidate is re-checked in a fresh
+checkout and scored with hard eligibility gates and deterministic `Decimal` arithmetic. The winner
+is exported as a patch and Git bundle; the source checkout is not modified unless you run the
 explicit `integrate` command.
 
-The installed command is `team`. There are exactly two adaptive operating modes:
+- **Tests:** 150 offline tests, plus `ruff` and strict `mypy` over the 21 source modules. They use
+  scripted providers and fake runners, so no credentials or model calls are needed. Results are
+  recorded in [VALIDATION.md](VALIDATION.md).
+- **Live run:** [VALIDATION.md](VALIDATION.md) records one real Codex-versus-Claude Hackathon run
+  (9 September 2026). Both final candidates passed and scored 10,000/10,000; the configured
+  tie-break chose Codex's smaller diff (53 versus 73 changed lines), and Codex's review found a
+  Unicode lowercasing edge case that Claude fixed during revision. The raw audit archive for that
+  run is not included in this repository. The adaptive modes added later were validated offline
+  only; the live run was not repeated for them.
+
+## Run the offline demo (no credentials)
+
+Requirements: Python 3.11+ and Git.
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+PYTHONPATH=src python3 examples/offline/run_demo.py
+python -m pytest -q
+```
+
+The demo creates a disposable Git repository with an unimplemented `add` function and runs two
+deterministic scripted engineers, labelled Codex and Claude, through the full loop: implementation,
+cross-review, one revision round, fresh-checkout evaluation, scoring and manifest verification. One
+script writes the correct fix and the other a deliberately wrong one, so the report shows the
+correct candidate scoring 10000/10000 and the wrong one ineligible because the required test
+failed. The retained audit directory path is printed at the end.
+
+## Modes and providers
+
+Besides the one-task comparison above, there are exactly two adaptive operating modes:
 
 - `team hackathon start ...` — repeatedly select and ship the next demo-critical slice.
 - `team engineering start ...` — repeatedly select and verify the next durable repository task.
 
-The older `team hack ...` and `team engineer ...` commands remain available as one-task adversarial
-comparisons. They do not perform the adaptive multi-task loop.
+In the adaptive modes one agent plans and the other is the sole writer, and each task is accepted
+only after the configured checks pass (see [What an adaptive run does](#what-an-adaptive-run-does)).
+The one-task `team hack ...` and `team engineer ...` commands do not perform this multi-task loop.
 
 The provider layer is independent of orchestration. Codex CLI, Claude Code CLI, OpenAI Responses
 API, Anthropic Messages API, a generic CLI seam, and a deterministic offline provider all implement
 the same adapter contract.
 
-## Quick Start
+## Quick start with real agents
 
 Requirements: Python 3.11+, Git, and at least two configured providers. For the recommended local
 path, install and authenticate both `codex` and `claude` first.
@@ -323,7 +360,7 @@ reused. `team doctor` first runs the local, non-model `codex login status` comma
 and the same sanitized environment used for agent phases; authentication output is not copied into
 the doctor result. Current Codex documentation documents the status command in
 [Authentication](https://learn.chatgpt.com/docs/auth) and describes the JSONL event stream,
-structured output schemas, sandbox settings, automation authentication, and session behavior in
+structured output schemas, sandbox settings, automation authentication, and session behaviour in
 [Non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode).
 
 `doctor` reports the exact resolved executable. If an older standalone CLI is earlier on `PATH` and
@@ -390,7 +427,8 @@ PYTHONPATH=src python3 examples/offline/run_demo.py
 
 The demo creates a disposable Git repository, runs the full Codex-labelled versus Claude-labelled
 implementation/review/revision/evaluation loop, selects the correct candidate, verifies the audit,
-and prints the retained run directory.
+and prints the retained run directory. `tests/test_offline_demo.py` runs it end to end so it cannot
+silently drift from the orchestrator's gates.
 
 ## Audit layout
 
@@ -472,7 +510,7 @@ PYTHONPATH=src python3 examples/offline/run_demo.py
 The test suite covers configuration profiles, bounded output, descendant-process termination, path
 traversal and symlink rejection, a complete Hackathon competition, a two-round Engineering
 competition, source non-mutation, private-clone isolation, manifest verification, deterministic
-winner selection, and exact-tree integration.
+winner selection, exact-tree integration, and the documented offline demo.
 
 ## Deliberate first-release limitations
 
