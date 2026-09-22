@@ -42,6 +42,14 @@ def main() -> None:
         "        self.assertEqual(add(-2, 2), 0)\n",
         encoding="utf-8",
     )
+    # Hackathon mode refuses to start without a user-owned DEMO.md contract.
+    (source / "DEMO.md").write_text(
+        "# Demo\n\n## Outcome\nReliable integer addition.\n\n## Beat 1\nShow add(1, 2) == 3.\n\n"
+        "## Surprising moment\nNegative operands also work.\n\n## Not building\nNo UI.\n\n"
+        "## Smoke command\n`python3 -m unittest discover -s tests -q`\n\n"
+        "## Fallback\nRun the unit test locally.\n",
+        encoding="utf-8",
+    )
     git(source, "add", ".")
     git(source, "commit", "-m", "offline demo baseline")
 
@@ -81,6 +89,8 @@ required = true
 weight = "100"
 [modes.hackathon]
 revision_rounds = 1
+# The scripted fixture replies are short; the real-provider default is 80 bytes.
+min_response_bytes = 1
 [modes.engineering]
 revision_rounds = 2
 [judge]
