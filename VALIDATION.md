@@ -1,5 +1,20 @@
 # Validation Record
 
+## Offline demo repair — 22 September 2026
+
+Validated in a fresh clone on macOS with Python 3.11 without invoking a model:
+
+- The documented offline demo, `examples/offline/run_demo.py`, predated the Hackathon `DEMO.md`
+  contract and the minimum-response gate, so it failed before any provider started. It now
+  commits a valid `DEMO.md` in its disposable baseline and sets `min_response_bytes = 1` for its
+  short scripted replies, as the test fixture does. Result: state `COMPLETE`, winner `codex` at
+  10000/10000, `claude` ineligible because the required test failed, and manifest verification
+  passed.
+- New regression test `tests/test_offline_demo.py` runs the demo end to end.
+- Pytest: 150 passed in 127.82 seconds.
+- Ruff lint: pass. Ruff formatting: pass, 52 files.
+- MyPy strict over all 21 source modules: pass.
+
 ## Adaptive Engineering and Hackathon controller — 14 September 2026
 
 Validated in the isolated `agent-workflow-orchestrator` clone on macOS without invoking a model:
@@ -100,7 +115,8 @@ because Git worktree bookkeeping is mutable. All 93 manifest-bound evidence file
 are present, including prompts, raw bounded provider output, diffs, reviews, revisions, evaluations,
 scores, winner, report, workspace allocation, events, usage/cost metadata, and integration receipt.
 
-- Archive: [live-run-20260909T181636Z-62f5afc7-audit.tar.gz](../adversarial-engineering-arena-validation/live-run-20260909T181636Z-62f5afc7-audit.tar.gz)
+- Archive: `live-run-20260909T181636Z-62f5afc7-audit.tar.gz`, kept in a local directory outside
+  this repository and not published with it.
 - SHA-256: `ef8a01e7ad5dfc580af4ae86bdf90e60f175c5ab8e5554dfb1bec08bd1a0bbaa`
 - Extract-and-verify result: `OK: 93 audited files match their SHA-256 hashes`.
 
