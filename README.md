@@ -32,7 +32,7 @@ the explicit `integrate` command.
 *Purple: model call · blue: deterministic code · green: human · amber: evaluation · grey: storage · dashed: external, optional, mocked or planned*
 
 The `team` CLI loads a strict `team.toml`, freezes a source commit and clones it into a private run
-repository with one worktree per engineer. The coordinator (`orchestrator.py` for the one-task
+repository with one worktree per writing engineer. The coordinator (`orchestrator.py` for the one-task
 comparison, `adaptive.py` for the adaptive loop) sends each bounded phase through a provider adapter,
 and the agent works in its own worktree before the coordinator freezes it as a commit.
 `evaluator.py` runs the configured checks on every frozen commit in a fresh worktree; those results
@@ -50,7 +50,9 @@ run directory, and nothing reaches the source repository until you run `team int
   diff as schema-checked JSON and then revises. An optional blinded [judge](#optional-judge), off by
   default, may only choose among eligible candidates inside a score band. In the
   [adaptive modes](#what-an-adaptive-run-does) one agent is a read-only planner and the other is
-  the sole writer.
+  the sole writer; in adaptive Hackathon the planner also returns a read-only scope verdict that
+  can reject a candidate as outside the frozen `DEMO.md`/`NOT.md` contract, even after its checks
+  pass.
 - **Inputs and permissions:** prompts contain the task, the acceptance contract, the baseline SHA
   and, for reviews, the opponent's diff and check results. CLI agents work in their own worktree
   with a sanitized environment and no shell tool for Claude. Review, planning and judge phases are
