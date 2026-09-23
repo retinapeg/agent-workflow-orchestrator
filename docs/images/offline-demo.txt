@@ -1,0 +1,55 @@
+$ PYTHONPATH=src python3 examples/offline/run_demo.py
+Initialized empty Git repository in $TMPDIR/agent-arena-offline-demo-1pmc0o3s/source/.git/
+[main (root-commit) a76b4e2] offline demo baseline
+ 3 files changed, 28 insertions(+)
+ create mode 100644 DEMO.md
+ create mode 100644 calculator.py
+ create mode 100644 tests/test_calculator.py
+# Agent Arena run report
+
+- Run: `20260923T115103Z-3411894a`
+- Source: `$TMPDIR/agent-arena-offline-demo-1pmc0o3s/source`
+- Frozen baseline: `a76b4e227fdf30698d6c5fd10d3c3a0e7318e37f`
+- Mode: `hackathon`
+- Adversarial revision rounds: `1`
+- State: `COMPLETE`
+- Winner: `codex`
+- Judge used: `false`
+
+## Deterministic ranking
+
+| Rank | Engineer | Eligible | Score / 10000 | Changed lines | Disqualifications |
+|---:|---|:---:|---:|---:|---|
+| 1 | codex | true | 10000 | 29 | none |
+| 2 | claude | false | 0 | 29 | required check tests failed |
+
+## Candidate evidence
+
+### claude
+
+- Commit/tree: `515f6cb59dc2dc16ec51b36c608ef1870e53433c` / `f5580d6866a0442d104092ca4e29d4284ccaf261`
+- Checks: arena-demo-readiness=PASS, tests=FAIL
+- Benchmarks: none
+- Policy violations: none
+
+### codex
+
+- Commit/tree: `486dabacdb907f328aa73a628d3a8cc30f03f730` / `bdbaed205552ff0188d0859ba34c58acbf7970a7`
+- Checks: arena-demo-readiness=PASS, tests=PASS
+- Benchmarks: none
+- Policy violations: none
+
+## Integration status
+
+No source branch was changed automatically. If there is a winner, verify the audit manifest and use `team
+integrate` to create a new integration branch and worktree from the recorded baseline. The command refuses
+dirty or advanced sources.
+
+## Security boundary
+
+This run used local trusted-host isolation. The private clone and worktrees protect against ordinary
+collisions, not a deliberately malicious process with the same OS user permissions. Candidate tests also
+execute candidate code. Use a container or VM wrapper for untrusted repositories.
+
+
+Audit directory retained at: $TMPDIR/agent-arena-offline-demo-1pmc0o3s/runs/20260923T115103Z-3411894a

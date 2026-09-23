@@ -1,0 +1,43 @@
+%% Architecture of agent-workflow-orchestrator at commit 8dd51ed31d6b69ececdcfe6622f9e8a83574e75c
+%% Sources: src/agent_arena/cli.py, src/agent_arena/config.py, src/agent_arena/orchestrator.py, src/agent_arena/adaptive.py, src/agent_arena/gitops.py, src/agent_arena/providers/__init__.py, src/agent_arena/providers/base.py, src/agent_arena/providers/cli.py, src/agent_arena/providers/api.py, src/agent_arena/providers/scripted.py, src/agent_arena/evaluator.py, src/agent_arena/scoring.py, src/agent_arena/audit.py, src/agent_arena/integration.py, examples/offline/run_demo.py
+%% Render: npx @mermaid-js/mermaid-cli -i docs/architecture.mmd -o docs/images/architecture.svg -b white
+flowchart TD
+    U["Operator + source repo<br/>task or goal, team.toml"]
+    CO["team CLI + coordinator<br/>orchestrator.py: arena<br/>adaptive.py: plan-write loop"]
+    GIT[("Private clone + worktrees<br/>gitops.py, frozen SHA")]
+    PRV["Provider adapters<br/>providers/, one contract"]
+    LLM["Codex / Claude Code CLIs<br/>live when configured"]
+    API["OpenAI / Anthropic APIs<br/>optional extra"]
+    SCR["Scripted fixtures<br/>offline demo, tests"]
+    EVA["Evaluator + scoring<br/>checks in fresh worktrees<br/>hard gates, Decimal score"]
+    AUD[("Audit run directory<br/>events, report, manifest")]
+    INT["team integrate, run by user<br/>new branch + worktree only"]
+
+    U -->|"task, config"| CO
+    CO -->|"clone --no-local"| GIT
+    CO -->|"phase requests"| PRV
+    PRV --> LLM
+    PRV -.-> API
+    PRV -.-> SCR
+    PRV -->|"edits own worktree"| GIT
+    GIT -->|"frozen candidates"| EVA
+    EVA -->|"eligibility, score"| CO
+    EVA -->|"check evidence"| AUD
+    CO -->|"prompts, events"| AUD
+    AUD -->|"winner.patch, bundle"| INT
+
+    class U,INT human;
+    class CO,PRV det;
+    class LLM ai;
+    class API ext;
+    class SCR mock;
+    class EVA eval;
+    class GIT,AUD store;
+
+    classDef ai fill:#efe7fb,stroke:#6a4c93,stroke-width:2px,color:#2b1d45;
+    classDef det fill:#eef3f8,stroke:#2f5d8a,stroke-width:1.5px,color:#172c37;
+    classDef human fill:#e8f0ec,stroke:#285b48,stroke-width:1.5px,color:#173f32;
+    classDef eval fill:#f7efdf,stroke:#8b6330,stroke-width:1.5px,color:#4a3413;
+    classDef store fill:#f3f4f1,stroke:#65757b,stroke-width:1.5px,color:#172c37;
+    classDef ext fill:#ffffff,stroke:#2f5d8a,stroke-width:1.5px,stroke-dasharray:4 3,color:#172c37;
+    classDef mock fill:#ffffff,stroke:#9aa5a8,stroke-width:1.5px,stroke-dasharray:6 4,color:#65757b;
