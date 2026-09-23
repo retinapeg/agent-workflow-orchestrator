@@ -21,6 +21,52 @@ the explicit `integrate` command.
   run is not included in this repository. The adaptive modes added later were validated offline
   only; the live run was not repeated for them.
 
+![Terminal output of the offline demo: run state COMPLETE, the codex candidate eligible with 10000/10000 and the claude candidate ineligible because the required test failed](docs/images/offline-demo.png)
+
+*Real output of `PYTHONPATH=src python3 examples/offline/run_demo.py` with no API keys set; both engineers are synthetic scripted fixtures, so no model was called (temp paths shown as `$TMPDIR`, long lines wrapped).*
+
+## System architecture
+
+![System architecture: operator input goes through the team CLI coordinator to provider adapters and per-engineer worktrees, then to fresh-worktree evaluation and scoring, the audit run directory and an explicit integrate step](docs/images/architecture.svg)
+
+*Purple: model call · blue: deterministic code · green: human · amber: evaluation · grey: storage · dashed: external, optional, mocked or planned*
+
+The `team` CLI loads a strict `team.toml`, freezes a source commit and clones it into a private run
+repository with one worktree per writing engineer. The coordinator (`orchestrator.py` for the one-task
+comparison, `adaptive.py` for the adaptive loop) sends each bounded phase through a provider adapter,
+and the agent works in its own worktree before the coordinator freezes it as a commit.
+`evaluator.py` runs the configured checks on every frozen commit in a fresh worktree; those results
+feed the next review or planning step, gate adaptive last-green advancement, and let `scoring.py`
+rank the final candidates with hard gates and a 0–10,000 score. Everything is recorded in the audit
+run directory, and nothing reaches the source repository until you run `team integrate`.
+
+## How AI is used
+
+- **Models:** coding agents run through Codex CLI and Claude Code CLI by default, or through the
+  OpenAI Responses and Anthropic Messages APIs with the optional `api` extra. Model IDs come from
+  `team.toml` or `--codex-model` / `--claude-model`. Tests and the offline demo use the scripted
+  provider and make no model calls.
+- **Roles:** in the one-task comparison each agent implements the task, reviews the other's frozen
+  diff as schema-checked JSON and then revises. An optional blinded [judge](#optional-judge), off by
+  default, may only choose among eligible candidates inside a score band. In the
+  [adaptive modes](#what-an-adaptive-run-does) one agent is a read-only planner and the other is
+  the sole writer; in adaptive Hackathon the planner also returns a read-only scope verdict that
+  can reject a candidate as outside the frozen `DEMO.md`/`NOT.md` contract, even after its checks
+  pass.
+- **Inputs and permissions:** prompts contain the task, the acceptance contract, the baseline SHA
+  and, for reviews, the opponent's diff and check results. CLI agents work in their own worktree
+  with a sanitized environment and no shell tool for Claude. Review, planning and judge phases are
+  read-only. API models see a bounded snapshot and can only return validated whole-file operations
+  (see [Provider adapters](#provider-adapters)).
+- **Deterministic and human-controlled:** checks, benchmarks, eligibility gates, scoring, winner
+  export and integration are coordinator code. A model review or the judge cannot rescue an
+  ineligible candidate, and review-proposed attack commands are never executed. Merging is left to
+  you.
+- **Fallbacks:** an agent that fails, times out or returns a reply below the mode's minimum length
+  fails that phase. A malformed review is recorded as a failed review. An invalid or failed judge
+  answer falls back to the deterministic winner. One live Codex-versus-Claude run is recorded in
+  [VALIDATION.md](VALIDATION.md).
+
 ## Run the offline demo (no credentials)
 
 Requirements: Python 3.11+ and Git.
