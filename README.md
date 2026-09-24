@@ -8,6 +8,8 @@ fresh checkout and scored with hard eligibility gates and deterministic `Decimal
 winner is exported as a patch and Git bundle; the source checkout is not modified unless you run
 the explicit `integrate` command.
 
+**Why:** to compare coding agents on identical inputs and let each attack the other's work, while keeping the accept/reject decision in coordinator code. A model review or the optional judge can never rescue a candidate that fails a required check.
+
 The Python package is `agent_arena` and the installed command is `team`. The distribution name in
 `pyproject.toml`, `adversarial-engineering-arena`, is the project's earlier title.
 
@@ -534,7 +536,7 @@ the new base instead of accepting an untested three-way merge.
 
 ## Security boundary
 
-This release is a trusted-local workflow harness, not a hostile-code sandbox. A private clone and
+This version is a trusted-local workflow harness, not a hostile-code sandbox. A private clone and
 separate worktrees strongly reduce accidental collisions and eliminate the source repository as a Git
 remote, but processes running as the same OS user can still discover sibling directories, source
 files, credentials, and Git metadata. Running candidate checks also executes candidate code.
@@ -558,7 +560,7 @@ traversal and symlink rejection, a complete Hackathon competition, a two-round E
 competition, source non-mutation, private-clone isolation, manifest verification, deterministic
 winner selection, exact-tree integration, and the documented offline demo.
 
-## Deliberate first-release limitations
+## Deliberate limitations of this version
 
 - Local worktrees are workflow isolation, not an OS security boundary.
 - Direct API mode uses bounded whole-file operations rather than an iterative shell/tool agent.
