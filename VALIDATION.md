@@ -26,9 +26,9 @@ Validated in the isolated `agent-workflow-orchestrator` clone on macOS without i
 - Pytest: 146 passed in 101.01 seconds.
 - The full offline lifecycle used scripted providers only; it made no Codex, Claude, or Devin call.
 - Deterministic adaptive validation covered two different accepted Engineering tasks followed by
-  `done`, one Claude-written Hackathon beat with Codex scope approval, scope rejection, two rejected
-  steps, a timed-out writer result, compact status/stop, isolated detached background start,
-  cumulative last-green export, and exact-tree integration.
+  `done`, one Hackathon beat from the scripted `claude` writer role with `codex` scope approval,
+  scope rejection, two rejected steps, a timed-out writer result, compact status/stop, isolated
+  detached background start, cumulative last-green export, and exact-tree integration.
 - Added and exercised hard per-phase/run deadlines, deadline-safe last-green export, structured
   non-command planner output, concrete path ownership, hashed MVP contracts, exact demo-beat
   selection, coordinator-owned acceptance evidence, Git-hook suppression, minimal generated-commit
