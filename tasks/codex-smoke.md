@@ -15,6 +15,9 @@ timeout_seconds = 3600
 env = { PYTHONPATH = "src" }
 context_warn_tokens = 150000
 next_on_pass = "run the full v2 Codex batch and compare coders against v1"
+# Calls made inside the lab batch (Codex coder, Claude reviewer): priced by the harness as
+# nested cost. Must stay above the [[checks]] tables.
+usage_import = { argv = ["{python}", "{task_dir}/codex_smoke_usage.py", "{run_dir}"] }
 
 [[checks]]
 name = "log has no BATCH STOPPED"

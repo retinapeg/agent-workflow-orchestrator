@@ -10,9 +10,10 @@ Accounting rules (see docs/RUN_MODE.md):
 - token counts come only from the CLI's own output; a field the CLI did not
   report is ``None`` (JSON ``null``), never 0;
 - a cost figure the CLI reports is kept as ``cli_reported_cost`` and never merged
-  with the API-equivalent estimate;
-- the estimate uses only ``pricing.toml`` entries that carry a source URL and a
-  retrieval date; anything unpriced makes the estimate ``None`` with a warning.
+  with the API-equivalent cost;
+- dollars are derived from the raw tokens and a dated price table (pricing.py), so
+  sealed runs are re-priced, never edited; an unpriced call is ``None``, never $0,
+  and every total carries its coverage (priced calls / total calls).
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ import shutil
 import stat
 import sys
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -34,6 +35,15 @@ from typing import Any
 
 from .audit import AuditStore, rebuild_manifest, utc_now
 from .errors import ArenaError
+from .pricing import (
+    LABEL,
+    PriceTable,
+    combine,
+    default_pricing_path,
+    format_cost,
+    load_price_table,
+    price_calls,
+)
 from .process import ProcessRunner, sanitized_environment
 
 PASS, FAIL, UNKNOWN = "PASS", "FAIL", "UNKNOWN"
@@ -66,6 +76,15 @@ _ALWAYS_DENIED = (
     "Read(**/.env.*)",
     "Read(~/.aws/**)",
 )
+DEFAULT_CLAUDE_TOOLS = (
+    "Read",
+    "Glob",
+    "Grep",
+    "Edit",
+    "Write",
+    "Bash(python3 -m pytest:*)",
+    "Bash(python3 -m unittest:*)",
+)
 _TASK_KEYS = {
     "agent",
     "model",
@@ -77,7 +96,12 @@ _TASK_KEYS = {
     "state_entries_in_prompt",
     "context_warn_tokens",
     "checks",
+    "effort",
+    "service_tier",
+    "ultracode",
+    "usage_import",
 }
+_USAGE_IMPORT_KEYS = {"argv", "timeout_seconds"}
 _CHECK_KEYS = {"name", "argv", "timeout_seconds"}
 _MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 _STATE_HEADER = "## "
@@ -117,6 +141,11 @@ class TaskSpec:
     next_on_pass: str | None = None
     state_entries_in_prompt: int = 3
     context_warn_tokens: int | None = None
+    effort: str | None = None  # passed to the CLI; does not change rates
+    service_tier: str = "standard"  # declared; used for pricing when a call names none
+    ultracode: bool = False  # metadata only
+    usage_import: tuple[str, ...] | None = None  # argv that prints nested usage as JSON
+    usage_import_timeout: int = 120
 
 
 # --------------------------------------------------------------------------- TASK.md
@@ -182,6 +211,32 @@ def parse_task(path: Path) -> TaskSpec:
     if not checks:
         raise ArenaError(f"{path}: at least one [[checks]] entry is required")
     warn = meta.get("context_warn_tokens")
+    effort = meta.get("effort")
+    if effort is not None and (not isinstance(effort, str) or not effort.strip()):
+        raise ArenaError(f"{path}: effort must be a non-empty string")
+    tier = meta.get("service_tier", "standard")
+    if not isinstance(tier, str) or not tier.strip():
+        raise ArenaError(f"{path}: service_tier must be a non-empty string")
+    ultracode = meta.get("ultracode", False)
+    if not isinstance(ultracode, bool):
+        raise ArenaError(f"{path}: ultracode must be true or false")
+    importer = meta.get("usage_import")
+    import_argv: tuple[str, ...] | None = None
+    import_timeout = 120
+    if importer is not None:
+        if not isinstance(importer, dict) or set(importer) - _USAGE_IMPORT_KEYS:
+            raise ArenaError(f"{path}: usage_import takes only {sorted(_USAGE_IMPORT_KEYS)}")
+        raw_argv = importer.get("argv")
+        if (
+            not isinstance(raw_argv, list)
+            or not raw_argv
+            or not all(isinstance(a, str) for a in raw_argv)
+        ):
+            raise ArenaError(f"{path}: usage_import needs a non-empty argv list")
+        import_argv = tuple(raw_argv)
+        import_timeout = _positive_int(
+            importer.get("timeout_seconds", 120), "usage_import timeout_seconds", path
+        )
     return TaskSpec(
         path=path.resolve(),
         name=path.stem,
@@ -196,6 +251,11 @@ def parse_task(path: Path) -> TaskSpec:
         next_on_pass=meta.get("next_on_pass"),
         state_entries_in_prompt=int(meta.get("state_entries_in_prompt", 3)),
         context_warn_tokens=None if warn is None else _positive_int(warn, "context", path),
+        effort=None if effort is None else effort.strip(),
+        service_tier=tier.strip(),
+        ultracode=ultracode,
+        usage_import=import_argv,
+        usage_import_timeout=import_timeout,
     )
 
 
@@ -264,6 +324,7 @@ def claude_argv(executable: str, spec: TaskSpec) -> list[str]:
         "--include-partial-messages",
         "--model",
         spec.model,
+        *(["--effort", spec.effort] if spec.effort else []),
         "--max-turns",
         str(spec.max_turns),
         "--permission-mode",
@@ -294,6 +355,7 @@ def codex_argv(executable: str, spec: TaskSpec, repo: Path) -> list[str]:
         "--ignore-user-config",
         "--ephemeral",
         "--json",
+        *(["-c", f'model_reasoning_effort="{spec.effort}"'] if spec.effort else []),
         "--model",
         spec.model,
         "-",
@@ -371,6 +433,9 @@ def parse_claude_stream(stdout: str) -> dict[str, Any]:
     for index, key in enumerate(order, start=1):
         usage = calls[key]["usage"]
         closing = final.get(key)
+        split = usage.get("cache_creation") if usage else None
+        split = split if isinstance(split, dict) else {}
+        tier = usage.get("service_tier") if usage else None
         records.append(
             {
                 "call": index,
@@ -382,10 +447,15 @@ def parse_claude_stream(stdout: str) -> dict[str, Any]:
                 "cache_write": _int_or_none(usage.get("cache_creation_input_tokens"))
                 if usage
                 else None,
+                # priced separately; None when the CLI gave no 5m/1h split
+                "cache_write_5m": _int_or_none(split.get("ephemeral_5m_input_tokens")),
+                "cache_write_1h": _int_or_none(split.get("ephemeral_1h_input_tokens")),
+                "service_tier": tier if isinstance(tier, str) else None,
                 "output": _int_or_none(closing.get("output_tokens")) if closing else None,
                 "reasoning": None,
                 "not_applicable": ["reasoning"],  # Claude bills thinking as output tokens
                 "input_includes_cache_read": False,
+                "single_request": True,  # one message id = one API request
                 "wall_time_s": None,  # not reported per call by the CLI
             }
         )
@@ -399,6 +469,7 @@ def parse_claude_stream(stdout: str) -> dict[str, Any]:
         "final_text": None,
         "result_usage": None,
         "permission_denials": [],
+        "quota": _quota_delta([]),
     }
     if result is not None:
         denials = result.get("permission_denials")
@@ -449,10 +520,42 @@ def reconcile_usage(
     ]
 
 
+def _primary_rate_limit(node: Any, depth: int = 0) -> dict[str, Any] | None:
+    """The first ``rate_limits.primary`` object inside an event, if the CLI exposes one."""
+
+    if not isinstance(node, dict) or depth > 4:
+        return None
+    limits = node.get("rate_limits")
+    if isinstance(limits, dict) and isinstance(limits.get("primary"), dict):
+        return dict(limits["primary"])
+    for value in node.values():
+        found = _primary_rate_limit(value, depth + 1)
+        if found is not None:
+            return found
+    return None
+
+
+def _quota_delta(samples: list[dict[str, Any]]) -> dict[str, Any]:
+    """Change in ``used_percent`` between the first and last sample; None when not exposed."""
+
+    used = [
+        s["used_percent"]
+        for s in samples
+        if isinstance(s.get("used_percent"), (int, float))
+        and not isinstance(s.get("used_percent"), bool)
+    ]
+    window = next((s.get("window_minutes") for s in reversed(samples)), None)
+    return {
+        "used_pct_delta": round(used[-1] - used[0], 4) if len(used) >= 2 else None,
+        "window_minutes": window if isinstance(window, int) else None,
+    }
+
+
 def parse_codex_stream(stdout: str, declared_model: str) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     final_text: str | None = None
     failure: str | None = None
+    quota: list[dict[str, Any]] = []
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
@@ -460,6 +563,9 @@ def parse_codex_stream(stdout: str, declared_model: str) -> dict[str, Any]:
             continue
         if not isinstance(event, dict):
             continue
+        primary = _primary_rate_limit(event)
+        if primary is not None:
+            quota.append(primary)
         kind = event.get("type")
         if kind in {"turn.failed", "error"}:
             failure = "codex emitted a failure/error event"
@@ -477,13 +583,16 @@ def parse_codex_stream(stdout: str, declared_model: str) -> dict[str, Any]:
                     "model_source": "declared",  # codex usage does not name the model
                     "input": _int_or_none(usage.get("input_tokens")) if usage else None,
                     "cache_read": _int_or_none(usage.get("cached_input_tokens")) if usage else None,
-                    "cache_write": None,
+                    "cache_write": _int_or_none(usage.get("cache_write_input_tokens"))
+                    if usage
+                    else None,
                     "output": _int_or_none(usage.get("output_tokens")) if usage else None,
                     "reasoning": _int_or_none(usage.get("reasoning_output_tokens"))
                     if usage
                     else None,
-                    "not_applicable": ["cache_write"],  # OpenAI does not bill cache writes
-                    "input_includes_cache_read": True,
+                    "not_applicable": [],
+                    "input_includes_cache_read": True,  # input counts cached tokens too
+                    "single_request": False,  # a turn adds up several requests
                     "wall_time_s": None,
                 }
             )
@@ -499,6 +608,7 @@ def parse_codex_stream(stdout: str, declared_model: str) -> dict[str, Any]:
             "final_text": final_text,
             "result_usage": None,
             "permission_denials": [],
+            "quota": _quota_delta(quota),
         },
         "terminal_event": bool(records),
     }
@@ -507,80 +617,171 @@ def parse_codex_stream(stdout: str, declared_model: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- pricing
 
 
-def load_pricing(path: Path | None) -> tuple[dict[str, dict[str, Any]], list[str]]:
-    warnings: list[str] = []
-    if path is None or not path.is_file():
-        return {}, [f"pricing file not found ({path}); cost estimate is null"]
-    try:
-        raw = tomllib.loads(path.read_text(encoding="utf-8"))
-    except tomllib.TOMLDecodeError as exc:
-        return {}, [f"pricing file is invalid TOML ({exc}); cost estimate is null"]
-    models = raw.get("models", {})
-    table: dict[str, dict[str, Any]] = {}
-    for name, entry in models.items() if isinstance(models, dict) else []:
-        if not isinstance(entry, dict):
-            continue
-        if not entry.get("source") or not entry.get("retrieved"):
-            warnings.append(f"pricing for {name} lacks source/retrieved; treated as unpriced")
-            continue
-        table[name] = entry
-        for alias in entry.get("aliases", []) or []:
-            table[str(alias)] = entry
-    return table, warnings
+def cost_summary(
+    calls: list[dict[str, Any]],
+    nested: dict[str, Any] | None,
+    table: PriceTable,
+    service_tier: str | None,
+    cli_reported_cost: str | None,
+) -> dict[str, Any]:
+    """Agent cost + nested cost = total, each with coverage. Derived, never stored as truth."""
+
+    agent = price_calls(calls, table, service_tier)
+    nested_part: dict[str, Any] | None = None
+    nested_reported: dict[str, Any] | None = None
+    if nested is not None:
+        nested_calls = nested.get("calls") or []
+        nested_part = price_calls(nested_calls, table)
+        nested_part["missing"] = [f"nested {m}" for m in nested_part["missing"]]
+        nested_part["notes"] = [f"nested {n}" for n in nested_part["notes"]]
+        if nested.get("error") or nested.get("calls") is None:
+            # Unknown spend: it counts as one unpriced unit so coverage is below 100%, the
+            # run is never "fully priced", and cost per verified outcome becomes null.
+            nested_part["total_calls"] += 1
+            nested_part["import_failed"] = True
+            nested_part["missing"].append(
+                f"nested usage not imported ({nested.get('error')}): unknown spend, "
+                "counted as 1 unpriced call"
+            )
+        reported = [
+            Decimal(str(c["cli_reported_cost"]))
+            for c in nested_calls
+            if c.get("cli_reported_cost") is not None
+        ]
+        nested_reported = {
+            "cost_usd": str(sum(reported, Decimal(0))) if reported else None,
+            "calls": len(reported),
+            "total_calls": len(nested_calls),
+        }
+    return {
+        "label": LABEL,
+        "pricing": table.stamp(),
+        "agent": agent,
+        "nested": nested_part,
+        "total": combine(agent, nested_part),
+        "cli_reported_cost": cli_reported_cost,
+        "nested_cli_reported": nested_reported,
+        "warnings": list(table.warnings),
+    }
 
 
-def _price(entry: dict[str, Any], key: str) -> Decimal | None:
-    value = entry.get(key)
-    if value is None or isinstance(value, bool) or not isinstance(value, (int, float, str)):
+def _nested_call(raw: dict[str, Any], index: int) -> dict[str, Any]:
+    model = raw.get("model")
+    tier = raw.get("service_tier")
+    reported = raw.get("cli_reported_cost")
+    call: dict[str, Any] = {
+        "call": index,
+        "provider": str(raw.get("provider") or "unknown"),
+        "model": model if isinstance(model, str) and model else None,
+        "model_source": "imported",
+        **{c: _int_or_none(raw.get(c)) for c in CATEGORIES},
+        "not_applicable": [str(c) for c in raw.get("not_applicable") or []],
+        "input_includes_cache_read": bool(raw.get("input_includes_cache_read")),
+        "single_request": raw.get("single_request") is True,
+        "service_tier": tier if isinstance(tier, str) else None,
+        "cli_reported_cost": str(reported)
+        if isinstance(reported, (int, float)) and not isinstance(reported, bool)
+        else None,
+    }
+    for key in ("cache_write_5m", "cache_write_1h"):
+        if key in raw:
+            call[key] = _int_or_none(raw[key])
+    return call
+
+
+def run_usage_import(
+    spec: TaskSpec, repo: Path, run_dir: Path, runner: ProcessRunner
+) -> dict[str, Any] | None:
+    """Run the TASK.md ``usage_import`` argv and read ``{"calls": [...]}`` from its stdout.
+
+    These are calls made by tools the agent ran (not by the agent itself). They are priced
+    with the same code as the agent's own calls.
+    """
+
+    if spec.usage_import is None:
         return None
+    substitutions = {
+        "{repo}": str(repo),
+        "{task_dir}": str(spec.path.parent),
+        "{python}": sys.executable,
+        "{run_dir}": str(run_dir),
+    }
+    argv = [_substitute(a, substitutions) for a in spec.usage_import]
+    out: dict[str, Any] = {"argv": argv, "calls": None, "error": None}
     try:
-        price = Decimal(str(value))
-    except ArithmeticError:
-        return None
-    return price if price.is_finite() and price >= 0 else None
+        process = runner.run(
+            argv,
+            cwd=repo,
+            timeout_seconds=spec.usage_import_timeout,
+            max_output_bytes=8 * 1024 * 1024,
+            env=sanitized_environment(_ENV_PASSTHROUGH, spec.env),
+        )
+    except (OSError, ValueError) as exc:
+        out["error"] = str(exc)
+        return out
+    if process.timed_out or process.exit_code != 0:
+        lines = (process.stderr.strip() or process.stdout.strip()).splitlines()
+        detail = lines[-1][:300] if lines else ""
+        out["error"] = "timed out" if process.timed_out else f"exit {process.exit_code}: {detail}"
+        return out
+    try:
+        payload = json.loads(process.stdout)
+    except json.JSONDecodeError as exc:
+        out["error"] = f"stdout is not JSON: {exc}"
+        return out
+    raw_calls = payload.get("calls") if isinstance(payload, dict) else None
+    if not isinstance(raw_calls, list) or not all(isinstance(c, dict) for c in raw_calls):
+        out["error"] = 'expected {"calls": [{...}, ...]}'
+        return out
+    out["calls"] = [_nested_call(c, i) for i, c in enumerate(raw_calls, start=1)]
+    if isinstance(payload.get("source"), str):
+        out["source"] = payload["source"]
+    return out
 
 
-def estimate_call(
-    call: dict[str, Any], pricing: dict[str, dict[str, Any]]
-) -> tuple[Decimal | None, str | None]:
-    model = call.get("model")
-    entry = pricing.get(model) if model else None
-    if entry is None:
-        return None, f"call {call['call']}: model {model!r} not in pricing.toml"
-    total = Decimal(0)
-    for category in CATEGORIES:
-        if category in call.get("not_applicable", []):
-            continue
-        if category == "reasoning" and entry.get("reasoning") == "included_in_output":
-            continue  # already billed inside output tokens; a missing count changes nothing
-        tokens = call.get(category)
-        if tokens is None:
-            return None, f"call {call['call']}: {category} tokens not reported"
-        if category == "input" and call.get("input_includes_cache_read"):
-            tokens = tokens - (call.get("cache_read") or 0)
-        if tokens == 0:
-            continue
-        price = _price(entry, f"{category}_per_mtok")
-        if price is None:
-            return None, f"call {call['call']}: no {category}_per_mtok price for {model}"
-        total += price * Decimal(tokens) / Decimal(1_000_000)
-    return total, None
+def nested_sidecar(run_dir: Path) -> Path:
+    """Nested usage attached after a run was sealed lives next to it, not inside it."""
+
+    return run_dir.parent / f"{run_dir.name}.nested.json"
 
 
-def estimate(
-    calls: list[dict[str, Any]], pricing: dict[str, dict[str, Any]]
-) -> tuple[Decimal | None, list[str]]:
-    if not calls:
-        return None, ["no usage records; nothing to price"]
-    total = Decimal(0)
-    warnings: list[str] = []
-    for call in calls:
-        cost, warning = estimate_call(call, pricing)
-        if cost is None:
-            warnings.append(warning or "unpriced call")
-        else:
-            total += cost
-    return (None if warnings else total), warnings
+def reprice_run(run_dir: Path, data: dict[str, Any], table: PriceTable) -> dict[str, Any]:
+    """Recompute a sealed run's cost from its raw tokens and the current price table.
+
+    Harness runs are re-parsed from transcript.jsonl (the raw record), so parser fixes and
+    new prices reach old runs without editing them. Other rows use their stored calls.
+    """
+
+    invocation = data.get("invocation") or {}
+    provider = invocation.get("provider")
+    calls = (data.get("usage") or {}).get("calls") or []
+    transcript = run_dir / "transcript.jsonl"
+    if provider in {"claude_cli", "codex_cli"} and transcript.is_file():
+        try:
+            text = transcript.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            text = None
+        if text is not None and provider == "claude_cli":
+            calls = parse_claude_stream(text)["calls"]
+        elif text is not None:
+            calls = parse_codex_stream(text, str(invocation.get("model_declared")))["calls"]
+    nested = data.get("nested_usage")
+    sidecar = nested_sidecar(run_dir)
+    if nested is None and sidecar.is_file():
+        try:
+            loaded = json.loads(sidecar.read_text(encoding="utf-8"))
+            nested = loaded if isinstance(loaded, dict) else None
+        except (OSError, json.JSONDecodeError):
+            nested = {"calls": None, "error": f"{sidecar.name} is unreadable"}
+    metadata = data.get("metadata") or {}
+    cost = cost_summary(
+        calls,
+        nested if isinstance(nested, dict) else None,
+        table,
+        metadata.get("service_tier"),
+        (data.get("cost") or {}).get("cli_reported_cost"),
+    )
+    return {"calls": calls, "nested": nested, "cost": cost}
 
 
 def totals(calls: list[dict[str, Any]]) -> dict[str, int | None]:
@@ -675,14 +876,19 @@ def load_exclusions(path: Path | None) -> dict[str, str]:
     return out
 
 
-def ledger(runs_dir: Path, exclusions: dict[str, str] | None = None) -> dict[str, Any]:
-    """Totals across the runs in runs_dir, failed attempts included, excluded runs left out."""
+def ledger(
+    runs_dir: Path, exclusions: dict[str, str] | None = None, table: PriceTable | None = None
+) -> dict[str, Any]:
+    """Totals across the runs in runs_dir, failed attempts included, excluded runs left out.
 
+    Costs are recomputed from each run's raw tokens with the current price table.
+    """
+
+    table = table or PriceTable({})
     runs = 0
     excluded = 0
     verified = 0
-    unpriced = 0
-    total = Decimal(0)
+    parts: list[dict[str, Any]] = []
     for result_path in sorted(runs_dir.glob("*/result.json")):
         try:
             data = json.loads(result_path.read_text(encoding="utf-8"))
@@ -694,20 +900,20 @@ def ledger(runs_dir: Path, exclusions: dict[str, str] | None = None) -> dict[str
         runs += 1
         if data.get("verified"):
             verified += 1
-        cost = data.get("cost", {}).get("api_equivalent_estimate_usd")
-        if cost is None:
-            unpriced += 1
-        else:
-            total += Decimal(str(cost))
-    complete = unpriced == 0 and runs > 0
+        parts.append(reprice_run(result_path.parent, data, table)["cost"]["total"])
+    total = combine(*parts)
+    complete = total["priced_calls"] == total["total_calls"] and total["cost_usd"] is not None
     return {
         "runs": runs,
         "excluded_runs": excluded,
         "verified_outcomes": verified,
-        "unpriced_runs": unpriced,
-        "total_estimate_usd": str(total) if complete else None,
+        "total": {
+            k: total[k] for k in ("cost_usd", "priced_calls", "total_calls", "long_context_unknown")
+        },
         "cost_per_verified_outcome_usd": (
-            str((total / verified).quantize(Decimal("0.000001"))) if complete and verified else None
+            str((Decimal(total["cost_usd"]) / verified).quantize(Decimal("0.000001")))
+            if complete and verified
+            else None
         ),
     }
 
@@ -725,6 +931,7 @@ def _usd(value: Decimal | str | None) -> str:
 
 def render_report(result: dict[str, Any]) -> str:
     inv = result["invocation"]
+    meta = result["metadata"]
     out = [
         f"RUN {result['run_id']}",
         f"  task {result['task']}  repo {result['repo']}",
@@ -732,6 +939,9 @@ def render_report(result: dict[str, Any]) -> str:
         f"reported={','.join(inv['models_reported']) or 'null'}",
         f"  exit={_fmt(inv['exit_code'])} timed_out={inv['timed_out']} "
         f"wall={inv['wall_time_s']:.1f}s turns={_fmt(inv['turns'])}/{inv['max_turns']}",
+        f"  effort={_fmt(meta['effort'])} service_tier={meta['service_tier']} "
+        f"ultracode={'on' if meta['ultracode'] else 'off'} "
+        f"quota_used_pct_delta={_fmt(meta['quota']['used_pct_delta'])}",
         "",
         "CHECKS",
     ]
@@ -766,24 +976,46 @@ def render_report(result: dict[str, Any]) -> str:
     out.append(f"  peak context in one call: {_fmt(result['usage']['peak_context_tokens'])} tokens")
     out.append("  (covers the harnessed agent only; tools it ran record their own usage)")
     cost = result["cost"]
+    pricing = cost["pricing"]
+    nested = cost["nested"]
     out += [
         "",
-        "COST",
-        f"  CLI-reported cost:        {_usd(cost['cli_reported_cost'])}"
-        "  (as the CLI states it; not merged)",
-        f"  API-equivalent estimate:  {_usd(cost['api_equivalent_estimate_usd'])}"
-        "  (subscription use has no per-token marginal cost)",
+        f"COST  {cost['label']}",
+        f"  pricing: version {_fmt(pricing['version'])}, sha256 "
+        f"{(pricing['sha256'] or 'null')[:12]}, {_fmt(pricing['file'])}",
+        f"  agent:   {format_cost(cost['agent'])}",
+        "  nested:  "
+        + (
+            "none (no usage_import in TASK.md)"
+            if nested is None
+            else "null (import failed: unknown spend)"
+            if nested.get("import_failed")
+            else format_cost(nested)
+        ),
+        f"  total:   {format_cost(cost['total'])}",
     ]
+    check = (
+        f"  CLI-reported, cross-check only, never merged: agent {_usd(cost['cli_reported_cost'])}"
+    )
+    reported = cost["nested_cli_reported"]
+    if reported is not None:
+        check += (
+            f"; nested {_usd(reported['cost_usd'])} "
+            f"({reported['calls']}/{reported['total_calls']} calls reported one)"
+        )
+    out.append(check)
+    for item in cost["total"]["missing"]:
+        out.append(f"    missing: {item}")
+    for item in cost["total"]["notes"]:
+        out.append(f"    note: {item}")
     for warning in cost["warnings"]:
         out.append(f"    warning: {warning}")
     led = result["ledger"]
     out.append(
         f"  Ledger, {led['runs']} runs incl. failed"
         + (f" ({led['excluded_runs']} excluded)" if led.get("excluded_runs") else "")
-        + ": total estimate "
-        f"{_usd(led['total_estimate_usd'])}, verified outcomes {led['verified_outcomes']}, "
+        + f": total {format_cost(led['total'])}, verified outcomes {led['verified_outcomes']}, "
         f"cost per verified outcome {_usd(led['cost_per_verified_outcome_usd'])}"
-        + (f" ({led['unpriced_runs']} unpriced runs)" if led["unpriced_runs"] else "")
     )
     if result["warnings"]:
         out += ["", "WARNINGS"] + [f"  - {w}" for w in result["warnings"]]
@@ -889,8 +1121,11 @@ def execute(
     counts = {s: sum(1 for c in checks if c["status"] == s) for s in (PASS, FAIL, UNKNOWN)}
     verified = counts[PASS] == len(checks)
 
-    pricing, pricing_warnings = load_pricing(pricing_path)
-    est, est_warnings = estimate(calls, pricing) if pricing else (None, [])
+    nested = run_usage_import(spec, repo, store.run_dir, runner)
+    if nested is not None and nested["error"]:
+        warnings.append(f"nested usage not imported: {nested['error']}")
+    table = load_price_table(pricing_path)
+    cost = cost_summary(calls, nested, table, spec.service_tier, summary["cli_reported_cost"])
     peak = peak_context(calls)
     if spec.context_warn_tokens and peak and peak >= spec.context_warn_tokens:
         warnings.append(
@@ -931,6 +1166,16 @@ def execute(
             "permission_denials": summary["permission_denials"],
             "enforcement": enforcement(spec),
         },
+        # effort, ultracode and Codex "ultra" never change rates; they are recorded only
+        "metadata": {
+            "effort": spec.effort,
+            "service_tier": spec.service_tier,
+            "service_tiers_reported": sorted(
+                {c["service_tier"] for c in calls if c.get("service_tier")}
+            ),
+            "ultracode": spec.ultracode,
+            "quota": summary["quota"],
+        },
         "checks": checks,
         "check_counts": counts,
         "verified": verified,
@@ -940,19 +1185,14 @@ def execute(
             "cli_result_totals": summary["result_usage"],
             "peak_context_tokens": peak,
         },
-        "cost": {
-            "cli_reported_cost": summary["cli_reported_cost"],
-            "api_equivalent_estimate_usd": None if est is None else str(est),
-            "label": "API-equivalent estimate; subscription use has no per-token marginal cost",
-            "pricing_file": None if pricing_path is None else str(pricing_path),
-            "warnings": pricing_warnings + est_warnings,
-        },
+        "nested_usage": nested,
+        "cost": cost,
         "agent_final_text": summary["final_text"],
         "warnings": warnings,
         "next_action": next_action,
     }
     store.write_json("result.json", result)
-    result["ledger"] = ledger(runs_dir, exclusions)
+    result["ledger"] = ledger(runs_dir, exclusions, table)
     report = render_report(result)
     store.write_text("report.txt", report)
     store.write_json("result.json", result)
@@ -960,13 +1200,13 @@ def execute(
     _seal(store.run_dir)
 
     stamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    cost_text = _usd(result["cost"]["api_equivalent_estimate_usd"])
+    cost_text = format_cost(cost["total"])
     append_state(
         repo,
         f"{_STATE_HEADER}{stamp} — agent_arena run: {spec.name}\n"
         f"- ran: {spec.agent} ({spec.model}) on {spec.path.name}; run {run_id}\n"
         f"- result: {counts[PASS]} PASS, {counts[FAIL]} FAIL, {counts[UNKNOWN]} UNKNOWN; "
-        f"verified={verified}; est. cost {cost_text}\n"
+        f"verified={verified}; API-equivalent cost {cost_text}\n"
         f"- next: {next_action}\n",
     )
     result["report"] = report
@@ -989,8 +1229,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument(
         "--pricing",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "pricing.toml",
-        help="pricing.toml you fill from official pricing pages",
+        default=default_pricing_path(),
+        help="price table (default: $AGENT_PRICING_FILE or ~/.agent-arena/pricing.toml)",
     )
     parser.add_argument(
         "--excluded",
@@ -999,9 +1239,33 @@ def main(argv: list[str]) -> int:
         help="excluded_runs.toml: runs the ledger leaves out (run_id + reason)",
     )
     parser.add_argument("--executable", help="path to the claude/codex binary (default: PATH)")
+    parser.add_argument(
+        "--agent", choices=["claude", "codex"], help="override the TASK.md agent for this run only"
+    )
+    parser.add_argument("--model", help="override the TASK.md model for this run only")
+    parser.add_argument("--effort", help="override the TASK.md effort for this run only")
     args = parser.parse_args(argv)
     try:
         spec = parse_task(args.task)
+        if args.agent and args.agent != spec.agent:
+            spec = replace(spec, agent=args.agent)
+            if args.agent == "claude" and not spec.allowed_tools:
+                spec = replace(spec, allowed_tools=DEFAULT_CLAUDE_TOOLS)
+                print(
+                    "agent_arena run: task has no allowed_tools; using the default Claude "
+                    f"allowlist: {', '.join(DEFAULT_CLAUDE_TOOLS)}",
+                    file=sys.stderr,
+                )
+            if not args.model:
+                print(
+                    f"agent_arena run: agent switched to {args.agent} but the task's model "
+                    f"{spec.model!r} was kept; pick a {args.agent} model",
+                    file=sys.stderr,
+                )
+        if args.model:
+            spec = replace(spec, model=args.model.strip())
+        if args.effort:
+            spec = replace(spec, effort=args.effort.strip())
         result = execute(
             spec,
             args.repo,

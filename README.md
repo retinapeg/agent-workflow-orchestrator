@@ -103,6 +103,16 @@ The provider layer is independent of orchestration. Codex CLI, Claude Code CLI, 
 API, Anthropic Messages API, a generic CLI seam, and a deterministic offline provider all implement
 the same adapter contract.
 
+### Control panel (no commands to remember)
+
+Double-click **`Agent Arena.command`** (macOS), or run `agent-arena gui`. It opens a local page at
+`http://127.0.0.1:8787` where you pick a task, a repo, a model and an effort level, press **Run**,
+and watch the live log. It also shows recent runs with costs, the harness-vs-prompting summary, a
+**Grade manual session** button and a **New task** form that writes `tasks/<name>.md` for you. The
+panel only builds and launches the same CLI command it shows on screen, so it can't drift from the
+command line. It needs Python 3.11+ and the `claude` and/or `codex` CLI installed and logged in.
+There are no other dependencies, and it listens on localhost only.
+
 ### `run`: one headless agent, checked and costed
 
 `python -m agent_arena run TASK.md --repo PATH` runs a single Claude Code or Codex CLI agent

@@ -1,27 +1,38 @@
-# Copy to pricing.toml and fill in from the providers' official pricing pages.
-# The harness never guesses: a model that is missing here, or an entry without
-# `source` and `retrieved`, makes the API-equivalent estimate null with a warning.
+# Copy to ~/.agent-arena/pricing.toml (outside git) and fill in from the providers' official
+# pricing pages. The harness never guesses: a model that is missing here, or an entry without
+# `source` and `retrieved`, is unpriced (null), never $0. $AGENT_PRICING_FILE or --pricing
+# point at another file. agent_reliability_lab reads the same file.
 #
-# Units: USD per million tokens.
-# Claude: input_tokens exclude cache reads/writes, so all four prices are used.
-# Codex/OpenAI: input_tokens include cached tokens; the harness bills
-#   (input - cached) at input price and cached at cache_read price. No cache-write charge.
+# Units: USD per million tokens. Costs are API-equivalent (subscription: no marginal $).
+# Claude: input_tokens exclude cache reads/writes. 5-minute and 1-hour cache writes have
+#   different prices; without cache_write_1h_per_mtok a 1h write is unpriced.
+# Codex/OpenAI: input_tokens include cached tokens; the harness bills (input - cached -
+#   cache writes) at the input price, cached at cache_read, cache writes at cache_write.
 # reasoning: set `reasoning = "included_in_output"` when reasoning tokens are already
 #   counted inside output tokens, or give `reasoning_per_mtok`.
+# Rate modifiers are optional per model: service_tier_multipliers and the long-context keys.
+
+# version = "YYYY-MM-DD"           # recorded, with the file's sha256, next to every cost
 
 # [models."claude-sonnet-5"]
 # aliases = []                     # exact other names the CLI reports for this model
-# input_per_mtok = 
-# cache_read_per_mtok = 
+# input_per_mtok =
+# cache_read_per_mtok =
 # cache_write_per_mtok =           # 5-minute cache write price
-# output_per_mtok = 
+# cache_write_1h_per_mtok =        # 1-hour cache write price
+# output_per_mtok =
 # source = "https://..."
 # retrieved = "YYYY-MM-DD"
 
 # [models."gpt-6-sol"]
-# input_per_mtok = 
-# cache_read_per_mtok = 
-# output_per_mtok = 
+# input_per_mtok =
+# cache_read_per_mtok =
+# cache_write_per_mtok =
+# output_per_mtok =
 # reasoning = "included_in_output"
+# service_tier_multipliers = { fast = , ultrafast =  }
+# long_context_over_input_tokens =
+# long_context_input_multiplier =
+# long_context_output_multiplier =
 # source = "https://..."
 # retrieved = "YYYY-MM-DD"

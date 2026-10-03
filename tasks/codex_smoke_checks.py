@@ -7,12 +7,13 @@ Stdlib only; reads files, never writes.
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 import sys
 from pathlib import Path
 
-LABEL = "codex-smoke"
+LABEL = os.environ.get("LAB_LABEL", "codex-smoke")  # set via TASK.md env
 V1, V2 = Path("configs/cross_review_v1.json"), Path("configs/cross_review_v2_codex.json")
 WANT_MODELS = {"gpt-6-sol", "claude-sonnet-5"}
 STATE_FACTS = {

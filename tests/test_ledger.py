@@ -4,7 +4,15 @@ import csv
 import json
 from pathlib import Path
 
+import pytest
+
 from agent_arena import ledger
+
+
+@pytest.fixture(autouse=True)
+def _no_real_pricing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # never read ~/.agent-arena/pricing.toml from a test
+    monkeypatch.setenv("AGENT_PRICING_FILE", str(tmp_path / "no-pricing.toml"))
 
 
 def _write_jsonl(path: Path, events: list[dict]) -> Path:
@@ -302,3 +310,138 @@ def test_excluded_runs_stay_in_csv_but_not_in_summary(tmp_path: Path) -> None:
     excluded.write_text('[[excluded]]\nrun_id = "x"\n')
     with pytest.raises(ArenaError, match="needs a run_id and a reason"):
         ledger.write_csv(runs, out, excluded)
+
+
+def _prices(tmp_path: Path, output_price: int = 10) -> Path:
+    path = tmp_path / f"prices-{output_price}.toml"
+    path.write_text(
+        f'version = "v{output_price}"\n[models."claude-sonnet-5"]\ninput_per_mtok = 2\n'
+        "cache_read_per_mtok = 0.20\ncache_write_per_mtok = 2.50\ncache_write_1h_per_mtok = 4\n"
+        f'output_per_mtok = {output_price}\nsource = "https://example.invalid"\n'
+        'retrieved = "2026-10-03"\n'
+    )
+    return path
+
+
+def _call(model: str, output: int, **extra: object) -> dict:
+    return {
+        "call": 1,
+        "provider": "claude_cli",
+        "model": model,
+        "input": 1000,
+        "cache_read": 0,
+        "cache_write": 0,
+        "output": output,
+        "reasoning": None,
+        "not_applicable": ["reasoning"],
+        "input_includes_cache_read": False,
+        **extra,
+    }
+
+
+def _run(
+    runs: Path, run_id: str, calls: list[dict], arm: str = "harness", **fields: object
+) -> Path:
+    run_dir = runs / run_id
+    run_dir.mkdir(parents=True)
+    result = {
+        "run_id": run_id,
+        "arm": arm,
+        "task": "/x/fix-bug.md",
+        "repo": "/x/repo",
+        "verified": True,
+        "check_counts": {"PASS": 1, "FAIL": 0, "UNKNOWN": 0},
+        "invocation": {"provider": "claude_cli", "wall_time_s": 10.0, "human_messages": 1},
+        "usage": {"calls": calls},
+        "cost": {"cli_reported_cost": "0.5", "total": {"cost_usd": "999"}},  # stale on purpose
+        **fields,
+    }
+    (run_dir / "result.json").write_text(json.dumps(result))
+    return run_dir
+
+
+def test_csv_is_repriced_from_raw_tokens_on_every_rebuild(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    run_dir = _run(
+        runs,
+        "20261003T000001Z-fix-bug-aaa",
+        [_call("claude-sonnet-5", 100), _call("mystery-model", 100)],
+        metadata={"effort": "high", "service_tier": "standard", "ultracode": True, "quota": {}},
+        nested_usage={"calls": [_call("claude-sonnet-5", 200, cli_reported_cost="0.1")]},
+    )
+    sealed = (run_dir / "result.json").read_text()
+    out = tmp_path / "ledger.csv"
+
+    ledger.write_csv(runs, out, pricing=_prices(tmp_path, 10))
+    (row,) = list(csv.DictReader(out.open()))
+    # agent: (1000*2 + 100*10)/1e6, one call unpriced; nested: (1000*2 + 200*10)/1e6
+    assert (row["agent_cost_usd"], row["nested_cost_usd"]) == ("0.003", "0.004")
+    assert row["total_cost_usd"] == "0.007"  # not the stale 999 stored in the sealed run
+    assert (row["priced_calls"], row["total_calls"]) == ("2", "3")
+    assert row["pricing_version"] == "v10" and row["cli_reported_cost_usd"] == "0.5"
+    assert (row["effort"], row["service_tier"], row["ultracode"]) == ("high", "standard", "True")
+    assert row["quota_used_pct_delta"] == ""
+
+    ledger.write_csv(runs, out, pricing=_prices(tmp_path, 20))  # a new price table
+    (row,) = list(csv.DictReader(out.open()))
+    assert row["total_cost_usd"] == "0.010" and row["pricing_version"] == "v20"
+    assert (run_dir / "result.json").read_text() == sealed  # the run itself is never edited
+
+    ledger.write_csv(runs, out)  # no price table at all: null, never 0
+    (row,) = list(csv.DictReader(out.open()))
+    assert row["total_cost_usd"] == "" and (row["priced_calls"], row["total_calls"]) == ("0", "3")
+
+    text = ledger.summary(runs, pricing=_prices(tmp_path, 10))
+    assert "NOT FULLY PRICED" in text and "20261003T000001Z-fix-bug-aaa: 2/3 calls" in text
+
+
+def test_summary_ratios_only_when_both_arms_used_the_same_model(tmp_path: Path) -> None:
+    runs = tmp_path / "runs"
+    prices = _prices(tmp_path)
+    _run(runs, "20261003T000001Z-fix-bug-aaa", [_call("claude-sonnet-5", 100)])
+    _run(
+        runs,
+        "20261003T000002Z-fix-bug-bbb-prompt",
+        [_call("claude-sonnet-5", 400)],
+        arm="prompt-only",
+        invocation={"provider": "claude_interactive", "wall_time_s": 40.0, "human_messages": 4},
+    )
+    text = ledger.summary(runs, pricing=prices)
+    assert "harness ÷ prompt-only" in text and "NOT FULLY PRICED" not in text
+    # tokens 1100/1400, cost 0.003/0.006, wall 10/40, messages 1/4
+    assert text.splitlines()[-1].split() == ["fix-bug", "0.79", "0.50", "0.25", "0.25"]
+
+    (runs / "20261003T000002Z-fix-bug-bbb-prompt" / "result.json").unlink()
+    (runs / "20261003T000002Z-fix-bug-bbb-prompt").rmdir()
+    _run(
+        runs, "20261003T000003Z-fix-bug-ccc-prompt", [_call("other-model", 400)], arm="prompt-only"
+    )
+    assert "fix-bug                n/a (different models)" in ledger.summary(runs, pricing=prices)
+
+
+def test_attach_usage_adds_nested_calls_without_touching_the_sealed_run(tmp_path: Path) -> None:
+    from agent_arena.errors import ArenaError
+
+    runs = tmp_path / "runs"
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run_dir = _run(runs, "20261003T000001Z-fix-bug-aaa", [_call("claude-sonnet-5", 100)])
+    sealed = (run_dir / "result.json").read_text()
+    script = tmp_path / "usage.py"
+    nested = {"calls": [_call("claude-sonnet-5", 200)]}
+    script.write_text(f"import json\nprint(json.dumps({nested!r}))\n")
+    task = tmp_path / "t.md"
+    task.write_text(
+        '+++\nagent = "claude"\nmodel = "m"\nallowed_tools = ["Read"]\nmax_turns = 1\n'
+        f'timeout_seconds = 5\nusage_import = {{ argv = ["{{python}}", "{script}"] }}\n'
+        '[[checks]]\nargv = ["true"]\n+++\nDo it.\n'
+    )
+    ledger.attach_usage(run_dir.name, task, repo, runs)
+    out = tmp_path / "ledger.csv"
+    ledger.write_csv(runs, out, pricing=_prices(tmp_path))
+    (row,) = list(csv.DictReader(out.open()))
+    assert (row["agent_cost_usd"], row["nested_cost_usd"]) == ("0.003", "0.004")
+    assert (row["priced_calls"], row["total_calls"]) == ("2", "2")
+    assert (run_dir / "result.json").read_text() == sealed
+    with pytest.raises(ArenaError, match="attached once"):
+        ledger.attach_usage(run_dir.name, task, repo, runs)

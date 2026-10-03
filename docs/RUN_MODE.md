@@ -1,7 +1,7 @@
 # `run` mode
 
 ```
-python -m agent_arena run TASK.md --repo PATH [--runs-dir ~/.agent-arena/runs] [--pricing pricing.toml]
+python -m agent_arena run TASK.md --repo PATH [--runs-dir ~/.agent-arena/runs] [--pricing ~/.agent-arena/pricing.toml] [--excluded experiments/excluded_runs.toml]
 ```
 
 Runs **one** coding agent (Claude Code or Codex CLI) headless in `PATH`. The run is bounded,
@@ -36,7 +36,7 @@ Exit code: 0 all PASS, 1 any FAIL, 2 UNKNOWN but no FAIL, 3 harness error.
 | model | `message.model` (reported) | declared in TASK.md (codex does not report it) |
 | input | `input_tokens` (excludes cache) | `input_tokens` (includes cached) |
 | cache_read | `cache_read_input_tokens` | `cached_input_tokens` |
-| cache_write | `cache_creation_input_tokens` | n/a |
+| cache_write | `cache_creation_input_tokens`, plus the 5m/1h split from `cache_creation` | `cache_write_input_tokens` (billable) |
 | output | `output_tokens` from the `message_delta` stream event (needs `--include-partial-messages`) | `output_tokens` |
 | reasoning | n/a (billed as output) | `reasoning_output_tokens` if present |
 
@@ -47,12 +47,50 @@ Exit code: 0 all PASS, 1 any FAIL, 2 UNKNOWN but no FAIL, 3 harness error.
   one has `output: null`.
 * The per-call sums are compared with the `usage` totals in the CLI's `result` event
   (`usage.cli_result_totals` in `result.json`). Any difference is a warning in the report.
-* `cli_reported_cost` is Claude's `total_cost_usd`, kept as reported and never merged.
-* The **API-equivalent estimate** uses only `pricing.toml` entries with `source` and
-  `retrieved`. Any unpriced model or unreported counted field makes it `null` with a
-  warning. Subscription use has no per-token marginal cost.
+* `cli_reported_cost` is Claude's `total_cost_usd`, kept as reported as a cross-check and
+  never merged.
+
+### Cost
+
+Raw tokens per category per model are the ground truth and are always stored. Dollars are
+**derived** from them and a dated price table, so sealed runs can be re-priced and are never
+edited. Every cost is **API-equivalent (subscription: no marginal $)**.
+
+* **Price table:** `~/.agent-arena/pricing.toml` (outside git), or `$AGENT_PRICING_FILE`, or
+  `--pricing`. It has a `version`; each model entry needs `source` and `retrieved`. The
+  version and the file's sha256 are recorded with every computed cost. `pricing.example.toml`
+  shows the keys. The lab reads the same file with an identical copy of `pricing.py`.
+* **Never $0 for unknown:** a call with a missing price or a missing token count is unpriced
+  (`null`), with the reason named. Totals are the sum of the priced calls plus coverage, e.g.
+  `$0.3066 (20/20 calls priced)`; with nothing priced the figure is `null`.
+* **Cache writes:** Claude's 5-minute and 1-hour cache writes are priced separately
+  (`cache_write_per_mtok`, `cache_write_1h_per_mtok`). Without the split the 5m rate is used
+  and a note says so.
+* **Rate modifiers** are data in the model entry: `service_tier_multipliers` (OpenAI fast 2x,
+  ultrafast 6x on every category) and `long_context_over_input_tokens` with its input and
+  output multipliers (more than 272K input tokens: 2x input/cache, 1.5x output for the whole
+  record). Codex reports usage per turn, not per request, so the long-context rule is applied
+  to the turn's totals.
+* **Metadata per run:** `effort` (TASK.md key, passed to the CLI), `service_tier` (TASK.md
+  key, default `standard`; used for pricing when a call reports none; not passed to the CLI),
+  `ultracode` (TASK.md key) and, for Codex, the change in `rate_limits.primary.used_percent`
+  with `window_minutes` when the events expose them. Effort and ultracode never change rates.
+* **Nested usage:** `usage_import = { argv = [...] }` in TASK.md runs after the checks and
+  prints `{"calls": [{model, input, cache_read, cache_write, output, reasoning,
+  input_includes_cache_read, provider, cli_reported_cost}]}` (optionally `cache_write_5m`,
+  `cache_write_1h`, `service_tier`, `not_applicable`) for calls made by tools the agent ran.
+  They are priced by the same code. The report shows agent + nested = total, each with
+  coverage. A failed import is a warning and the nested cost is `null`.
+  `python -m agent_arena.ledger attach-usage RUN_ID TASK.md --repo PATH` does the import for
+  a run that is already sealed and writes a write-once `RUN_ID.nested.json` next to it.
+* **Re-pricing:** the ledger re-parses each harness run's `transcript.jsonl` and recomputes
+  every cost on each rebuild, so the CSV and the Ledger line always reflect the current
+  price table and parser.
 * **Ledger:** this covers every run in the runs dir, failed ones included. It reports the total
-  estimate and the **cost per verified outcome** (total ÷ runs where every check passed).
+  cost with coverage and the **cost per verified outcome** (total ÷ runs where every check
+  passed; `null` unless every call is priced). `ledger summary` flags runs that are not fully
+  priced and, per task, gives harness ÷ prompt-only ratios for tokens, cost, wall time and
+  messages when both arms used the same model (otherwise `n/a (different models)`).
 * **Exclusions:** run directories are write-once, so a bad or non-comparison run is listed in
   `experiments/excluded_runs.toml` (`run_id` + `reason`) instead of being edited. The report's
   Ledger line and `ledger summary` leave those runs out and say how many; the CSV keeps them

@@ -336,6 +336,10 @@ def _open_path(path: Path, print_only: bool) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
+    if raw[:1] == ["gui"]:
+        from .gui import main as gui_main
+
+        return gui_main(raw[1:])
     if raw[:1] == ["run"]:
         # `run` mode is self-contained (run_mode.py); existing modes are untouched.
         from .ledger import after_run

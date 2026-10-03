@@ -3,13 +3,15 @@
     python -m agent_arena.ledger grade TASK.md --repo PATH   # right after a manual session
     python -m agent_arena.ledger csv                         # rebuild the CSV (also automatic)
     python -m agent_arena.ledger summary                     # per task, per arm
+    python -m agent_arena.ledger attach-usage RUN_ID TASK.md --repo PATH   # nested usage, late
 
 The source of truth is the write-once run directories (default ``~/.agent-arena/runs``).
 ``agent_arena run`` writes harness rows. ``grade`` writes "prompt-only" rows: it runs the same
 TASK.md checks on the repo and pulls tokens, duration and message counts from the most recent
 interactive Claude Code or Codex session whose working directory is that repo. It keeps
 numbers only, never session text. The CSV is rebuilt from those directories every time, so
-nobody edits a spreadsheet by hand.
+nobody edits a spreadsheet by hand. Costs are recomputed from the raw tokens and the current
+price table on every rebuild, so sealed runs are re-priced, never edited.
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import argparse
 import csv
 import io
 import json
+import stat
 import statistics
 import sys
 from datetime import UTC, datetime, timedelta
@@ -26,6 +29,7 @@ from typing import Any
 
 from .audit import AuditStore, rebuild_manifest
 from .errors import ArenaError
+from .pricing import default_pricing_path, load_price_table
 from .process import ProcessRunner
 from .run_mode import (
     DEFAULT_EXCLUDED,
@@ -35,19 +39,20 @@ from .run_mode import (
     _new_run_id,
     _seal,
     _validate_repo,
-    estimate,
+    cost_summary,
     load_exclusions,
-    load_pricing,
+    nested_sidecar,
     parse_task,
     peak_context,
     reconcile_usage,
+    reprice_run,
     run_checks,
+    run_usage_import,
     totals,
 )
 
 DEFAULT_RUNS = Path("~/.agent-arena/runs")
 DEFAULT_CSV = Path(__file__).resolve().parents[2] / "experiments" / "harness_vs_prompting.csv"
-DEFAULT_PRICING = Path(__file__).resolve().parents[2] / "pricing.toml"
 CLAUDE_LOGS = Path("~/.claude/projects")
 CODEX_LOGS = Path("~/.codex/sessions")
 
@@ -72,8 +77,17 @@ COLUMNS = [
     "reasoning",
     "peak_context",
     "cli_result_totals_match",
+    "effort",
+    "service_tier",
+    "ultracode",
+    "quota_used_pct_delta",
     "cli_reported_cost_usd",
-    "api_estimate_usd",
+    "agent_cost_usd",
+    "nested_cost_usd",
+    "total_cost_usd",
+    "priced_calls",
+    "total_calls",
+    "pricing_version",
     "repo",
     "metrics_source",
     "excluded",
@@ -143,6 +157,8 @@ def parse_claude_session(path: Path, repo: Path) -> dict[str, Any] | None:
             if model == "<synthetic>":
                 continue
             usage = message["usage"]
+            raw_split = usage.get("cache_creation")
+            split: dict[str, Any] = raw_split if isinstance(raw_split, dict) else {}
             key = str(message.get("id") or event.get("uuid") or len(calls))
             calls[key] = {
                 "provider": "claude_code",
@@ -151,10 +167,13 @@ def parse_claude_session(path: Path, repo: Path) -> dict[str, Any] | None:
                 "input": _int(usage.get("input_tokens")),
                 "cache_read": _int(usage.get("cache_read_input_tokens")),
                 "cache_write": _int(usage.get("cache_creation_input_tokens")),
+                "cache_write_5m": _int(split.get("ephemeral_5m_input_tokens")),
+                "cache_write_1h": _int(split.get("ephemeral_1h_input_tokens")),
                 "output": _int(usage.get("output_tokens")),
                 "reasoning": None,
                 "not_applicable": ["reasoning"],
                 "input_includes_cache_read": False,
+                "single_request": True,  # one message id = one API request
                 "wall_time_s": None,
             }
     if not stamps:
@@ -297,8 +316,7 @@ def grade(
     checks = run_checks(spec, repo, store.run_dir, ProcessRunner())
     counts = {s: sum(1 for c in checks if c["status"] == s) for s in (PASS, FAIL, UNKNOWN)}
     calls = session["calls"] if session else []
-    pricing, pricing_warnings = load_pricing(pricing_path)
-    est, est_warnings = estimate(calls, pricing) if pricing else (None, [])
+    cost = cost_summary(calls, None, load_price_table(pricing_path), None, None)
     warnings = (
         []
         if session
@@ -331,11 +349,7 @@ def grade(
             "totals": totals(calls),
             "peak_context_tokens": peak_context(calls),
         },
-        "cost": {
-            "cli_reported_cost": None,
-            "api_equivalent_estimate_usd": None if est is None else str(est),
-            "warnings": pricing_warnings + est_warnings,
-        },
+        "cost": cost,  # as priced today; the ledger re-prices from the calls on every rebuild
         "warnings": warnings,
     }
     store.write_json("result.json", result)
@@ -363,16 +377,43 @@ def _totals_match(usage: dict[str, Any]) -> bool | None:
     return not reconcile_usage(usage.get("totals") or {}, reported)
 
 
-def _row(result: dict[str, Any], exclusions: dict[str, str] | None = None) -> dict[str, Any]:
+def _total_tokens(calls: list[dict[str, Any]]) -> int | None:
+    """Every token the calls processed: input (with cache) + output. None if any is unknown."""
+
+    total = 0
+    for call in calls:
+        keys = ["input", "output"]
+        if not call.get("input_includes_cache_read"):
+            keys += [k for k in ("cache_read", "cache_write") if k not in call["not_applicable"]]
+        values = [call.get(k) for k in keys]
+        if any(not isinstance(v, int) for v in values):
+            return None
+        total += sum(v for v in values if isinstance(v, int))
+    return total if calls else None
+
+
+def _row(
+    result: dict[str, Any],
+    run_dir: Path,
+    exclusions: dict[str, str],
+    table: Any,
+) -> dict[str, Any]:
     inv = result.get("invocation") or {}
-    tot = (result.get("usage") or {}).get("totals") or {}
+    repriced = reprice_run(run_dir, result, table)
+    calls = repriced["calls"]
+    cost = repriced["cost"]
+    tot = totals(calls) if calls else ((result.get("usage") or {}).get("totals") or {})
     counts = result.get("check_counts") or {}
     arm = result.get("arm", "harness")
-    models = inv.get("models_reported") or []
+    models = sorted({str(c["model"]) for c in calls if c.get("model")}) or (
+        inv.get("models_reported") or []
+    )
     humans = inv.get("human_messages")
     if humans is None and arm == "harness":
         humans = 1  # the one launch command; nothing relayed mid-run
-    cost = result.get("cost") or {}
+    meta = result.get("metadata") or {}
+    tiers = sorted({str(c["service_tier"]) for c in calls if c.get("service_tier")})
+    nested = cost["nested"]
     return {
         "run_id": result.get("run_id"),
         "finished_at": result.get("finished_at") or _stamp_from_run_id(str(result.get("run_id"))),
@@ -388,34 +429,50 @@ def _row(result: dict[str, Any], exclusions: dict[str, str] | None = None) -> di
         "wall_time_s": inv.get("wall_time_s"),
         "turns": inv.get("turns"),
         **{c: tot.get(c) for c in ("input", "cache_read", "cache_write", "output", "reasoning")},
-        "peak_context": (result.get("usage") or {}).get("peak_context_tokens"),
-        "cli_result_totals_match": _totals_match(result.get("usage") or {}),
-        "cli_reported_cost_usd": cost.get("cli_reported_cost"),
-        "api_estimate_usd": cost.get("api_equivalent_estimate_usd"),
+        "peak_context": peak_context(calls),
+        "cli_result_totals_match": _totals_match({**(result.get("usage") or {}), "totals": tot}),
+        "effort": meta.get("effort"),
+        "service_tier": meta.get("service_tier") or ";".join(tiers) or None,
+        "ultracode": meta.get("ultracode"),
+        "quota_used_pct_delta": (meta.get("quota") or {}).get("used_pct_delta"),
+        "cli_reported_cost_usd": cost["cli_reported_cost"],
+        "agent_cost_usd": cost["agent"]["cost_usd"],
+        "nested_cost_usd": None if nested is None else nested["cost_usd"],
+        "total_cost_usd": cost["total"]["cost_usd"],
+        "priced_calls": cost["total"]["priced_calls"],
+        "total_calls": cost["total"]["total_calls"],
+        "pricing_version": cost["pricing"]["version"],
         "repo": Path(str(result.get("repo", ""))).name,  # basename only: safe to publish
         "metrics_source": "harness transcript"
         if arm == "harness"
         else ("session log" if inv.get("session_file") else "none found"),
-        "excluded": (exclusions or {}).get(str(result.get("run_id"))),
+        "excluded": exclusions.get(str(result.get("run_id"))),
+        "_tokens": _total_tokens(calls),  # not a CSV column; used by the summary
     }
 
 
-def load_rows(runs_dir: Path, excluded: Path | None = None) -> list[dict[str, Any]]:
+def load_rows(
+    runs_dir: Path, excluded: Path | None = None, pricing: Path | None = None
+) -> list[dict[str, Any]]:
     exclusions = load_exclusions(excluded)
+    table = load_price_table(pricing or default_pricing_path())
     rows = []
     for path in sorted(runs_dir.expanduser().glob("*/result.json")):
         try:
-            rows.append(_row(json.loads(path.read_text(encoding="utf-8")), exclusions))
+            data = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
+        rows.append(_row(data, path.parent, exclusions, table))
     return sorted(rows, key=lambda r: str(r["run_id"]))
 
 
-def write_csv(runs_dir: Path, out: Path, excluded: Path | None = None) -> int:
+def write_csv(
+    runs_dir: Path, out: Path, excluded: Path | None = None, pricing: Path | None = None
+) -> int:
     if not runs_dir.expanduser().is_dir():
         # Never replace a populated CSV with an empty one from a machine without the runs.
         raise ArenaError(f"runs dir not found: {runs_dir}; CSV left unchanged")
-    rows = load_rows(runs_dir, excluded)
+    rows = load_rows(runs_dir, excluded, pricing)
     buffer = io.StringIO()
     writer = csv.DictWriter(buffer, fieldnames=COLUMNS, lineterminator="\n")
     writer.writeheader()
@@ -428,38 +485,92 @@ def write_csv(runs_dir: Path, out: Path, excluded: Path | None = None) -> int:
     return len(rows)
 
 
-def summary(runs_dir: Path, excluded: Path | None = None) -> str:
-    every = load_rows(runs_dir, excluded)
+def _median(values: list[Any]) -> float | None:
+    nums = [float(v) for v in values if v not in (None, "")]
+    return statistics.median(nums) if nums else None
+
+
+_RATIOS = (
+    ("tokens", "_tokens"),
+    ("total_cost_usd", "total_cost_usd"),
+    ("wall_s", "wall_time_s"),
+    ("msgs", "human_messages"),
+)
+
+
+def summary(runs_dir: Path, excluded: Path | None = None, pricing: Path | None = None) -> str:
+    every = load_rows(runs_dir, excluded, pricing)
     rows = [r for r in every if not r["excluded"]]
     groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
     for row in rows:
         groups.setdefault((row["task"], row["arm"]), []).append(row)
 
-    def med(values: list[Any]) -> str:
-        nums = [float(v) for v in values if v not in (None, "")]
-        return f"{statistics.median(nums):,.0f}" if nums else "null"
+    def med(values: list[Any], digits: int = 0) -> str:
+        value = _median(values)
+        return "null" if value is None else f"{value:,.{digits}f}"
 
     lines = [
         f"{'task':<22} {'arm':<12} {'n':>3} {'verified':>9} {'msgs':>6} "
-        f"{'wall_s':>8} {'tokens(in+out)':>15}"
+        f"{'wall_s':>8} {'tokens':>11} {'total_cost_usd':>15}"
     ]
     for (task, arm), group in sorted(groups.items()):
         verified = sum(1 for r in group if r["verified"])
-        tokens = [
-            (r["input"] or 0) + (r["output"] or 0)
-            if r["input"] is not None and r["output"] is not None
-            else None
-            for r in group
-        ]
         lines.append(
             f"{task:<22} {arm:<12} {len(group):>3} {verified:>4}/{len(group):<4} "
             f"{med([r['human_messages'] for r in group]):>6} "
-            f"{med([r['wall_time_s'] for r in group]):>8} {med(tokens):>15}"
+            f"{med([r['wall_time_s'] for r in group]):>8} "
+            f"{med([r['_tokens'] for r in group]):>11} "
+            f"{med([r['total_cost_usd'] for r in group], 4):>15}"
         )
     lines.append("medians per group; n is tiny, so read this as directional, not proof")
+    lines.append("tokens = input incl. cache + output; costs are API-equivalent, agent + nested")
+
+    pairs = sorted(t for t, arm in groups if arm == "harness" and (t, "prompt-only") in groups)
+    if pairs:
+        lines += ["", "harness ÷ prompt-only (ratio of medians)"]
+        lines.append(f"{'task':<22} " + " ".join(f"{name:>15}" for name, _ in _RATIOS))
+    for task in pairs:
+        harness, prompt = groups[(task, "harness")], groups[(task, "prompt-only")]
+        if {r["model"] for r in harness} != {r["model"] for r in prompt}:
+            lines.append(f"{task:<22} n/a (different models)")
+            continue
+        cells = []
+        for _, key in _RATIOS:
+            top, bottom = _median([r[key] for r in harness]), _median([r[key] for r in prompt])
+            cells.append("null" if top is None or not bottom else f"{top / bottom:.2f}")
+        lines.append(f"{task:<22} " + " ".join(f"{c:>15}" for c in cells))
+
+    partial = [r for r in rows if (r["priced_calls"] or 0) < (r["total_calls"] or 0)]
+    if partial:
+        lines += ["", "NOT FULLY PRICED (cost covers only the priced calls):"]
+        lines += [f"  {r['run_id']}: {r['priced_calls']}/{r['total_calls']} calls" for r in partial]
     if len(every) != len(rows):
         lines.append(f"{len(every) - len(rows)} excluded runs left out (reasons are in the CSV)")
     return "\n".join(lines)
+
+
+def attach_usage(run_id: str, task_path: Path, repo: Path, runs_dir: Path) -> dict[str, Any]:
+    """Import nested usage for a run sealed before its TASK.md had ``usage_import``.
+
+    The sealed directory is not touched: the result goes to a write-once sidecar next to it.
+    """
+
+    run_dir = runs_dir.expanduser().resolve() / run_id
+    if not (run_dir / "result.json").is_file():
+        raise ArenaError(f"no such run: {run_dir}")
+    sidecar = nested_sidecar(run_dir)
+    if sidecar.exists():
+        raise ArenaError(f"{sidecar} already exists; nested usage is attached once")
+    spec = parse_task(task_path)
+    nested = run_usage_import(spec, _validate_repo(repo), run_dir, ProcessRunner())
+    if nested is None:
+        raise ArenaError(f"{task_path}: no usage_import in the front matter")
+    if nested["error"]:
+        raise ArenaError(f"usage import failed: {nested['error']}")
+    nested["attached_at"] = datetime.now(UTC).isoformat()
+    sidecar.write_text(json.dumps(nested, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    sidecar.chmod(stat.S_IRUSR)
+    return nested
 
 
 def after_run(run_args: list[str]) -> None:
@@ -468,9 +579,10 @@ def after_run(run_args: list[str]) -> None:
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS)
     parser.add_argument("--excluded", type=Path, default=DEFAULT_EXCLUDED)
+    parser.add_argument("--pricing", type=Path, default=None)
     known, _ = parser.parse_known_args(run_args)
     try:
-        rows = write_csv(known.runs_dir, DEFAULT_CSV, known.excluded)
+        rows = write_csv(known.runs_dir, DEFAULT_CSV, known.excluded, known.pricing)
         print(f"ledger: {DEFAULT_CSV.name} updated ({rows} rows)")
     except (OSError, ArenaError) as exc:  # bookkeeping never changes the run's exit code
         print(f"ledger: CSV not updated: {exc}", file=sys.stderr)
@@ -481,22 +593,40 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runs-dir", type=Path, default=DEFAULT_RUNS)
     parser.add_argument("--csv", type=Path, default=DEFAULT_CSV)
     parser.add_argument("--excluded", type=Path, default=DEFAULT_EXCLUDED)
+    parser.add_argument(
+        "--pricing",
+        type=Path,
+        default=None,
+        help="price table (default: $AGENT_PRICING_FILE or ~/.agent-arena/pricing.toml)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     g = sub.add_parser("grade", help="check + log the latest manual session for TASK.md")
     g.add_argument("task", type=Path)
     g.add_argument("--repo", type=Path, required=True)
     g.add_argument("--since-hours", type=float, default=12)
     g.add_argument("--agent", choices=["claude", "codex"])
-    g.add_argument("--pricing", type=Path, default=DEFAULT_PRICING)
     sub.add_parser("csv", help="rebuild the CSV from run directories")
     sub.add_parser("summary", help="print per-task, per-arm medians")
+    a = sub.add_parser("attach-usage", help="import nested usage for an already sealed run")
+    a.add_argument("run_id")
+    a.add_argument("task", type=Path)
+    a.add_argument("--repo", type=Path, required=True)
     args = parser.parse_args(argv)
+    pricing = args.pricing or default_pricing_path()
     try:
+        if args.command == "attach-usage":
+            nested = attach_usage(args.run_id, args.task, args.repo, args.runs_dir)
+            print(f"attached {len(nested['calls'])} nested calls to {args.run_id}")
         if args.command == "grade":
             result = grade(
-                args.task, args.repo, args.runs_dir, args.pricing, args.since_hours, args.agent
+                args.task, args.repo, args.runs_dir, pricing, args.since_hours, args.agent
             )
-            row = _row(result)
+            row = _row(
+                result,
+                args.runs_dir.expanduser() / result["run_id"],
+                {},
+                load_price_table(pricing),
+            )
             print(
                 f"graded {row['task']} (prompt-only): verified={row['verified']} "
                 f"pass={row['checks_pass']} fail={row['checks_fail']} "
@@ -505,11 +635,11 @@ def main(argv: list[str] | None = None) -> int:
             )
             for warning in result["warnings"]:
                 print(f"warning: {warning}")
-        if args.command in {"grade", "csv"}:
-            n = write_csv(args.runs_dir, args.csv, args.excluded)
+        if args.command in {"grade", "csv", "attach-usage"}:
+            n = write_csv(args.runs_dir, args.csv, args.excluded, pricing)
             print(f"{args.csv}: {n} rows")
         if args.command == "summary":
-            print(summary(args.runs_dir, args.excluded))
+            print(summary(args.runs_dir, args.excluded, pricing))
     except ArenaError as exc:
         print(f"ledger: {exc}", file=sys.stderr)
         return 3

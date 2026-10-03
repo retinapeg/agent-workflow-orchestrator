@@ -1,0 +1,111 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>agent-arena</title>
+<style>
+:root{--bg:#f6f5f2;--card:#fff;--ink:#1d1d1f;--mute:#6b6b70;--line:#e3e1dc;--acc:#2f5bd3;--ok:#1f8a4c;--bad:#c2372f;--warn:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#141416;--card:#1d1d20;--ink:#ececee;--mute:#9a9aa2;--line:#2e2e33;--acc:#7b9cff;--ok:#4cc38a;--bad:#ff6b61;--warn:#e0a84a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 -apple-system,system-ui,Segoe UI,Roboto,sans-serif}
+header{padding:18px 24px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:baseline}
+h1{font-size:18px;margin:0}header span{color:var(--mute);font-size:13px}
+main{display:grid;grid-template-columns:minmax(320px,440px) 1fr;gap:20px;padding:20px 24px;max-width:1400px}
+main>div{min-width:0}.tablewrap{overflow-x:auto}
+@media (max-width:900px){main{grid-template-columns:1fr;padding:16px}header{padding:14px 16px;flex-wrap:wrap}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:20px}
+h2{font-size:14px;margin:0 0 12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute)}
+label{display:block;font-size:13px;color:var(--mute);margin:10px 0 4px}
+select,input,textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);font:inherit}
+textarea{min-height:90px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+.row{display:flex;gap:10px}.row>*{flex:1}
+button{margin-top:14px;padding:9px 16px;border:0;border-radius:8px;background:var(--acc);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+button.sec{background:transparent;color:var(--acc);border:1px solid var(--line)}button:disabled{opacity:.5;cursor:default}
+code,pre{font-family:ui-monospace,Menlo,monospace;font-size:12.5px}
+.cmd{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:10px;word-break:break-all;color:var(--mute)}
+pre.log{background:#0f0f12;color:#d8d8dc;border-radius:8px;padding:12px;max-height:440px;overflow:auto;white-space:pre;margin:0}
+.meta{font-size:13px;color:var(--mute)}.err{color:var(--bad);font-size:13px;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--mute);font-weight:500}.pill{padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600}
+.y{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}.n{background:color-mix(in srgb,var(--bad) 15%,transparent);color:var(--bad)}
+.r{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+details summary{cursor:pointer;color:var(--acc);font-size:14px}a{color:var(--acc)}
+.checks{font-size:13px;color:var(--mute);margin:6px 0 0;padding-left:18px}
+</style></head><body>
+<header><h1>agent-arena</h1><span>run a task → harness checks it → costs and results are logged</span></header>
+<main>
+<div>
+ <div class="card"><h2>Run</h2>
+  <label>Task</label><select id="task"></select>
+  <div id="taskinfo" class="meta"></div>
+  <label>Repo (the folder the agent works in)</label>
+  <input id="repo" list="repos" placeholder="~/Projects/my-repo"><datalist id="repos"></datalist>
+  <div class="row"><div><label>Agent</label><select id="agent"><option value="">(task default)</option><option value="claude">Claude</option><option value="codex">Codex</option></select></div>
+   <div><label>Model</label><select id="model"></select></div>
+   <div><label>Effort</label><select id="effort"></select></div></div>
+  <div class="cmd" id="cmd">command preview</div>
+  <div class="row"><button id="run">Run with harness</button>
+   <button class="sec" id="grade" title="Score a session you did by hand in Claude Code / Codex">Grade manual session</button></div>
+  <div class="err" id="err"></div><div class="err" id="warn" style="color:var(--warn)"></div>
+ </div>
+ <div class="card"><details><summary>New task</summary>
+  <label>Name</label><input id="n_name" placeholder="fix-login-bug">
+  <div class="row"><div><label>Agent</label><select id="n_agent"><option>claude</option><option>codex</option></select></div>
+   <div><label>Model</label><select id="n_model"></select></div></div>
+  <div class="row"><div><label>Max turns</label><input id="n_turns" type="number" value="30"></div>
+   <div><label>Timeout (min)</label><input id="n_timeout" type="number" value="30"></div></div>
+  <label>Allowed tools (Claude only, comma-separated)</label>
+  <input id="n_tools" value="Read, Glob, Grep, Edit, Write, Bash(python3 -m pytest:*)">
+  <label>Checks: one command per line (exit 0 = PASS)</label>
+  <textarea id="n_checks">python3 -m pytest -q</textarea>
+  <label>Instructions (what you want done, as you'd tell a colleague)</label>
+  <textarea id="n_instr"></textarea>
+  <button id="create">Create task</button><div class="err" id="n_err"></div>
+ </details></div>
+</div>
+<div>
+ <div class="card"><h2>Live</h2><div class="meta" id="jobmeta">Nothing running.</div>
+  <pre class="log" id="log" style="display:none"></pre>
+  <button class="sec" id="stop" style="display:none">Stop</button></div>
+ <div class="card"><h2>Recent runs</h2><div class="tablewrap"><table id="runs"></table></div></div>
+ <div class="card"><h2>Harness vs prompting</h2><pre id="ledger" class="meta" style="overflow-x:auto">loading…</pre></div>
+</div></main>
+<script>
+const $=id=>document.getElementById(id);let S={},job=null,timer=null;
+const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json','X-Arena':'1'},body:JSON.stringify(b)}).then(r=>r.json());
+const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function fillModels(sel,agent,pick){const opts=(S.models[agent]||[]);sel.innerHTML=(sel.id==='model'?'<option value="">(task default)</option>':'')+opts.map(m=>`<option ${m===pick?'selected':''}>${m}</option>`).join('')}
+function form(){return{task:$('task').value,repo:$('repo').value,agent:$('agent').value,model:$('model').value,effort:$('effort').value}}
+function curAgent(){const t=S.tasks.find(t=>t.name===$('task').value);return $('agent').value||(t&&t.agent)||'claude'}
+function info(keep){const t=S.tasks.find(t=>t.name===$('task').value);if(!t)return;
+ if(t.error){$('taskinfo').innerHTML=`<span class="err">${esc(t.error)}</span>`;return}
+ $('taskinfo').innerHTML=`${esc(t.agent)} · ${esc(t.model)}${t.effort?' · '+esc(t.effort):''} · ≤${t.max_turns} turns · ${Math.round(t.timeout_seconds/60)} min<br>${esc(t.summary)}<ul class="checks">${t.checks.map(c=>'<li>'+esc(c)+'</li>').join('')}</ul>`;
+ if(!keep)$('agent').value='';fillModels($('model'),curAgent(),keep?$('model').value:'');preview()}
+async function preview(){$('err').textContent='';if(!$('repo').value){$('cmd').textContent='pick a repo to see the command';return}
+ const r=await post('/api/preview',{action:'run',...form()});$('cmd').textContent=r.command?'$ '+r.command:'';if(r.error)$('err').textContent=r.error}
+async function load(){S=await (await fetch('/api/state')).json();
+ const cur=$('task').value;$('task').innerHTML=S.tasks.map(t=>`<option ${t.name===cur?'selected':''}>${t.name}</option>`).join('');
+ $('repos').innerHTML=S.recent_repos.map(r=>`<option value="${esc(r)}">`).join('');
+ if(!$('repo').value&&S.recent_repos[0])$('repo').value=S.recent_repos[0];
+ const ef=$('effort').value;$('effort').innerHTML=S.efforts.map(e=>`<option value="${e}" ${e===ef?'selected':''}>${e||'(task default)'}</option>`).join('');
+ fillModels($('n_model'),$('n_agent').value);info(true);renderRuns();
+ $('warn').textContent=S.pricing_found?'':'No price file at '+S.pricing_file+', so costs will show as null.';
+ const live=S.jobs.find(j=>j.running);if(live&&!job)watch(live.id);
+ fetch('/api/ledger').then(r=>r.json()).then(d=>$('ledger').textContent=d.summary)}
+function renderRuns(){$('runs').innerHTML='<tr><th>Run</th><th>Task</th><th>Result</th><th>Checks</th><th>Cost (API-equiv.)</th><th>Time</th></tr>'+
+ S.runs.map(r=>`<tr><td><a href="/api/report/${esc(r.run_id)}" target="_blank">${esc(r.run_id.slice(0,15))}</a></td><td>${esc(r.task)}${r.arm!=='harness'?' <span class="meta">('+esc(r.arm)+')</span>':''}</td>
+ <td><span class="pill ${r.verified?'y':'n'}">${r.verified?'verified':'not verified'}</span></td><td>${esc(r.checks)}</td><td>${esc(r.cost)}</td><td>${r.wall_s?Math.round(r.wall_s)+'s':''}</td></tr>`).join('')}
+async function start(action){$('err').textContent='';const r=await post('/api/run',{action,...form()});
+ if(r.error){$('err').textContent=r.error;return}watch(r.job)}
+function watch(id){job=id;$('log').style.display='block';$('stop').style.display='inline-block';clearInterval(timer);timer=setInterval(poll,1500);poll()}
+async function poll(){const j=await (await fetch('/api/job/'+job)).json();const lg=$('log'),atEnd=lg.scrollTop+lg.clientHeight>=lg.scrollHeight-20;
+ lg.textContent=j.log_tail;if(atEnd)lg.scrollTop=lg.scrollHeight;
+ $('jobmeta').innerHTML=j.running?`<span class="pill r">running</span> ${j.elapsed_s}s`:`<span class="pill ${j.exit_code===0?'y':'n'}">exit ${j.exit_code}</span> finished after ${j.elapsed_s}s`;
+ $('run').disabled=$('grade').disabled=j.running;if(!j.running){clearInterval(timer);$('stop').style.display='none';load()}}
+$('stop').onclick=()=>post('/api/stop/'+job,{});
+$('task').onchange=()=>info(false);['repo','model','effort'].forEach(i=>$(i).addEventListener('change',preview));
+$('agent').onchange=()=>{fillModels($('model'),curAgent(),'');if($('agent').value){const pref={claude:'claude-sonnet-5',codex:'gpt-6-sol'}[curAgent()];const ms=S.models[curAgent()]||[];$('model').value=ms.includes(pref)?pref:(ms[0]||'')}preview()};
+$('run').onclick=()=>start('run');$('grade').onclick=()=>start('grade');
+$('n_agent').onchange=()=>fillModels($('n_model'),$('n_agent').value);
+$('create').onclick=async()=>{$('n_err').textContent='';const r=await post('/api/task',{name:$('n_name').value,agent:$('n_agent').value,model:$('n_model').value,
+ max_turns:+$('n_turns').value,timeout_seconds:60*+$('n_timeout').value,allowed_tools:$('n_agent').value==='claude'?$('n_tools').value:'',
+ checks:$('n_checks').value.split('\n').map(c=>({command:c})),instructions:$('n_instr').value});
+ if(r.error){$('n_err').textContent=r.error;return}await load();$('task').value=r.created;info(false)};
+load();
+</script></body></html>

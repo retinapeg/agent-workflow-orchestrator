@@ -85,3 +85,58 @@
 - not verified: the task itself has not been run (Leo runs it as the first harness-vs-prompting
   pair); the Codex path of `run` mode; pricing; the prompt-only `grade` arm.
 - next: Leo runs codex-cost-null through the harness and by prompting, then `ledger grade`.
+
+## 2026-10-03 — complete cost accounting: derived, re-priceable, agent + nested
+- replaces the codex-cost-null plan: that task was not run and is left in place unused; the lab
+  summary bug is fixed directly (see the lab's STATE.md).
+- pricing: `~/.agent-arena/pricing.toml` (outside git, version 2026-10-03, 5 models, Leo's
+  verified figures). New `src/agent_arena/pricing.py` (identical copy in the lab) prices raw
+  tokens: 5m/1h Claude cache writes separately, OpenAI service-tier and long-context
+  multipliers as data in the model entry, unpriced = null with the reason, totals with coverage.
+- harness: default pricing path + `$AGENT_PRICING_FILE`; pricing version and sha256 recorded
+  with every cost; Codex `cache_write_input_tokens` read and billed; TASK.md keys `effort`,
+  `service_tier`, `ultracode`, `usage_import`; Codex quota delta when exposed; report shows
+  agent + nested = total. `tasks/codex_smoke_usage.py` wired into codex-smoke.md.
+- ledger: re-prices every run from transcript.jsonl on each rebuild; 10 new CSV columns
+  (`api_estimate_usd` replaced by agent/nested/total); summary flags partly priced runs and has
+  harness ÷ prompt-only ratios; `ledger attach-usage` writes a write-once sidecar for a sealed run.
+- verified offline: 177 tests pass, ruff clean, mypy --strict clean on run_mode, ledger, pricing.
+  Re-priced codex-smoke run …824939: agent $0.0490 + nested $0.2576 = $0.3066 (20/20 calls
+  priced). Cross-check: the API estimate equals the CLI-reported cost on all 9 post-fix Claude
+  runs and on the 6 nested Claude calls (gap 0.0%). Ledger: 3 runs, total $0.3851 (26/26),
+  cost per verified outcome $0.1925.
+- not verified: `effort` passed live to either CLI; a `usage_import` during a live run (only
+  attached after the fact); the Codex path of `run` mode; Codex quota events (none seen in
+  `codex exec --json` output); service-tier and long-context rates against a real bill; whether
+  Codex `input_tokens` includes cache writes (all observed values are 0); the prompt-only arm.
+- next: run one task both ways (harness and prompting) to get the first ratio row.
+
+## 2026-10-03 — review fixes before commit
+- long context: the >272K rates apply only to a record marked `single_request` (a Claude
+  message id). Codex turn totals and imported nested records are aggregates: priced at base
+  rates, marked `long_context = "unknown"` with a coverage note, never surcharged by guess.
+- failed `usage_import` is unknown spend: it counts as 1 unpriced call, so coverage is below
+  100%, the run is flagged in `ledger summary`, and cost per verified outcome is null.
+- `tasks/codex_smoke_usage.py` takes the harness run dir and selects the one `*-codex-smoke`
+  lab run whose `started_at` lies inside that run's agent_started..agent_finished window;
+  zero or several matches is an error. Checked on run …824939 (selects 20261003T211124Z-…)
+  and on the first, failed run …49dac0 (no match, exit 2).
+- deleted tasks/codex-cost-null.md and tasks/codex_cost_null_checks.py (superseded).
+- 179 tests pass (2 new, 1 extended for the failed import), ruff clean, mypy --strict clean on run_mode, ledger, pricing. No
+  re-priced figure changed.
+- known, pre-existing, not fixed: tests/test_adaptive.py::
+  test_background_start_returns_while_controller_finishes is flaky (reported by Leo's review;
+  it passed in every full run of this session).
+
+## 2026-10-03 — control panel (GUI) added (Cowork session)
+- new: src/agent_arena/gui.py + gui.html (stdlib only), `agent-arena gui`, double-click launcher
+  `Agent Arena.command` (creates .venv on first run). Run / Grade / New task / live log /
+  recent runs / ledger summary. Panel only launches the CLI command it displays.
+- run mode gained `--model` and `--effort` overrides (per run, TASK.md unchanged).
+- verified: 5 tests in tests/test_gui.py (validation, task writer, jobs, HTTP host/CSRF guards);
+  end-to-end in a browser with a fake claude CLI (run → checks 2/2 → report → CSV row).
+- not verified: a real claude/codex run launched from the panel (do one live-hello from it).
+- next: open the panel, run live-hello, then live-hello-codex.
+- 2026-10-03 later: panel gained an Agent selector (Claude/Codex per run; run mode `--agent`
+  override, default Claude allowlist when a Codex task is run with Claude). Verified in a browser
+  with fake claude/codex CLIs: Codex run priced $0.0058 (1/1 calls) and the table/ledger updated.
