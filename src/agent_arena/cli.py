@@ -335,6 +335,15 @@ def _open_path(path: Path, print_only: bool) -> None:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    raw = list(sys.argv[1:] if argv is None else argv)
+    if raw[:1] == ["run"]:
+        # `run` mode is self-contained (run_mode.py); existing modes are untouched.
+        from .ledger import after_run
+        from .run_mode import main as run_main
+
+        code = run_main(raw[1:])
+        after_run(raw[1:])
+        return code
     args = _parser().parse_args(argv)
     try:
         if args.command == "hack":

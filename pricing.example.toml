@@ -1,0 +1,27 @@
+# Copy to pricing.toml and fill in from the providers' official pricing pages.
+# The harness never guesses: a model that is missing here, or an entry without
+# `source` and `retrieved`, makes the API-equivalent estimate null with a warning.
+#
+# Units: USD per million tokens.
+# Claude: input_tokens exclude cache reads/writes, so all four prices are used.
+# Codex/OpenAI: input_tokens include cached tokens; the harness bills
+#   (input - cached) at input price and cached at cache_read price. No cache-write charge.
+# reasoning: set `reasoning = "included_in_output"` when reasoning tokens are already
+#   counted inside output tokens, or give `reasoning_per_mtok`.
+
+# [models."claude-sonnet-5"]
+# aliases = []                     # exact other names the CLI reports for this model
+# input_per_mtok = 
+# cache_read_per_mtok = 
+# cache_write_per_mtok =           # 5-minute cache write price
+# output_per_mtok = 
+# source = "https://..."
+# retrieved = "YYYY-MM-DD"
+
+# [models."gpt-6-sol"]
+# input_per_mtok = 
+# cache_read_per_mtok = 
+# output_per_mtok = 
+# reasoning = "included_in_output"
+# source = "https://..."
+# retrieved = "YYYY-MM-DD"

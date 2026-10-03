@@ -1,0 +1,30 @@
+# Runs the ledger keeps in the CSV (with the reason in the `excluded` column) but leaves out
+# of `ledger summary`. Run directories are write-once, so a bad run is excluded, not edited.
+
+[[excluded]]
+run_id = "20261003T203915Z-live-hello-21107c"
+reason = "output tokens under-reported by the pre-fix parser"
+
+[[excluded]]
+run_id = "20261003T204144Z-turncap-b93335"
+reason = "harness probe (turn cap), not comparison data"
+
+[[excluded]]
+run_id = "20261003T204239Z-permprobe-caea9b"
+reason = "harness probe (permissions), not comparison data"
+
+[[excluded]]
+run_id = "20261003T204302Z-probe2-12c420"
+reason = "harness probe (permissions), not comparison data"
+
+[[excluded]]
+run_id = "20261003T204309Z-probe3-d6bd59"
+reason = "harness probe (permissions), not comparison data"
+
+[[excluded]]
+run_id = "20261003T204315Z-probe4-eaf6d6"
+reason = "harness probe (permissions), not comparison data"
+
+[[excluded]]
+run_id = "20261003T204335Z-probe5-53d913"
+reason = "harness probe (permissions), not comparison data"

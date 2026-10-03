@@ -103,6 +103,15 @@ The provider layer is independent of orchestration. Codex CLI, Claude Code CLI, 
 API, Anthropic Messages API, a generic CLI seam, and a deterministic offline provider all implement
 the same adapter contract.
 
+### `run`: one headless agent, checked and costed
+
+`python -m agent_arena run TASK.md --repo PATH` runs a single Claude Code or Codex CLI agent
+under a tool allowlist, a turn cap and a timeout. The harness then runs the TASK.md checks
+itself (PASS/FAIL/UNKNOWN), records per-call token usage straight from the CLI output (missing
+fields are `null`, never 0) and prices it from your own `pricing.toml`. It also appends a resume
+entry to `PATH/STATE.md`, so the next fresh session starts from state, not chat history. See
+[docs/RUN_MODE.md](docs/RUN_MODE.md) and the dogfood task in [tasks/codex-smoke.md](tasks/codex-smoke.md).
+
 ## Quick start with real agents
 
 Requirements: Python 3.11+, Git, and at least two configured providers. For the recommended local
