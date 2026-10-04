@@ -1,0 +1,13 @@
+name = "ylookup-overnight"
+description = "Codex (gpt-6-sol, high effort) overnight build-out of ylookup: audit -> 5 backlog items -> handoff; each step benchmarked and journaled."
+repo = "~/Projects/YLOOKUP"
+stop_on_failure = false
+tasks = [
+  "overnight/ylookup/01-audit",
+  "overnight/ylookup/02-build-1",
+  "overnight/ylookup/03-build-2",
+  "overnight/ylookup/04-build-3",
+  "overnight/ylookup/05-build-4",
+  "overnight/ylookup/06-build-5",
+  "overnight/ylookup/07-wrap",
+]

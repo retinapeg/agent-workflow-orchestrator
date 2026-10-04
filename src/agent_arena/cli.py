@@ -340,6 +340,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         from .gui import main as gui_main
 
         return gui_main(raw[1:])
+    if raw[:1] == ["queue"]:
+        from .batch import main as queue_main
+
+        return queue_main(raw[1:])
     if raw[:1] == ["run"]:
         # `run` mode is self-contained (run_mode.py); existing modes are untouched.
         from .ledger import after_run

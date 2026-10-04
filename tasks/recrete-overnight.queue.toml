@@ -1,0 +1,13 @@
+name = "recrete-overnight"
+description = "Codex (gpt-6-sol, high effort) overnight build-out of recrete: audit -> 5 backlog items -> handoff; each step benchmarked and journaled."
+repo = "~/Projects/recrete-site"
+stop_on_failure = true
+tasks = [
+  "overnight/recrete/01-audit",
+  "overnight/recrete/02-build-1",
+  "overnight/recrete/03-build-2",
+  "overnight/recrete/04-build-3",
+  "overnight/recrete/05-build-4",
+  "overnight/recrete/06-build-5",
+  "overnight/recrete/07-wrap",
+]

@@ -166,3 +166,56 @@ def test_second_launch_reuses_running_panel_and_skips_busy_ports(capsys) -> None
         srv.server_close()
     finally:
         blocker.close()
+
+
+def test_window_command_uses_app_mode_or_falls_back(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    url = "http://127.0.0.1:8787/"
+    monkeypatch.setattr(
+        gui.shutil, "which", lambda exe: "/usr/bin/chromium" if exe == "chromium" else None
+    )
+    assert gui.window_command(url, "linux")[:2] == ["/usr/bin/chromium", f"--app={url}"]
+    monkeypatch.setattr(gui.shutil, "which", lambda exe: None)
+    assert gui.window_command(url, "linux") is None
+    assert gui.window_command(url, "win32") is None
+
+
+def test_queue_board_parses_live_and_finished_logs() -> None:
+    log = (
+        "QUEUE demo: 3 steps in /tmp/r\n\n"
+        + "=" * 72
+        + "\nSTEP 1/3: 01-audit\n"
+        + "=" * 72
+        + "\nRUN x\n  exit=0 timed_out=False wall=143.5s turns=1/200\n"
+        "  => 4 PASS, 0 FAIL, 0 UNKNOWN; verified=True\n  total:   $0.2123 (1/1 calls priced)\n"
+        + "=" * 72
+        + "\nSTEP 2/3: 02-build-1\n"
+        + "=" * 72
+        + "\n"
+    )
+    board = gui.parse_queue_log(log)
+    assert board is not None and board["queue"] == "demo" and not board["finished"]
+    assert [s["status"] for s in board["steps"]] == ["verified", "running", "queued"]
+    assert board["steps"][0]["cost"] == "$0.2123" and board["steps"][0]["checks"] == "4/4"
+    done = gui.parse_queue_log(log.replace("STEP 2/3", "STEP 2/3") + "QUEUE SUMMARY: demo\n")
+    assert done is not None and done["steps"][1]["status"] == "stopped"
+    assert gui.parse_queue_log("no queue here") is None
+
+
+def test_speed_tier_reaches_codex(tmp_path: Path) -> None:
+    from agent_arena.run_mode import codex_argv
+
+    tasks = _tasks(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    argv = gui.build_command(
+        "run", "hello", str(repo), "gpt-6-astra", "", tasks, agent="codex", tier="fast"
+    )
+    assert argv[argv.index("--service-tier") + 1] == "fast"
+    with pytest.raises(ArenaError):
+        gui.build_command("run", "hello", str(repo), "", "", tasks, tier="ludicrous")
+    spec = parse_task(tasks / "hello.md")
+    from dataclasses import replace
+
+    fast = codex_argv("codex", replace(spec, agent="codex", service_tier="fast"), repo)
+    assert 'service_tier="fast"' in fast
+    assert 'service_tier="fast"' not in codex_argv("codex", replace(spec, agent="codex"), repo)

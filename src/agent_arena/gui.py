@@ -19,6 +19,7 @@ import os
 import re
 import secrets
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -72,6 +73,39 @@ def list_tasks(tasks_dir: Path = TASKS_DIR) -> list[dict[str, Any]]:
                 "timeout_seconds": spec.timeout_seconds,
                 "checks": [c.name for c in spec.checks],
                 "summary": first[:160],
+                "repo": str(spec.repo) if spec.repo else None,
+                "kind": "task",
+            }
+        )
+    return out
+
+
+def list_queues(tasks_dir: Path = TASKS_DIR) -> list[dict[str, Any]]:
+    from .batch import load_queue
+
+    out: list[dict[str, Any]] = []
+    for path in sorted(tasks_dir.glob("*.queue.toml")):
+        name = "queue:" + path.name.removesuffix(".queue.toml")
+        try:
+            queue = load_queue(path)
+        except ArenaError as exc:
+            out.append({"name": name, "kind": "queue", "error": str(exc)})
+            continue
+        steps = []
+        for task in queue.tasks:
+            try:
+                spec = parse_task(task)
+                steps.append(f"{task.stem} ({spec.agent} · {spec.model})")
+            except ArenaError as exc:
+                steps.append(f"{task.stem}: INVALID ({exc})")
+        out.append(
+            {
+                "name": name,
+                "kind": "queue",
+                "summary": queue.description,
+                "steps": steps,
+                "repo": str(queue.repo) if queue.repo else None,
+                "stop_on_failure": queue.stop_on_failure,
             }
         )
     return out
@@ -113,6 +147,70 @@ def recent_runs(runs_dir: Path = RUNS_DIR, limit: int = 20) -> list[dict[str, An
             }
         )
     return rows
+
+
+_STEP = re.compile(r"^STEP (\d+)/(\d+): (\S+)", re.M)
+_QUEUE = re.compile(r"^QUEUE (\S+): (\d+) steps(?: in (.+))?$", re.M)
+
+
+def parse_queue_log(text: str) -> dict[str, Any] | None:
+    """Turn a queue's console log into a board: one card per step with its live status."""
+
+    head = _QUEUE.search(text)
+    if not head:
+        return None
+    total = int(head.group(2))
+    starts = list(_STEP.finditer(text))
+    finished = "QUEUE SUMMARY" in text
+    steps: list[dict[str, Any]] = []
+    for i, match in enumerate(starts):
+        chunk = text[match.end() : starts[i + 1].start() if i + 1 < len(starts) else len(text)]
+        verdict = re.search(r"=> (\d+) PASS, (\d+) FAIL, (\d+) UNKNOWN; verified=(\w+)", chunk)
+        cost = re.search(r"^  total:\s+(\S+)", chunk, re.M)
+        wall = re.search(r"wall=([\d.]+)s", chunk)
+        if verdict:
+            status = "verified" if verdict.group(4) == "True" else "failed"
+        elif "agent_arena run:" in chunk and "error" in chunk.lower():
+            status = "failed"
+        else:
+            status = "stopped" if finished else "running"
+        steps.append(
+            {
+                "name": match.group(3),
+                "status": status,
+                "checks": f"{verdict.group(1)}/{sum(int(verdict.group(k)) for k in (1, 2, 3))}"
+                if verdict
+                else None,
+                "cost": cost.group(1) if cost else None,
+                "wall_s": float(wall.group(1)) if wall else None,
+            }
+        )
+    for n in range(len(steps), total):
+        steps.append(
+            {
+                "name": f"step {n + 1}",
+                "status": "not run" if finished else "queued",
+                "checks": None,
+                "cost": None,
+                "wall_s": None,
+            }
+        )
+    return {"queue": head.group(1), "repo": head.group(3), "finished": finished, "steps": steps}
+
+
+def queue_board(home: Path = HOME) -> list[dict[str, Any]]:
+    boards = []
+    logs = list(home.glob("overnight-*.log")) + list((home / "gui-jobs").glob("*.log"))
+    for log in sorted(logs, key=lambda p: p.stat().st_mtime, reverse=True)[:8]:
+        try:
+            board = parse_queue_log(log.read_text("utf-8", errors="replace"))
+        except OSError:
+            continue
+        if board:
+            board["log"] = log.name
+            board["updated_s_ago"] = round(time.time() - log.stat().st_mtime)
+            boards.append(board)
+    return boards
 
 
 def ledger_summary() -> str:
@@ -169,12 +267,34 @@ def build_command(
     effort: str = "",
     tasks_dir: Path = TASKS_DIR,
     agent: str = "",
+    tier: str = "",
 ) -> list[str]:
     """The exact CLI command for an action. The panel only ever runs what this returns."""
 
-    task_path, repo_path = _task(task, tasks_dir), _repo(repo)
-    if action == "run":
+    if task.startswith("queue:"):
+        if action != "run":
+            raise ArenaError("grading works on single tasks, not queues")
+        qname = task.removeprefix("queue:")
+        if not _NAME.match(qname) or not (tasks_dir / f"{qname}.queue.toml").is_file():
+            raise ArenaError(f"queue not found: {qname}")
+        from .batch import load_queue
+
+        queue_path = tasks_dir / f"{qname}.queue.toml"
+        pinned = load_queue(queue_path).repo
+        argv = [sys.executable, "-m", "agent_arena", "queue", str(queue_path)]
+    else:
+        task_path = _task(task, tasks_dir)
+        pinned = parse_task(task_path).repo
         argv = [sys.executable, "-m", "agent_arena", "run", str(task_path)]
+    if repo.strip():
+        repo_path = _repo(repo)
+        if pinned is not None and pinned.resolve() != repo_path:
+            raise ArenaError(f"this task is pinned to {pinned}; clear the repo box or use that")
+    elif pinned is not None:
+        repo_path = _repo(str(pinned))
+    else:
+        raise ArenaError("pick a repo: the folder the agent will edit")
+    if action == "run":
         argv += ["--repo", str(repo_path)]
         if agent:
             if agent not in ("claude", "codex"):
@@ -184,6 +304,10 @@ def build_command(
             if not re.match(r"^[A-Za-z0-9._-]{1,64}$", model):
                 raise ArenaError(f"invalid model name: {model!r}")
             argv += ["--model", model]
+        if tier:
+            if tier not in ("standard", "fast", "ultrafast"):
+                raise ArenaError(f"invalid speed tier: {tier!r}")
+            argv += ["--service-tier", tier]
         if effort:
             if effort not in EFFORTS:
                 raise ArenaError(f"invalid effort: {effort!r}")
@@ -195,7 +319,7 @@ def build_command(
             "-m",
             "agent_arena.ledger",
             "grade",
-            str(task_path),
+            argv[4],
             "--repo",
             str(repo_path),
         ]
@@ -368,7 +492,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/api/state":
             return self._json(
                 {
-                    "tasks": list_tasks(),
+                    "tasks": list_tasks() + list_queues(),
                     "models": model_choices(),
                     "efforts": EFFORTS,
                     "recent_repos": load_state().get("recent_repos", []),
@@ -378,6 +502,8 @@ class Handler(BaseHTTPRequestHandler):
                     "pricing_found": default_pricing_path().is_file(),
                 }
             )
+        if self.path == "/api/board":
+            return self._json({"queues": queue_board()})
         if self.path == "/api/ledger":
             return self._json({"summary": ledger_summary()})
         match = re.fullmatch(r"/api/job/([\w-]+)", self.path)
@@ -404,6 +530,7 @@ class Handler(BaseHTTPRequestHandler):
                     body.get("model", ""),
                     body.get("effort", ""),
                     agent=body.get("agent", ""),
+                    tier=body.get("tier", ""),
                 )
                 command = display(argv)
                 if self.path == "/api/preview":
@@ -440,10 +567,43 @@ def _is_our_panel(port: int) -> bool:
         return False
 
 
+_MAC_APP_BROWSERS = ("Google Chrome", "Microsoft Edge", "Brave Browser", "Chromium", "Arc")
+_LINUX_APP_BROWSERS = ("google-chrome", "chromium", "chromium-browser", "microsoft-edge")
+
+
+def window_command(url: str, platform: str = sys.platform) -> list[str] | None:
+    """Command that opens the panel as its own desktop window (no tabs or address bar), using a
+    Chromium browser's app mode. None means fall back to a normal browser tab."""
+
+    if platform == "darwin":
+        for app in _MAC_APP_BROWSERS:
+            if Path(f"/Applications/{app}.app").exists():
+                return ["open", "-na", app, "--args", f"--app={url}", "--window-size=1280,900"]
+        return None
+    if platform.startswith("linux"):
+        for exe in _LINUX_APP_BROWSERS:
+            found = shutil.which(exe)
+            if found:
+                return [found, f"--app={url}", "--window-size=1280,900"]
+    return None
+
+
+def open_panel(url: str, browser_tab: bool = False) -> None:
+    command = None if browser_tab else window_command(url)
+    if command:
+        with contextlib.suppress(OSError):
+            subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+    webbrowser.open(url)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="agent-arena gui")
     parser.add_argument("--port", type=int, default=8787)
-    parser.add_argument("--no-browser", action="store_true")
+    parser.add_argument("--no-browser", action="store_true", help="don't open anything")
+    parser.add_argument(
+        "--tab", action="store_true", help="open in a normal browser tab instead of a window"
+    )
     args = parser.parse_args(argv)
     for port in range(args.port, args.port + 20):
         if _is_our_panel(port):
@@ -451,7 +611,7 @@ def main(argv: list[str] | None = None) -> int:
             url = f"http://127.0.0.1:{port}/"
             print(f"agent-arena control panel is already running: {url}")
             if not args.no_browser:
-                webbrowser.open(url)
+                open_panel(url, args.tab)
             return 0
         try:
             server = make_server(port)
@@ -464,7 +624,7 @@ def main(argv: list[str] | None = None) -> int:
     url = f"http://127.0.0.1:{server.server_address[1]}/"
     print(f"agent-arena control panel: {url}  (Ctrl+C to quit; running jobs keep going)")
     if not args.no_browser:
-        threading.Timer(0.5, webbrowser.open, args=(url,)).start()
+        threading.Timer(0.5, open_panel, args=(url, args.tab)).start()
     with contextlib.suppress(KeyboardInterrupt):
         server.serve_forever()
     return 0

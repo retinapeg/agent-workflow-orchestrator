@@ -140,3 +140,33 @@
 - 2026-10-03 later: panel gained an Agent selector (Claude/Codex per run; run mode `--agent`
   override, default Claude allowlist when a Codex task is run with Claude). Verified in a browser
   with fake claude/codex CLIs: Codex run priced $0.0058 (1/1 calls) and the table/ledger updated.
+
+## 2026-10-04 — queues, pinned repos, explicit effort (Cowork session)
+- queues: `agent-arena queue tasks/X.queue.toml` (src/agent_arena/batch.py) runs small tasks in
+  order; each step is its own benchmarked run/ledger row; stops at the first unverified step
+  (or --keep-going); `touch ~/.agent-arena/STOP` ends it between steps. Shown in the panel as
+  "▶ name (queue)" with its steps.
+- TASK.md `repo = "..."` pins the folder a task may edit; any other --repo is refused. Pinned:
+  fix-median → arena-test, v2-full/codex-smoke → agent_reliability_lab, physics-v3 steps →
+  agentic-physics-bench.
+- physics-v3-build.md replaced by tasks/physics-v3.queue.toml + tasks/physics-v3/01..06 (Codex,
+  gpt-6-sol, effort medium; each step: frozen V1/V2 unchanged, V1/V2 tests pass, no scored run,
+  plus its own V3 test module).
+- effort always passed explicitly (defaults: Claude high, Codex medium) and recorded with its
+  source. 193 tests pass.
+- first live comparison (fix-median): Claude verified 7.1s $0.0573; Codex verified ~30s $0.0562.
+
+## 2026-10-04 — unattended mode (Cowork session)
+- TASK.md keys: network, full_access, subagents. full_access: codex --sandbox danger-full-access
+  (+ --enable multi_agent with subagents), claude --permission-mode bypassPermissions. Reported
+  as "access=FULL network=on subagents=on" in every report; enforcement text says guards are
+  only the pinned repo, rules and checks.
+- overnight queues (dronewatch, ylookup, recrete; 7 steps each) now run full access + internet +
+  subagents and must keep docs/DECISIONS.md (ADRs) and docs/ERROR_LOG.md; checks enforce both.
+- smoke test: tasks/live-hello-codex-full.md (writes hello.txt and curl status to net.txt).
+- build journal: every queue writes ~/.agent-arena/journals/<queue>-<timestamp>.md — a timeline
+  with one entry per step (start/finish, verdict, each check, warnings/failure points, the
+  agent's own summary, files changed, path to the full run record). Agents also keep
+  docs/BUILD_LOG.md, DECISIONS.md and ERROR_LOG.md in the repo (checked every step).
+- dronewatch/ylookup overnight goals rewritten (Viso integration ready-but-unconnected + clean
+  repo; YLOOKUP portable + bounded agentic loop); both queues keep going past failed steps.

@@ -76,6 +76,10 @@ _ALWAYS_DENIED = (
     "Read(**/.env.*)",
     "Read(~/.aws/**)",
 )
+# Effort is always passed explicitly so every run records the level it actually ran at. When
+# neither TASK.md nor the panel sets one, these are used: Claude's documented default, and the
+# level the lab experiments pin for Codex.
+DEFAULT_EFFORT = {"claude": "high", "codex": "medium"}
 DEFAULT_CLAUDE_TOOLS = (
     "Read",
     "Glob",
@@ -100,6 +104,10 @@ _TASK_KEYS = {
     "service_tier",
     "ultracode",
     "usage_import",
+    "repo",
+    "network",
+    "full_access",
+    "subagents",
 }
 _USAGE_IMPORT_KEYS = {"argv", "timeout_seconds"}
 _CHECK_KEYS = {"name", "argv", "timeout_seconds"}
@@ -142,10 +150,15 @@ class TaskSpec:
     state_entries_in_prompt: int = 3
     context_warn_tokens: int | None = None
     effort: str | None = None  # passed to the CLI; does not change rates
+    effort_source: str = "task"  # task | override | harness default
     service_tier: str = "standard"  # declared; used for pricing when a call names none
     ultracode: bool = False  # metadata only
+    network: bool = False  # agent's own commands may use the internet
+    full_access: bool = False  # no sandbox, no permission prompts (unattended runs)
+    subagents: bool = False  # agent may spawn its own sub-agents
     usage_import: tuple[str, ...] | None = None  # argv that prints nested usage as JSON
     usage_import_timeout: int = 120
+    repo: Path | None = None  # if set, the task refuses to run against any other folder
 
 
 # --------------------------------------------------------------------------- TASK.md
@@ -218,6 +231,12 @@ def parse_task(path: Path) -> TaskSpec:
     if not isinstance(tier, str) or not tier.strip():
         raise ArenaError(f"{path}: service_tier must be a non-empty string")
     ultracode = meta.get("ultracode", False)
+    flags = {}
+    for key in ("network", "full_access", "subagents"):
+        value = meta.get(key, False)
+        if not isinstance(value, bool):
+            raise ArenaError(f"{path}: {key} must be true or false")
+        flags[key] = value
     if not isinstance(ultracode, bool):
         raise ArenaError(f"{path}: ultracode must be true or false")
     importer = meta.get("usage_import")
@@ -254,9 +273,40 @@ def parse_task(path: Path) -> TaskSpec:
         effort=None if effort is None else effort.strip(),
         service_tier=tier.strip(),
         ultracode=ultracode,
+        network=flags["network"],
+        full_access=flags["full_access"],
+        subagents=flags["subagents"],
         usage_import=import_argv,
         usage_import_timeout=import_timeout,
+        repo=_pinned_repo(meta.get("repo"), path),
     )
+
+
+def _pinned_repo(value: Any, path: Path) -> Path | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not value.strip():
+        raise ArenaError(f"{path}: repo must be a folder path")
+    return Path(value.strip()).expanduser()
+
+
+def resolve_repo(spec: TaskSpec, given: Path | None) -> Path:
+    """The folder the agent will edit: the pinned TASK.md repo, or --repo. A mismatch is refused,
+    so an overnight task can never be pointed at the wrong project by accident."""
+
+    if spec.repo is None and given is None:
+        raise ArenaError(f"{spec.path.name}: no repo given and none pinned in the task")
+    if (
+        spec.repo is not None
+        and given is not None
+        and spec.repo.resolve() != given.expanduser().resolve()
+    ):
+        raise ArenaError(
+            f"{spec.path.name} is pinned to {spec.repo}; refusing to run it in {given}"
+        )
+    chosen = given if given is not None else spec.repo
+    assert chosen is not None
+    return chosen.expanduser()
 
 
 def _positive_int(value: Any, label: str, path: Path) -> int:
@@ -328,15 +378,16 @@ def claude_argv(executable: str, spec: TaskSpec) -> list[str]:
         "--max-turns",
         str(spec.max_turns),
         "--permission-mode",
-        "dontAsk",
+        "bypassPermissions" if spec.full_access else "dontAsk",
         "--no-session-persistence",
         "--strict-mcp-config",
         "--mcp-config",
         '{"mcpServers":{}}',
-        "--tools",
-        ",".join(base_tools),
-        "--allowedTools",
-        *spec.allowed_tools,
+        *(
+            []
+            if spec.full_access
+            else ["--tools", ",".join(base_tools), "--allowedTools", *spec.allowed_tools]
+        ),
         "--disallowedTools",
         *_ALWAYS_DENIED,
     ]
@@ -349,7 +400,19 @@ def codex_argv(executable: str, spec: TaskSpec, repo: Path) -> list[str]:
         "--cd",
         str(repo),
         "--sandbox",
-        "workspace-write",
+        "danger-full-access" if spec.full_access else "workspace-write",
+        *(
+            ["-c", "sandbox_workspace_write.network_access=true"]
+            if spec.network and not spec.full_access
+            else []
+        ),
+        *(["--enable", "multi_agent"] if spec.subagents else []),
+        # Fast/ultrafast are paid tiers (2x/6x); pricing applies the same declared tier.
+        *(
+            ["-c", f'service_tier="{spec.service_tier}"']
+            if spec.service_tier and spec.service_tier != "standard"
+            else []
+        ),
         "-c",
         'approval_policy="never"',
         "--ignore-user-config",
@@ -363,6 +426,17 @@ def codex_argv(executable: str, spec: TaskSpec, repo: Path) -> list[str]:
 
 
 def enforcement(spec: TaskSpec) -> dict[str, str]:
+    if spec.full_access:
+        return {
+            "tools": "FULL ACCESS: no sandbox and no permission prompts; guarded only by the "
+            "pinned repo, the task's rules and the harness checks",
+            "network": "on",
+            "subagents": "allowed" if spec.subagents else "off",
+            "turns": f"enforced: --max-turns {spec.max_turns}"
+            if spec.agent == "claude"
+            else "NOT enforceable: codex exec has no turn cap; timeout is the bound",
+            "timeout": f"enforced by harness: {spec.timeout_seconds}s, process group killed",
+        }
     if spec.agent == "claude":
         return {
             "tools": "enforced: --tools/--allowedTools with permission-mode dontAsk",
@@ -939,8 +1013,12 @@ def render_report(result: dict[str, Any]) -> str:
         f"reported={','.join(inv['models_reported']) or 'null'}",
         f"  exit={_fmt(inv['exit_code'])} timed_out={inv['timed_out']} "
         f"wall={inv['wall_time_s']:.1f}s turns={_fmt(inv['turns'])}/{inv['max_turns']}",
-        f"  effort={_fmt(meta['effort'])} service_tier={meta['service_tier']} "
+        f"  effort={_fmt(meta['effort'])} ({meta.get('effort_source', 'task')}) "
+        f"service_tier={meta['service_tier']} "
         f"ultracode={'on' if meta['ultracode'] else 'off'} "
+        f"access={'FULL' if meta.get('full_access') else 'sandboxed'} "
+        f"network={'on' if meta.get('network') else 'off'} "
+        f"subagents={'on' if meta.get('subagents') else 'off'} "
         f"quota_used_pct_delta={_fmt(meta['quota']['used_pct_delta'])}",
         "",
         "CHECKS",
@@ -1058,6 +1136,8 @@ def execute(
     excluded_path: Path | None = None,
 ) -> dict[str, Any]:
     runner = runner or ProcessRunner()
+    if not spec.effort:
+        spec = replace(spec, effort=DEFAULT_EFFORT[spec.agent], effort_source="harness default")
     exclusions = load_exclusions(excluded_path)  # a bad file stops the run before it costs
     repo = _validate_repo(repo)
     runs_dir = runs_dir.expanduser().resolve()
@@ -1169,11 +1249,15 @@ def execute(
         # effort, ultracode and Codex "ultra" never change rates; they are recorded only
         "metadata": {
             "effort": spec.effort,
+            "effort_source": spec.effort_source,
             "service_tier": spec.service_tier,
             "service_tiers_reported": sorted(
                 {c["service_tier"] for c in calls if c.get("service_tier")}
             ),
             "ultracode": spec.ultracode,
+            "network": spec.network or spec.full_access,
+            "full_access": spec.full_access,
+            "subagents": spec.subagents,
             "quota": summary["quota"],
         },
         "checks": checks,
@@ -1219,7 +1303,9 @@ def main(argv: list[str]) -> int:
         description="Run one headless coding agent on TASK.md, check it, cost it.",
     )
     parser.add_argument("task", type=Path)
-    parser.add_argument("--repo", type=Path, required=True)
+    parser.add_argument(
+        "--repo", type=Path, help="folder the agent edits (optional if the task pins one)"
+    )
     parser.add_argument(
         "--runs-dir",
         type=Path,
@@ -1244,6 +1330,11 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--model", help="override the TASK.md model for this run only")
     parser.add_argument("--effort", help="override the TASK.md effort for this run only")
+    parser.add_argument(
+        "--service-tier",
+        choices=["standard", "fast", "ultrafast"],
+        help="Codex speed tier for this run (fast = 2x, ultrafast = 6x price; recorded and priced)",
+    )
     args = parser.parse_args(argv)
     try:
         spec = parse_task(args.task)
@@ -1264,11 +1355,13 @@ def main(argv: list[str]) -> int:
                 )
         if args.model:
             spec = replace(spec, model=args.model.strip())
+        if args.service_tier:
+            spec = replace(spec, service_tier=args.service_tier)
         if args.effort:
-            spec = replace(spec, effort=args.effort.strip())
+            spec = replace(spec, effort=args.effort.strip(), effort_source="override")
         result = execute(
             spec,
-            args.repo,
+            resolve_repo(spec, args.repo),
             args.runs_dir,
             args.pricing,
             args.executable,

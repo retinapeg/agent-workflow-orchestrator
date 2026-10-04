@@ -1,0 +1,12 @@
+name = "physics-v3"
+description = "Overnight Codex build of Agentic Physics Bench V3 (forbidden tool), offline, in 6 benchmarked steps."
+repo = "~/agent-reliability-workspace/agentic-physics-bench"
+stop_on_failure = true
+tasks = [
+  "physics-v3/01-prereg",
+  "physics-v3/02-tasks",
+  "physics-v3/03-grading",
+  "physics-v3/04-sandbox",
+  "physics-v3/05-runner",
+  "physics-v3/06-dryrun-report",
+]

@@ -248,10 +248,14 @@ def test_end_to_end_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> N
     stamp = result["cost"]["pricing"]
     assert stamp["version"] == "test-1" and len(stamp["sha256"]) == 64
     assert result["metadata"] == {
-        "effort": None,
+        "effort": "high",  # unset in TASK.md -> Claude's documented default, passed explicitly
+        "effort_source": "harness default",
         "service_tier": "standard",
         "service_tiers_reported": [],
         "ultracode": False,
+        "network": False,
+        "full_access": False,
+        "subagents": False,
         "quota": {"used_pct_delta": None, "window_minutes": None},
     }
     assert result["usage"]["peak_context_tokens"] == 1550
@@ -698,3 +702,45 @@ def test_agent_override_switches_to_codex_and_back(tmp_path: Path, capsys) -> No
     assert agent == "claude" and model == "claude-sonnet-5"
     assert tools == rm.DEFAULT_CLAUDE_TOOLS
     assert "default Claude allowlist" in capsys.readouterr().err
+
+
+def test_effort_is_always_explicit_and_recorded() -> None:
+    """No effort in TASK.md -> the harness passes its documented default and records the source."""
+    import agent_arena.run_mode as rm
+
+    assert rm.DEFAULT_EFFORT == {"claude": "high", "codex": "medium"}
+    spec = rm.TaskSpec(
+        path=Path("t.md"),
+        name="t",
+        agent="codex",
+        model="gpt-6-sol",
+        instructions="x",
+        allowed_tools=(),
+        max_turns=1,
+        timeout_seconds=5,
+        checks=(),
+    )
+    resolved = rm.replace(
+        spec, effort=rm.DEFAULT_EFFORT[spec.agent], effort_source="harness default"
+    )
+    argv = rm.codex_argv("codex", resolved, Path("/tmp"))
+    assert 'model_reasoning_effort="medium"' in argv
+
+
+def test_full_access_network_and_subagents_flags(tmp_path: Path) -> None:
+    import agent_arena.run_mode as rm
+
+    spec = parse_task(
+        _task(tmp_path, PASS_CHECK, "network = true\nfull_access = true\nsubagents = true")
+    )
+    codex = rm.codex_argv("codex", spec, tmp_path)
+    assert codex[codex.index("--sandbox") + 1] == "danger-full-access"
+    assert "--enable" in codex and "multi_agent" in codex
+    claude = rm.claude_argv("claude", spec)
+    assert claude[claude.index("--permission-mode") + 1] == "bypassPermissions"
+    assert "--allowedTools" not in claude
+    net_only = parse_task(_task(tmp_path, PASS_CHECK, "network = true"))
+    argv = rm.codex_argv("codex", net_only, tmp_path)
+    assert argv[argv.index("--sandbox") + 1] == "workspace-write"
+    assert "sandbox_workspace_write.network_access=true" in argv
+    assert "FULL ACCESS" in rm.enforcement(spec)["tools"]

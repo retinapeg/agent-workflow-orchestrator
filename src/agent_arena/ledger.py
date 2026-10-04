@@ -20,6 +20,7 @@ import argparse
 import csv
 import io
 import json
+import os
 import stat
 import statistics
 import sys
@@ -479,7 +480,7 @@ def write_csv(
     for row in rows:
         writer.writerow({k: "" if row[k] is None else row[k] for k in COLUMNS})
     out.parent.mkdir(parents=True, exist_ok=True)
-    temporary = out.with_suffix(".csv.tmp")
+    temporary = out.with_name(f".{out.name}.{os.getpid()}.tmp")  # unique per parallel queue
     temporary.write_text(buffer.getvalue(), encoding="utf-8")
     temporary.replace(out)
     return len(rows)

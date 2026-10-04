@@ -27,6 +27,13 @@ th{color:var(--mute);font-weight:500}.pill{padding:1px 8px;border-radius:99px;fo
 .r{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
 details summary{cursor:pointer;color:var(--acc);font-size:14px}a{color:var(--acc)}
 .checks{font-size:13px;color:var(--mute);margin:6px 0 0;padding-left:18px}
+.board{display:flex;flex-direction:column;gap:14px}.qrow h3{font-size:14px;margin:0 0 6px;color:var(--ink)}
+.steps{display:flex;gap:6px;flex-wrap:wrap}.step{flex:1 1 120px;min-width:110px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:12px;background:var(--bg)}
+.step b{display:block;font-size:12.5px;margin-bottom:3px;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.step.verified{border-color:var(--ok);background:color-mix(in srgb,var(--ok) 10%,var(--bg))}.step.failed{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 10%,var(--bg))}
+.step.running{border-color:var(--acc);animation:pulse 1.6s ease-in-out infinite}.step.queued,.step.not\ run,.step.stopped{opacity:.55}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 color-mix(in srgb,var(--acc) 45%,transparent)}50%{box-shadow:0 0 0 6px transparent}}
+@media (prefers-reduced-motion:reduce){.step.running{animation:none}}
 </style></head><body>
 <header><h1>agent-arena</h1><span>run a task → harness checks it → costs and results are logged</span></header>
 <main>
@@ -38,7 +45,8 @@ details summary{cursor:pointer;color:var(--acc);font-size:14px}a{color:var(--acc
   <input id="repo" list="repos" placeholder="~/Projects/my-repo"><datalist id="repos"></datalist>
   <div class="row"><div><label>Agent</label><select id="agent"><option value="">(task default)</option><option value="claude">Claude</option><option value="codex">Codex</option></select></div>
    <div><label>Model</label><select id="model"></select></div>
-   <div><label>Effort</label><select id="effort"></select></div></div>
+   <div><label>Effort</label><select id="effort"></select></div>
+   <div><label>Speed</label><select id="tier"><option value="">standard</option><option value="fast">fast (2× price)</option><option value="ultrafast">ultrafast (6×)</option></select></div></div>
   <div class="cmd" id="cmd">command preview</div>
   <div class="row"><button id="run">Run with harness</button>
    <button class="sec" id="grade" title="Score a session you did by hand in Claude Code / Codex">Grade manual session</button></div>
@@ -60,6 +68,7 @@ details summary{cursor:pointer;color:var(--acc);font-size:14px}a{color:var(--acc
  </details></div>
 </div>
 <div>
+ <div class="card"><h2>Agents</h2><div id="board" class="meta">No queues yet.</div></div>
  <div class="card"><h2>Live</h2><div class="meta" id="jobmeta">Nothing running.</div>
   <pre class="log" id="log" style="display:none"></pre>
   <button class="sec" id="stop" style="display:none">Stop</button></div>
@@ -71,19 +80,22 @@ const $=id=>document.getElementById(id);let S={},job=null,timer=null;
 const post=(u,b)=>fetch(u,{method:'POST',headers:{'Content-Type':'application/json','X-Arena':'1'},body:JSON.stringify(b)}).then(r=>r.json());
 const esc=s=>String(s??'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 function fillModels(sel,agent,pick){const opts=(S.models[agent]||[]);sel.innerHTML=(sel.id==='model'?'<option value="">(task default)</option>':'')+opts.map(m=>`<option ${m===pick?'selected':''}>${m}</option>`).join('')}
-function form(){return{task:$('task').value,repo:$('repo').value,agent:$('agent').value,model:$('model').value,effort:$('effort').value}}
-function curAgent(){const t=S.tasks.find(t=>t.name===$('task').value);return $('agent').value||(t&&t.agent)||'claude'}
+function form(){return{task:$('task').value,repo:$('repo').value,agent:$('agent').value,model:$('model').value,effort:$('effort').value,tier:$('tier').value}}
+function curAgent(){const t=S.tasks.find(t=>t.name===$('task').value);return $('agent').value||(t&&t.agent)||'codex'}
 function info(keep){const t=S.tasks.find(t=>t.name===$('task').value);if(!t)return;
  if(t.error){$('taskinfo').innerHTML=`<span class="err">${esc(t.error)}</span>`;return}
- $('taskinfo').innerHTML=`${esc(t.agent)} · ${esc(t.model)}${t.effort?' · '+esc(t.effort):''} · ≤${t.max_turns} turns · ${Math.round(t.timeout_seconds/60)} min<br>${esc(t.summary)}<ul class="checks">${t.checks.map(c=>'<li>'+esc(c)+'</li>').join('')}</ul>`;
+ const pin=t.repo?`<br><b>Edits:</b> ${esc(t.repo)} <span class="meta">(pinned by the task)</span>`:'';
+ if(t.kind==='queue'){$('taskinfo').innerHTML=`<b>Queue of ${t.steps.length} steps</b>, run one after another, each benchmarked separately${t.stop_on_failure?'; stops at the first step that fails':''}.${pin}<br>${esc(t.summary)}<ol class="checks">${t.steps.map(c=>'<li>'+esc(c)+'</li>').join('')}</ol>`}
+ else{$('taskinfo').innerHTML=`${esc(t.agent)} · ${esc(t.model)}${t.effort?' · '+esc(t.effort):''} · ≤${t.max_turns} turns · ${Math.round(t.timeout_seconds/60)} min${pin}<br>${esc(t.summary)}<ul class="checks">${t.checks.map(c=>'<li>'+esc(c)+'</li>').join('')}</ul>`}
+ if(t.repo&&!keep)$('repo').value=t.repo;
  if(!keep)$('agent').value='';fillModels($('model'),curAgent(),keep?$('model').value:'');preview()}
-async function preview(){$('err').textContent='';if(!$('repo').value){$('cmd').textContent='pick a repo to see the command';return}
+async function preview(){$('err').textContent='';const tk=S.tasks.find(t=>t.name===$('task').value);if(!$('repo').value&&!(tk&&tk.repo)){$('cmd').textContent='pick a repo to see the command';return}
  const r=await post('/api/preview',{action:'run',...form()});$('cmd').textContent=r.command?'$ '+r.command:'';if(r.error)$('err').textContent=r.error}
 async function load(){S=await (await fetch('/api/state')).json();
- const cur=$('task').value;$('task').innerHTML=S.tasks.map(t=>`<option ${t.name===cur?'selected':''}>${t.name}</option>`).join('');
+ const cur=$('task').value;$('task').innerHTML=S.tasks.map(t=>`<option value="${esc(t.name)}" ${t.name===cur?'selected':''}>${t.kind==='queue'?'▶ '+esc(t.name.slice(6))+' (queue)':esc(t.name)}</option>`).join('');
  $('repos').innerHTML=S.recent_repos.map(r=>`<option value="${esc(r)}">`).join('');
  if(!$('repo').value&&S.recent_repos[0])$('repo').value=S.recent_repos[0];
- const ef=$('effort').value;$('effort').innerHTML=S.efforts.map(e=>`<option value="${e}" ${e===ef?'selected':''}>${e||'(task default)'}</option>`).join('');
+ const ef=$('effort').value;$('effort').innerHTML=S.efforts.map(e=>`<option value="${e}" ${e===ef?'selected':''}>${e||'default (Claude high, Codex medium)'}</option>`).join('');
  fillModels($('n_model'),$('n_agent').value);info(true);renderRuns();
  $('warn').textContent=S.pricing_found?'':'No price file at '+S.pricing_file+', so costs will show as null.';
  const live=S.jobs.find(j=>j.running);if(live&&!job)watch(live.id);
@@ -99,7 +111,7 @@ async function poll(){const j=await (await fetch('/api/job/'+job)).json();const 
  $('jobmeta').innerHTML=j.running?`<span class="pill r">running</span> ${j.elapsed_s}s`:`<span class="pill ${j.exit_code===0?'y':'n'}">exit ${j.exit_code}</span> finished after ${j.elapsed_s}s`;
  $('run').disabled=$('grade').disabled=j.running;if(!j.running){clearInterval(timer);$('stop').style.display='none';load()}}
 $('stop').onclick=()=>post('/api/stop/'+job,{});
-$('task').onchange=()=>info(false);['repo','model','effort'].forEach(i=>$(i).addEventListener('change',preview));
+$('task').onchange=()=>info(false);['repo','model','effort','tier'].forEach(i=>$(i).addEventListener('change',preview));
 $('agent').onchange=()=>{fillModels($('model'),curAgent(),'');if($('agent').value){const pref={claude:'claude-sonnet-5',codex:'gpt-6-sol'}[curAgent()];const ms=S.models[curAgent()]||[];$('model').value=ms.includes(pref)?pref:(ms[0]||'')}preview()};
 $('run').onclick=()=>start('run');$('grade').onclick=()=>start('grade');
 $('n_agent').onchange=()=>fillModels($('n_model'),$('n_agent').value);
@@ -108,4 +120,11 @@ $('create').onclick=async()=>{$('n_err').textContent='';const r=await post('/api
  checks:$('n_checks').value.split('\n').map(c=>({command:c})),instructions:$('n_instr').value});
  if(r.error){$('n_err').textContent=r.error;return}await load();$('task').value=r.created;info(false)};
 load();
+async function board(){try{const d=await (await fetch('/api/board')).json();
+ if(!d.queues.length){$('board').textContent='No queues yet. Run a ▶ queue (or the overnight ones) and they appear here.';return}
+ $('board').className='board';$('board').innerHTML=d.queues.map(q=>{const done=q.steps.filter(s=>s.status==='verified').length;
+  const cost=q.steps.reduce((a,s)=>a+(s.cost&&s.cost.startsWith('$')?parseFloat(s.cost.slice(1)):0),0);
+  return `<div class="qrow"><h3>${esc(q.queue)} <span class="meta">· ${done}/${q.steps.length} verified · $${cost.toFixed(2)} · ${q.finished?'finished':'updated '+q.updated_s_ago+'s ago'}</span></h3><div class="steps">`+
+  q.steps.map(s=>`<div class="step ${esc(s.status)}"><b title="${esc(s.name)}">${esc(s.name)}</b>${esc(s.status)}${s.checks?' · '+esc(s.checks)+' checks':''}${s.wall_s?'<br>'+Math.round(s.wall_s/60)+' min':''}${s.cost?' · '+esc(s.cost):''}</div>`).join('')+`</div></div>`}).join('')}catch(e){}}
+board();setInterval(board,5000);
 </script></body></html>

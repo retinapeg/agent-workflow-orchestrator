@@ -10,6 +10,7 @@ allowed_tools = [
   "Edit(//tmp/codex-smoke.log)",
   "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
 ]
+repo = "~/agent-reliability-workspace/agent_reliability_lab"
 max_turns = 30
 timeout_seconds = 3600
 env = { PYTHONPATH = "src" }

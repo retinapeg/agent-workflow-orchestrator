@@ -10,6 +10,7 @@ allowed_tools = [
   "Edit(//tmp/v2-full.log)",
   "Bash(git status:*)",
 ]
+repo = "~/agent-reliability-workspace/agent_reliability_lab"
 max_turns = 15
 timeout_seconds = 9000
 env = { PYTHONPATH = "src", LAB_LABEL = "v2-full" }

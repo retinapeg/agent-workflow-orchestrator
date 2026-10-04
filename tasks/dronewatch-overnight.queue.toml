@@ -1,0 +1,13 @@
+name = "dronewatch-overnight"
+description = "Codex (gpt-6-sol, high effort) overnight build-out of dronewatch: audit -> 5 backlog items -> handoff; each step benchmarked and journaled."
+repo = "~/Projects/dronewatch"
+stop_on_failure = false
+tasks = [
+  "overnight/dronewatch/01-audit",
+  "overnight/dronewatch/02-build-1",
+  "overnight/dronewatch/03-build-2",
+  "overnight/dronewatch/04-build-3",
+  "overnight/dronewatch/05-build-4",
+  "overnight/dronewatch/06-build-5",
+  "overnight/dronewatch/07-wrap",
+]
