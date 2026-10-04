@@ -1,0 +1,13 @@
+name = "dronewatch-round2"
+description = "Round 2 for dronewatch: backlog items 6-10 -> handoff; each step benchmarked and journaled."
+repo = "~/Projects/dronewatch"
+stop_on_failure = false
+tasks = [
+  "round2/dronewatch/01-fix-suite",
+  "round2/dronewatch/02-build-6",
+  "round2/dronewatch/03-build-7",
+  "round2/dronewatch/04-build-8",
+  "round2/dronewatch/05-build-9",
+  "round2/dronewatch/06-build-10",
+  "round2/dronewatch/07-wrap",
+]
