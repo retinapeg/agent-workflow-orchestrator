@@ -1,0 +1,12 @@
+name = "ylookup-round2"
+description = "Round 2 for ylookup: backlog items 6-10 -> handoff; each step benchmarked and journaled."
+repo = "~/Projects/YLOOKUP"
+stop_on_failure = false
+tasks = [
+  "round2/ylookup/01-build-6",
+  "round2/ylookup/02-build-7",
+  "round2/ylookup/03-build-8",
+  "round2/ylookup/04-build-9",
+  "round2/ylookup/05-build-10",
+  "round2/ylookup/06-wrap",
+]
