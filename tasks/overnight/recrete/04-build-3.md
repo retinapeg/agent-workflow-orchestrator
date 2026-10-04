@@ -4,7 +4,7 @@ agent = "codex"
 model = "gpt-6-sol"
 effort = "high"
 network = true
-full_access = true
+full_access = false
 subagents = true
 repo = "~/Projects/recrete-site"
 max_turns = 300
@@ -46,6 +46,11 @@ name = "error log kept"
 argv = ["test", "-s", "docs/ERROR_LOG.md"]
 timeout_seconds = 60
 
+[[checks]]
+name = "harness code and checks untouched (no agent edited its own referee)"
+argv = ["git", "--no-optional-locks", "-C", "{task_dir}/../../..", "diff", "--quiet", "HEAD", "--", "src", "tasks", "pyproject.toml"]
+timeout_seconds = 60
+
 +++
 
 Repository context:
@@ -65,9 +70,10 @@ go behind an interface with a deterministic fake in tests. Use `npm run check` a
 `npm run test:unit`; don't depend on Playwright browsers.
 
 HARD RULES (all steps)
-- You have internet access and full permissions, and nobody will approve anything: act, don't
-  ask. Use the internet only to install dependencies and read documentation. Never push,
-  deploy, publish, send messages or call paid/production APIs.
+- You run in a sandbox: you can write only inside this repository, and you have internet
+  access. Nobody will approve anything: act, don't ask. Use the internet only to install
+  dependencies (into this repo, e.g. .venv / node_modules; use pip --no-cache-dir) and read
+  documentation. Never push, deploy, publish, send messages or call paid/production APIs.
 - Work only inside this repository; never touch files outside it. No git commit, push, reset,
   checkout or branch changes; leave all work uncommitted for the human to review.
 - You may spawn sub-agents for parallel work (e.g. one writes tests while another implements),
