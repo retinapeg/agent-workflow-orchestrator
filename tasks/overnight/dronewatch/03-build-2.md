@@ -4,7 +4,7 @@ agent = "codex"
 model = "gpt-6-sol"
 effort = "high"
 network = true
-full_access = true
+full_access = false
 subagents = true
 repo = "~/Projects/dronewatch"
 max_turns = 300
@@ -56,6 +56,11 @@ name = "build log kept"
 argv = ["test", "-s", "docs/BUILD_LOG.md"]
 timeout_seconds = 60
 
+[[checks]]
+name = "harness code and checks untouched (no agent edited its own referee)"
+argv = ["git", "--no-optional-locks", "-C", "{task_dir}/../../..", "diff", "--quiet", "HEAD", "--", "src", "tasks", "pyproject.toml"]
+timeout_seconds = 60
+
 +++
 
 Repository context:
@@ -72,17 +77,19 @@ up-to-date repo, with visual detection pointed at Viso (viso.ai, "Viso Now"; the
    fixtures and tests for the webhook path; and a short docs/VISO_INTEGRATION.md saying exactly
    what to set once the key arrives. Never invent API fields the docs don't show; if the docs
    are unclear, say so and keep the adapter strict.
-2. Clean and current: remove clutter that shouldn't be in git (__pycache__, local .db files,
-   stale artefacts; check .gitignore), update dependencies to current compatible versions
+2. Clean and current: don't delete anything yourself. Find clutter that shouldn't be in git
+   (__pycache__, local .db files, stale artefacts), add the right .gitignore rules, and list
+   each proposed removal with its reason in docs/DECISIONS.md under "Proposed removals" so
+   the owner can review and remove them. Update dependencies to current compatible versions
    with tests passing, fix outdated docs so the README matches reality, keep CI working.
-   Record every removal and why in docs/DECISIONS.md.
 ROADMAP.md's "Non-negotiable rules" are binding (SYNTHETIC/REPLAYED_REAL/LIVE labels, no
 unmeasured claims, index.html byte-for-byte frozen, datasets out of git). Use .venv/bin/python.
 
 HARD RULES (all steps)
-- You have internet access and full permissions, and nobody will approve anything: act, don't
-  ask. Use the internet only to install dependencies and read documentation. Never push,
-  deploy, publish, send messages or call paid/production APIs.
+- You run in a sandbox: you can write only inside this repository, and you have internet
+  access. Nobody will approve anything: act, don't ask. Use the internet only to install
+  dependencies (into this repo, e.g. .venv / node_modules; use pip --no-cache-dir) and read
+  documentation. Never push, deploy, publish, send messages or call paid/production APIs.
 - Work only inside this repository; never touch files outside it. No git commit, push, reset,
   checkout or branch changes; leave all work uncommitted for the human to review.
 - You may spawn sub-agents for parallel work (e.g. one writes tests while another implements),
