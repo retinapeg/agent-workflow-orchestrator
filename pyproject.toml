@@ -15,7 +15,7 @@ dependencies = []
 [project.optional-dependencies]
 api = [
   "openai>=1.66",
-  "anthropic>=0.40",
+  "anthropic>=0.77",
 ]
 dev = [
   "mypy>=1.13",

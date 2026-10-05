@@ -45,8 +45,10 @@ API mode uses whole-file JSON operations. It appends the exact required response
 request and validates that schema locally. Coding responses must contain exactly `summary` (string)
 and `operations` (array). Writes require exactly `op`, `path`, `content`; deletes exactly `op`, `path`.
 Extra fields, missing fields, and surrounding non-JSON text fail before any file mutation.
-It does not rely on provider-specific
-structured-output options, keeping compatibility with the documented SDK minimum versions. The
+The OpenAI path relies on prompt text alone. The Anthropic path additionally sends the same schema as
+`output_config.format` (Messages API structured outputs, SDK >= 0.77) because prompt text alone did
+not make a live model return bare JSON; the API rejects numeric `minimum`/`maximum`, so the wire copy
+omits them and the local validator enforces those bounds. The
 validator supports the object/array/type/required/additional-properties/enum/numeric-bound/anyOf subset
 used by the bundled response schemas. Files are not changed on schema failure. Existing file modes,
 including executable bits, are preserved when their contents are replaced.

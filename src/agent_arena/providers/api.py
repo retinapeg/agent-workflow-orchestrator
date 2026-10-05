@@ -277,6 +277,23 @@ IMPLEMENTATION_SCHEMA: dict[str, Any] = {
 }
 
 
+def structured_output_schema(schema: Any) -> Any:
+    """Return the schema as the Messages API `output_config.format` accepts it.
+
+    Structured outputs reject numeric `minimum`/`maximum`; those bounds are still enforced locally
+    by validate_response_schema on every response.
+    """
+    if isinstance(schema, dict):
+        return {
+            key: structured_output_schema(value)
+            for key, value in schema.items()
+            if key not in {"minimum", "maximum"}
+        }
+    if isinstance(schema, list):
+        return [structured_output_schema(item) for item in schema]
+    return schema
+
+
 def validate_response_schema(value: Any, schema: dict[str, Any], path: str = "$") -> None:
     """Validate the small JSON Schema subset used by arena's response contracts.
 
@@ -602,12 +619,19 @@ class AnthropicAPIProvider(_APIProvider):
             if self.engineer.options.get("base_url"):
                 kwargs["base_url"] = str(self.engineer.options["base_url"])
             client = Anthropic(**kwargs)
-            payload = {
+            payload: dict[str, Any] = {
                 "model": request.model,
                 "system": API_SYSTEM,
                 "max_tokens": request.max_output_tokens,
                 "messages": [{"role": "user", "content": prompt}],
             }
+            schema = self._response_schema(request)
+            if schema:
+                # Prompt text alone does not make the model return bare JSON; the Messages API
+                # structured-output contract does. Local validation still runs on the result.
+                payload["output_config"] = {
+                    "format": {"type": "json_schema", "schema": structured_output_schema(schema)}
+                }
             self._save_request(artifact_dir, payload)
             response = client.messages.create(**payload)
             stop_reason = getattr(response, "stop_reason", None)

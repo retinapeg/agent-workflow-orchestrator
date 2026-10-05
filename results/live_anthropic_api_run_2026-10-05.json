@@ -1,0 +1,321 @@
+{
+  "schema_version": 1,
+  "title": "Live Anthropic Messages API run through the arena orchestrator",
+  "date": "2026-10-05",
+  "adapter": {
+    "provider_kind": "anthropic_api",
+    "module": "src/agent_arena/providers/api.py::AnthropicAPIProvider",
+    "sdk": {
+      "package": "anthropic",
+      "version": "1.11.0",
+      "minimum_in_pyproject": ">=0.77"
+    },
+    "python": "3.14.7",
+    "credential": "read from environment variable ANTHROPIC_API_KEY (options.api_key_env); value never written to artifacts",
+    "model_source": "config value engineers.claude.model (overridable per invocation with --claude-model)",
+    "endpoint": "client.messages.create (non-streaming), max_retries=0, timeout=request.timeout_seconds"
+  },
+  "engineer_config": {
+    "engineer_id": "claude",
+    "kind": "anthropic_api",
+    "max_cost_usd": null,
+    "max_output_tokens": 16000,
+    "model": "claude-haiku-4-5-20251001",
+    "options": {
+      "allow_sdk_timeout_only": true,
+      "api_key_env": "<redacted>"
+    },
+    "timeout_seconds": 1200
+  },
+  "opponent": {
+    "engineer_id": "codex",
+    "kind": "scripted",
+    "note": "offline deterministic fixture copied from examples/offline/codex.json with text padded to >= 80 bytes so hackathon min_response_bytes is met; no second live model"
+  },
+  "limits": {
+    "limits_table": {
+      "check_timeout_seconds": 600,
+      "max_api_context_bytes": 750000,
+      "max_api_file_bytes": 200000,
+      "max_api_operations": 100,
+      "max_api_response_bytes": 2000000,
+      "max_changed_files": 250,
+      "max_diff_bytes": 2000000,
+      "max_output_bytes": 1000000,
+      "max_output_tokens": 16000,
+      "max_prompt_bytes": 1500000,
+      "provider_timeout_seconds": 1200,
+      "termination_grace_seconds": 5
+    },
+    "mode_hackathon": {
+      "benchmark_weights": {},
+      "check_weights": {},
+      "max_run_seconds": 2700,
+      "min_response_bytes": 80,
+      "provider_timeout_seconds": 300,
+      "revision_rounds": 1
+    },
+    "effective_per_call_timeout_seconds": 300,
+    "effective_per_call_timeout_derivation": "min(engineer.timeout_seconds=1200, limits.provider_timeout_seconds=1200, modes.hackathon.provider_timeout_seconds=300, remaining run budget) per orchestrator._timeout; identical arithmetic to the claude_cli path",
+    "time_enforcement": "SDK network-operation timeout (allow_sdk_timeout_only=true); the CLI path uses a parent-process kill at the same number",
+    "turn_limit": "exactly one messages.create call per phase; no tool loop (structural property of the API path)",
+    "tool_limit": "zero model-invocable tools; whole-file JSON write/delete operations validated locally (CLI path grants Read/Glob/Grep/Edit/Write)",
+    "output_token_cap": "max_tokens=16000 per request (hard API cap; CLI path only observes usage)",
+    "dollar_cap": "none; max_cost_usd is rejected for API providers"
+  },
+  "pricing": {
+    "model": "claude-haiku-4-5-20251001",
+    "usd_per_million_tokens": {
+      "input_tokens": "1.00",
+      "cache_creation_5m_input_tokens": "1.25",
+      "cache_creation_1h_input_tokens": "2.00",
+      "cache_read_input_tokens": "0.10",
+      "output_tokens": "5.00"
+    },
+    "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+    "fetched": "2026-10-05",
+    "note": "estimated from reported usage at list price; the Messages API does not return cost"
+  },
+  "primary_run": {
+    "label": "primary (after adapter fix)",
+    "run_id": "20261005T221750Z-e4b21a00",
+    "run_dir": "/private/tmp/arena-live-anthropic-2026-10-05/runs/20261005T221750Z-e4b21a00",
+    "command": "team hack /private/tmp/arena-live-anthropic-2026-10-05/task.md --repo /private/tmp/arena-live-anthropic-2026-10-05/source --config /private/tmp/arena-live-anthropic-2026-10-05/team.toml --json",
+    "mode": "hackathon",
+    "state": "complete",
+    "winner": "claude",
+    "started_at": "2026-10-05T22:17:50.451189+00:00",
+    "deadline_at": "2026-10-05T23:02:50.451189+00:00",
+    "max_run_seconds": 2700,
+    "provider_timeout_seconds": 300,
+    "min_response_bytes": 80,
+    "manifest_verified": true,
+    "anthropic_calls": [
+      {
+        "phase": "implement",
+        "artifact_dir": "engineers/claude/initial",
+        "response_id": "msg_011Cfjs9RXD5mTTBVgswaEZL",
+        "model_requested": "claude-haiku-4-5-20251001",
+        "model_returned": "claude-haiku-4-5-20251001",
+        "stop_reason": "end_turn",
+        "status": "completed",
+        "error": null,
+        "request": {
+          "max_tokens": 16000,
+          "system_bytes": 733,
+          "input_bytes": 4714,
+          "structured_output": true,
+          "sdk_timeout_seconds": 300
+        },
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 1899,
+          "output_tokens": 102,
+          "output_tokens_details": null,
+          "server_tool_use": null,
+          "service_tier": "standard"
+        },
+        "billable_tokens": {
+          "input_tokens": 1899,
+          "cache_creation_5m_input_tokens": 0,
+          "cache_creation_1h_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 102
+        },
+        "estimated_cost_usd": "0.002409",
+        "timing": {
+          "started_at": "2026-10-05T22:17:53.362192+00:00",
+          "finished_at": "2026-10-05T22:18:00.119202+00:00",
+          "phase_wall_clock_seconds": 6.757,
+          "note": "orchestrator provider_started->provider_finished; includes snapshot build, HTTP round trip, and file application"
+        },
+        "raw_response_sha256": "798050b73b5e5f29ca7bc5091903f66a00dd57072cb9c19621c63d04f24bb796"
+      },
+      {
+        "phase": "review",
+        "artifact_dir": "engineers/claude/reviews/round-1/codex",
+        "response_id": "msg_011Cfjs9vgenyt2bSMEcJgox",
+        "model_requested": "claude-haiku-4-5-20251001",
+        "model_returned": "claude-haiku-4-5-20251001",
+        "stop_reason": "end_turn",
+        "status": "completed",
+        "error": null,
+        "request": {
+          "max_tokens": 16000,
+          "system_bytes": 733,
+          "input_bytes": 7225,
+          "structured_output": true,
+          "sdk_timeout_seconds": 300
+        },
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 2899,
+          "output_tokens": 876,
+          "output_tokens_details": null,
+          "server_tool_use": null,
+          "service_tier": "standard"
+        },
+        "billable_tokens": {
+          "input_tokens": 2899,
+          "cache_creation_5m_input_tokens": 0,
+          "cache_creation_1h_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 876
+        },
+        "estimated_cost_usd": "0.007279",
+        "timing": {
+          "started_at": "2026-10-05T22:18:04.135766+00:00",
+          "finished_at": "2026-10-05T22:18:13.854321+00:00",
+          "phase_wall_clock_seconds": 9.719,
+          "note": "orchestrator provider_started->provider_finished; includes snapshot build, HTTP round trip, and file application"
+        },
+        "raw_response_sha256": "64f4ccff6ff852178d5be4b2d938705727623273d8f339d9293e3da0c567b1fb"
+      },
+      {
+        "phase": "revise",
+        "artifact_dir": "engineers/claude/revisions/round-1",
+        "response_id": "msg_011CfjsAcyKGVDa2c7SAudB9",
+        "model_requested": "claude-haiku-4-5-20251001",
+        "model_returned": "claude-haiku-4-5-20251001",
+        "stop_reason": "end_turn",
+        "status": "completed",
+        "error": null,
+        "request": {
+          "max_tokens": 16000,
+          "system_bytes": 733,
+          "input_bytes": 6420,
+          "structured_output": true,
+          "sdk_timeout_seconds": 300
+        },
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 2505,
+          "output_tokens": 109,
+          "output_tokens_details": null,
+          "server_tool_use": null,
+          "service_tier": "standard"
+        },
+        "billable_tokens": {
+          "input_tokens": 2505,
+          "cache_creation_5m_input_tokens": 0,
+          "cache_creation_1h_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 109
+        },
+        "estimated_cost_usd": "0.003050",
+        "timing": {
+          "started_at": "2026-10-05T22:18:13.944285+00:00",
+          "finished_at": "2026-10-05T22:18:16.083511+00:00",
+          "phase_wall_clock_seconds": 2.139,
+          "note": "orchestrator provider_started->provider_finished; includes snapshot build, HTTP round trip, and file application"
+        },
+        "raw_response_sha256": "98ec64c4bb3a60fdba5bfb9568c6092a1e0831e2199bce69117ba2d4bbd6c743"
+      }
+    ],
+    "totals": {
+      "calls": 3,
+      "input_tokens": 7303,
+      "output_tokens": 1087,
+      "estimated_cost_usd": "0.012738"
+    }
+  },
+  "diagnostic_run": {
+    "label": "diagnostic (before adapter fix)",
+    "run_id": "20261005T221152Z-93aaf7d0",
+    "run_dir": "/private/tmp/arena-live-anthropic-2026-10-05/runs/20261005T221152Z-93aaf7d0",
+    "command": "team hack /private/tmp/arena-live-anthropic-2026-10-05/task.md --repo /private/tmp/arena-live-anthropic-2026-10-05/source --config /private/tmp/arena-live-anthropic-2026-10-05/team.toml --json",
+    "mode": "hackathon",
+    "state": "no_winner",
+    "winner": null,
+    "started_at": "2026-10-05T22:11:52.864363+00:00",
+    "deadline_at": "2026-10-05T22:56:52.864363+00:00",
+    "max_run_seconds": 2700,
+    "provider_timeout_seconds": 300,
+    "min_response_bytes": 80,
+    "manifest_verified": true,
+    "anthropic_calls": [
+      {
+        "phase": "implement",
+        "artifact_dir": "engineers/claude/initial",
+        "response_id": "msg_011Cfjrgk8QM8Y5wAacbWZNS",
+        "model_requested": "claude-haiku-4-5-20251001",
+        "model_returned": "claude-haiku-4-5-20251001",
+        "stop_reason": "end_turn",
+        "status": "failed",
+        "error": "API response must be exactly one JSON object",
+        "request": {
+          "max_tokens": 16000,
+          "system_bytes": 733,
+          "input_bytes": 4714,
+          "structured_output": false,
+          "sdk_timeout_seconds": 300
+        },
+        "usage": {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 0,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "inference_geo": "not_available",
+          "input_tokens": 1497,
+          "output_tokens": 434,
+          "output_tokens_details": null,
+          "server_tool_use": null,
+          "service_tier": "standard"
+        },
+        "billable_tokens": {
+          "input_tokens": 1497,
+          "cache_creation_5m_input_tokens": 0,
+          "cache_creation_1h_input_tokens": 0,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 434
+        },
+        "estimated_cost_usd": "0.003667",
+        "timing": {
+          "started_at": "2026-10-05T22:11:54.158127+00:00",
+          "finished_at": "2026-10-05T22:12:00.068564+00:00",
+          "phase_wall_clock_seconds": 5.91,
+          "note": "orchestrator provider_started->provider_finished; includes snapshot build, HTTP round trip, and file application"
+        },
+        "raw_response_sha256": "ead652a357f3138fcfb5d533aa8d4e441bf23ad1aa34da32f8f6761777045b7e"
+      }
+    ],
+    "totals": {
+      "calls": 1,
+      "input_tokens": 1497,
+      "output_tokens": 434,
+      "estimated_cost_usd": "0.003667"
+    }
+  },
+  "grand_total": {
+    "anthropic_calls": 4,
+    "input_tokens": 8800,
+    "output_tokens": 1521,
+    "estimated_cost_usd": "0.016405",
+    "excludes": "three max_tokens=1 schema-acceptance probes made directly with the SDK (not through the orchestrator): 409+492+192 input tokens, 3 output tokens, ~$0.0011"
+  },
+  "adapter_finding": {
+    "wire_contract": "matched the current Messages API as written: create(model, max_tokens, system, messages) accepted; stop_reason end_turn; usage populated; no deprecation warnings",
+    "defect": "the adapter required the whole reply to be exactly one JSON object but only asked for it in prompt text; live claude-haiku-4-5-20251001 answered the implement phase with Markdown prose plus a <operations> tag around a JSON array (no top-level object), so _finalize failed and the candidate was invalid",
+    "fix": "send the same response schema as output_config.format={type: json_schema} (Messages API structured outputs; Haiku 4.5 supported; no beta header). The API rejects numeric minimum/maximum, so the wire copy strips them and validate_response_schema still enforces them locally. anthropic floor raised to >=0.77 (first release with output_config on messages.create)."
+  }
+}

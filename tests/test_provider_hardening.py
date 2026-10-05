@@ -122,6 +122,37 @@ def test_api_persists_exact_schema_prompt_and_failed_response(
     assert "malformed paid output" in (artifacts / "raw-response.txt").read_text()
 
 
+def test_anthropic_sends_structured_output_schema_without_numeric_bounds(
+    arena_fixture: dict[str, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = setup_provider(arena_fixture, AnthropicAPIProvider)
+    captured = mock_api(monkeypatch, "anthropic", "{}", stop_reason="end_turn")
+    provider.run(request(arena_fixture["source"]), tmp_path / "judge")
+    wire = captured["output_config"]["format"]
+    assert wire["type"] == "json_schema"
+    assert wire["schema"]["properties"]["confidence"] == {"type": "number"}
+    assert JUDGE_SCHEMA["properties"]["confidence"] == {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 1,
+    }
+    assert captured["max_tokens"] == 1000
+    provider.run(request(arena_fixture["source"], phase=Phase.IMPLEMENT), tmp_path / "implement")
+    assert captured["output_config"]["format"]["schema"] == IMPLEMENTATION_SCHEMA
+    # Local validation still enforces the bounds the API cannot express.
+    mock_api(
+        monkeypatch,
+        "anthropic",
+        json.dumps({"winner": "codex", "reason": "ok", "confidence": 2}),
+        stop_reason="end_turn",
+    )
+    result = provider.run(request(arena_fixture["source"]), tmp_path / "judge-bounds")
+    assert not result.ok
+    assert "maximum violated" in str(result.error)
+
+
 @pytest.mark.parametrize("provider_class", [OpenAIAPIProvider, AnthropicAPIProvider])
 def test_api_refuses_unsupported_cost_and_requires_timeout_opt_in(
     arena_fixture: dict[str, Path],
