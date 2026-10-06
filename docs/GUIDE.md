@@ -15,7 +15,7 @@ the explicit `integrate` command.
 The Python package is `agent_arena` and the installed command is `team`. The distribution name in
 `pyproject.toml`, `adversarial-engineering-arena`, is the project's earlier title.
 
-- **Tests:** 150 offline tests, plus `ruff` and strict `mypy` over the 21 source modules. They use
+- **Tests:** 197 offline tests (`pytest --collect-only`, October 2026), plus `ruff` and strict `mypy` over the source modules. They use
   scripted providers and fake runners, so no credentials or model calls are needed. Results are
   recorded in [VALIDATION.md](../VALIDATION.md).
 - **Live run:** [VALIDATION.md](../VALIDATION.md) records one real Codex-versus-Claude Hackathon run
