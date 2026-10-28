@@ -1,0 +1,84 @@
+{
+  "verified_at_utc": "2026-10-27T00:16:52.758624+00:00",
+  "evidence_role": "implementation worker; coordinator independent acceptance still required",
+  "free_bytes": 14292406272,
+  "checks": [
+    {
+      "command": [
+        ".venv/bin/python",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/acquisition",
+        "tests/test_ledger.py",
+        "tests/test_review_and_judge_validation.py"
+      ],
+      "environment": {
+        "PYTHONPATH": "src"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.862,
+      "log_path": "docs/acquisition/verification/tests.log",
+      "sha256": "9dc2a7b011b8c30eefc067137d9836eef269948e2197584a148d6d21d142149d"
+    },
+    {
+      "command": [
+        ".venv/bin/ruff",
+        "check",
+        "src/agent_arena/acquisition",
+        "tests/acquisition",
+        "scripts/acquisition_browser_check.py"
+      ],
+      "environment": {
+        "PYTHONPATH": "src"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.071,
+      "log_path": "docs/acquisition/verification/lint.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "command": [
+        ".venv/bin/mypy",
+        "src/agent_arena/acquisition",
+        "--follow-imports=silent"
+      ],
+      "environment": {
+        "PYTHONPATH": "src"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.191,
+      "log_path": "docs/acquisition/verification/types.log",
+      "sha256": "ab35ee42183d4d6d3ba483825ab037d18a5a15622d03be01d82220b1564851ff"
+    },
+    {
+      "command": [
+        "git",
+        "diff",
+        "--check"
+      ],
+      "environment": {
+        "PYTHONPATH": "src"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.026,
+      "log_path": "docs/acquisition/verification/diff-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "command": [
+        ".venv/bin/python",
+        "-c",
+        "from pathlib import Path; from agent_arena.audit import verify_manifest; m=verify_manifest(Path('docs/acquisition/evaluation')); print('Verified', len(m['files']), 'manifested evaluation artifacts')"
+      ],
+      "environment": {
+        "PYTHONPATH": "src"
+      },
+      "exit_code": 0,
+      "elapsed_seconds": 0.052,
+      "log_path": "docs/acquisition/verification/manifest.log",
+      "sha256": "82bf1e048db53c4e59fb012d1f27e035011378912d99091289d49c4ebf6590e4"
+    }
+  ],
+  "browser_status": "BLOCKED: loopback bind PermissionError [Errno 1]; no browser success claimed"
+}

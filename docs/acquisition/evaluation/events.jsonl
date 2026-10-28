@@ -1,0 +1,14 @@
+{"event": "run_created", "sequence": 1, "state": "created", "timestamp": "2026-10-27T00:07:47.293995+00:00"}
+{"event": "scenario_evaluated", "method": "baseline", "policy_violations": [], "scenario": "standard", "sequence": 2, "timestamp": "2026-10-27T00:07:47.303953+00:00"}
+{"event": "scenario_evaluated", "method": "scripted-agent", "policy_violations": [], "scenario": "standard", "sequence": 3, "timestamp": "2026-10-27T00:07:47.311840+00:00"}
+{"event": "scenario_evaluated", "method": "baseline", "policy_violations": [], "scenario": "tight_budget", "sequence": 4, "timestamp": "2026-10-27T00:07:47.319084+00:00"}
+{"event": "scenario_evaluated", "method": "scripted-agent", "policy_violations": [], "scenario": "tight_budget", "sequence": 5, "timestamp": "2026-10-27T00:07:47.326698+00:00"}
+{"event": "scenario_evaluated", "method": "baseline", "policy_violations": [], "scenario": "too_small", "sequence": 6, "timestamp": "2026-10-27T00:07:47.331080+00:00"}
+{"event": "scenario_evaluated", "method": "scripted-agent", "policy_violations": [], "scenario": "too_small", "sequence": 7, "timestamp": "2026-10-27T00:07:47.335223+00:00"}
+{"event": "scenario_evaluated", "method": "baseline", "policy_violations": [], "scenario": "transient_failure", "sequence": 8, "timestamp": "2026-10-27T00:07:47.343150+00:00"}
+{"event": "scenario_evaluated", "method": "scripted-agent", "policy_violations": [], "scenario": "transient_failure", "sequence": 9, "timestamp": "2026-10-27T00:07:47.351852+00:00"}
+{"event": "scenario_evaluated", "method": "baseline", "policy_violations": [], "scenario": "lost_acknowledgement", "sequence": 10, "timestamp": "2026-10-27T00:07:47.359921+00:00"}
+{"event": "scenario_evaluated", "method": "scripted-agent", "policy_violations": [], "scenario": "lost_acknowledgement", "sequence": 11, "timestamp": "2026-10-27T00:07:47.369467+00:00"}
+{"event": "scenario_evaluated", "method": "baseline", "policy_violations": [], "scenario": "permanent_failure", "sequence": 12, "timestamp": "2026-10-27T00:07:47.378866+00:00"}
+{"event": "scenario_evaluated", "method": "scripted-agent", "policy_violations": [], "scenario": "permanent_failure", "sequence": 13, "timestamp": "2026-10-27T00:07:47.389245+00:00"}
+{"error": null, "event": "state_changed", "sequence": 14, "state": "complete", "timestamp": "2026-10-27T00:07:47.391203+00:00"}

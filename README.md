@@ -19,3 +19,15 @@ pip install -e '.[dev]' && pytest -q      # 197 tests collected; all passed on 2
 ```
 
 [Technical details →](docs/GUIDE.md)
+
+## AcquisitionOps: synthetic campaign orchestration
+
+A separate, human-approved campaign workflow now demonstrates expected-value budget optimization, deterministic eligibility, durable SQLite approval and audit, an idempotent mock provider, restart recovery and delayed conversion outcomes. It uses frozen synthetic prospects and **scripted recommendations, with no live model calls or real delivery**.
+
+```sh
+PYTHONPATH=src python3 -m agent_arena.acquisition demo
+```
+
+This safe entry point does not invoke the coding-agent CLI, queues or worktrees. It starts a local dashboard with a fresh synthetic database. Dashboard browser verification remains pending because this recovery sandbox denies listener binding. The service/action tests and frozen evaluation run without a listener.
+
+[Demo and limitations](docs/acquisition/README.md) · [Evaluation](docs/acquisition/evaluation/report.md) · [Architecture](docs/acquisition/architecture.md) · [Learning guide](LEARNING_GUIDE.md) · [Two-minute demo](docs/acquisition/interview-demo.md) · [Recovery report](RECOVERY_JOB_C_REPORT.md)

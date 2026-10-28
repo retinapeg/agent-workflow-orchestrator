@@ -1,0 +1,10 @@
+{
+  "active_providers": [],
+  "created_at": "2026-10-27T00:07:47.293516+00:00",
+  "error": null,
+  "last_progress_at": "2026-10-27T00:07:47.390910+00:00",
+  "run_id": "acquisition-scripted-v1",
+  "schema_version": 1,
+  "state": "complete",
+  "updated_at": "2026-10-27T00:07:47.390910+00:00"
+}

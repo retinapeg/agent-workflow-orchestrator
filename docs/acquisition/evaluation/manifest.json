@@ -1,0 +1,96 @@
+{
+  "created_at": "2026-10-27T00:07:47.392266+00:00",
+  "excludes": [
+    "manifest.json",
+    "private/**"
+  ],
+  "files": [
+    {
+      "bytes": 2351,
+      "path": "events.jsonl",
+      "sha256": "1fd0e3b8415906fbba3860f287db625268ad0f54926cdfb5b9ddf48e07439bb7"
+    },
+    {
+      "bytes": 5956,
+      "path": "fixture.json",
+      "sha256": "70a6dea890471e54054d154631ae55299764f886eeeb4c0f813c7bfd877c286a"
+    },
+    {
+      "bytes": 3155,
+      "path": "report.md",
+      "sha256": "cbe8dc1f7db9eb83ec17c0a59047abf444e7eb3edc10cf9de2e3cd44af44f9b0"
+    },
+    {
+      "bytes": 16672,
+      "path": "results.json",
+      "sha256": "713fedb8a3f806ffa173016944ce143c373325fc973f4ff87356690be2cd19c4"
+    },
+    {
+      "bytes": 293,
+      "path": "run.json",
+      "sha256": "54ffebd8dc0c653957b6551f72672b4baf62026cd138a40e326cb3a4ce6dc720"
+    },
+    {
+      "bytes": 4584,
+      "path": "traces/lost_acknowledgement-baseline.json",
+      "sha256": "bad6e486bb9591b76da2b83aef55504f219681a12a8a084b13ba49c0d56920a2"
+    },
+    {
+      "bytes": 5606,
+      "path": "traces/lost_acknowledgement-scripted-agent.json",
+      "sha256": "6e2ce2d13de77834d01531f828551bd274543a9a3e75e18f6abf37d22dcb00c0"
+    },
+    {
+      "bytes": 5919,
+      "path": "traces/permanent_failure-baseline.json",
+      "sha256": "6e7a4dd4bd9d41ba9bfc3f7fb9f50de6c5907dcb528c13dc51f4125e6877a536"
+    },
+    {
+      "bytes": 6941,
+      "path": "traces/permanent_failure-scripted-agent.json",
+      "sha256": "3969ea579de424c1247be859c616e665c12fb16bc18e3df217792cc394156004"
+    },
+    {
+      "bytes": 4364,
+      "path": "traces/standard-baseline.json",
+      "sha256": "2e5d2d5f4090fc3eb9fb7369fbab6fb13825831ce884ad85741c0c52ccb56185"
+    },
+    {
+      "bytes": 5386,
+      "path": "traces/standard-scripted-agent.json",
+      "sha256": "09c8d4dc919046694c91873d9bd78e37fb3cb6df5d4105c4897273ae8bfe20dd"
+    },
+    {
+      "bytes": 3348,
+      "path": "traces/tight_budget-baseline.json",
+      "sha256": "6332fec00cb5ec4f06ff3977b3603db009f4f137c01c1ddb71d9da9e66e09c28"
+    },
+    {
+      "bytes": 4370,
+      "path": "traces/tight_budget-scripted-agent.json",
+      "sha256": "852277cda0022ea306b3785e4928d9b175e1f55db0b2f6f37678ed97f53c6351"
+    },
+    {
+      "bytes": 832,
+      "path": "traces/too_small-baseline.json",
+      "sha256": "267d89ee41145e29bb92a9a2fd57ae7c3ee3e321ed3cfcd388adbe8866d9610f"
+    },
+    {
+      "bytes": 838,
+      "path": "traces/too_small-scripted-agent.json",
+      "sha256": "71a21f20ddb92e207f1d7706ae702dc59fe298d069dc0a0a4e9aa1a35137f19f"
+    },
+    {
+      "bytes": 5273,
+      "path": "traces/transient_failure-baseline.json",
+      "sha256": "2680668d863e49b326c530273c5f26e2fe777ed045b45ea2bcd6d4d96091d550"
+    },
+    {
+      "bytes": 6295,
+      "path": "traces/transient_failure-scripted-agent.json",
+      "sha256": "6e1c746a47728193352a8b72e4cc6873286cabe58a50b92f89761101f3fd22ac"
+    }
+  ],
+  "run_id": "acquisition-scripted-v1",
+  "schema_version": 1
+}

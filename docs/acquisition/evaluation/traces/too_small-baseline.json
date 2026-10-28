@@ -1,0 +1,18 @@
+[
+  {
+    "at": "2026-10-27T00:07:47.329716+00:00",
+    "campaign": null,
+    "day": 0,
+    "event": "ingested",
+    "payload": "{\"count\":15,\"digest\":\"d7cd46bdfe7fe0c998fdbcf2333c041bc3c05bec43b052293d8a1c2e60db7c21\"}",
+    "seq": 1
+  },
+  {
+    "at": "2026-10-27T00:07:47.330025+00:00",
+    "campaign": "cmp-89617958ee9e08dc44d7",
+    "day": 0,
+    "event": "proposed",
+    "payload": "{\"expected_net_cents\":0.0,\"method\":\"baseline\",\"model_calls\":0,\"model_cost_usd\":0,\"recommendation\":{\"cost_usd\":null,\"engineer_id\":\"acquisition-script\",\"error\":null,\"model\":null,\"operations_applied\":0,\"phase\":\"implement\",\"process\":null,\"provider_kind\":\"scripted\",\"status\":\"completed\",\"text\":\"Deterministic scripted optimiser; no model inference.\",\"usage\":{}},\"selected\":[]}",
+    "seq": 2
+  }
+]

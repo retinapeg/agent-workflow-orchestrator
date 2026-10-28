@@ -1,0 +1,162 @@
+[
+  {
+    "at": "2026-10-27T00:07:47.306994+00:00",
+    "campaign": null,
+    "day": 0,
+    "event": "ingested",
+    "payload": "{\"count\":15,\"digest\":\"d7cd46bdfe7fe0c998fdbcf2333c041bc3c05bec43b052293d8a1c2e60db7c21\"}",
+    "seq": 1
+  },
+  {
+    "at": "2026-10-27T00:07:47.307313+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "proposed",
+    "payload": "{\"expected_net_cents\":7680.0,\"method\":\"scripted-agent\",\"model_calls\":0,\"model_cost_usd\":0,\"recommendation\":{\"cost_usd\":null,\"engineer_id\":\"acquisition-script\",\"error\":null,\"model\":null,\"operations_applied\":0,\"phase\":\"implement\",\"process\":null,\"provider_kind\":\"scripted\",\"status\":\"completed\",\"text\":\"Deterministic scripted optimiser; no model inference.\",\"usage\":{}},\"selected\":[\"smb-02\",\"smb-03\",\"smb-06\"]}",
+    "seq": 2
+  },
+  {
+    "at": "2026-10-27T00:07:47.307531+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "exclusions_reviewed",
+    "payload": "{\"actor\":\"SCRIPTED evaluation reviewer\",\"excluded\":[{\"id\":\"review-duplicate-a\",\"reasons\":[\"duplicate contact records require exclusion review\"]},{\"id\":\"review-duplicate-b\",\"reasons\":[\"duplicate contact records require exclusion review\"]},{\"id\":\"review-missing\",\"reasons\":[\"invalid margin_cents\"]}]}",
+    "seq": 3
+  },
+  {
+    "at": "2026-10-27T00:07:47.307807+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "approved",
+    "payload": "{\"actor\":\"SCRIPTED evaluation approver\",\"budget_cents\":2400}",
+    "seq": 4
+  },
+  {
+    "at": "2026-10-27T00:07:47.308066+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "execution_started",
+    "payload": "{\"failure_injection\":\"none\"}",
+    "seq": 5
+  },
+  {
+    "at": "2026-10-27T00:07:47.308308+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "provider_attempt",
+    "payload": "{\"attempt\":1,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-02\"}",
+    "seq": 6
+  },
+  {
+    "at": "2026-10-27T00:07:47.308343+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "mock_provider_accepted",
+    "payload": "{\"cost_cents\":600,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-02\",\"tool_cost_usd\":0}",
+    "seq": 7
+  },
+  {
+    "at": "2026-10-27T00:07:47.308474+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "operation_completed",
+    "payload": "{\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-02\"}",
+    "seq": 8
+  },
+  {
+    "at": "2026-10-27T00:07:47.308714+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "provider_attempt",
+    "payload": "{\"attempt\":1,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-03\"}",
+    "seq": 9
+  },
+  {
+    "at": "2026-10-27T00:07:47.308731+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "mock_provider_accepted",
+    "payload": "{\"cost_cents\":1200,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-03\",\"tool_cost_usd\":0}",
+    "seq": 10
+  },
+  {
+    "at": "2026-10-27T00:07:47.308848+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "operation_completed",
+    "payload": "{\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-03\"}",
+    "seq": 11
+  },
+  {
+    "at": "2026-10-27T00:07:47.309077+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "provider_attempt",
+    "payload": "{\"attempt\":1,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-06\"}",
+    "seq": 12
+  },
+  {
+    "at": "2026-10-27T00:07:47.309093+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "mock_provider_accepted",
+    "payload": "{\"cost_cents\":600,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-06\",\"tool_cost_usd\":0}",
+    "seq": 13
+  },
+  {
+    "at": "2026-10-27T00:07:47.309223+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "operation_completed",
+    "payload": "{\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-06\"}",
+    "seq": 14
+  },
+  {
+    "at": "2026-10-27T00:07:47.309354+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 0,
+    "event": "execution_finished",
+    "payload": "{\"status\":\"COMPLETED\"}",
+    "seq": 15
+  },
+  {
+    "at": "2026-10-27T00:07:47.310420+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 7,
+    "event": "conversion_observed",
+    "payload": "{\"converted\":false,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-02\"}",
+    "seq": 16
+  },
+  {
+    "at": "2026-10-27T00:07:47.310437+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 7,
+    "event": "conversion_observed",
+    "payload": "{\"converted\":true,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-03\"}",
+    "seq": 17
+  },
+  {
+    "at": "2026-10-27T00:07:47.310446+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 7,
+    "event": "conversion_observed",
+    "payload": "{\"converted\":false,\"operation\":\"cmp-cb2842d6687d19c69a6c:smb-06\"}",
+    "seq": 18
+  },
+  {
+    "at": "2026-10-27T00:07:47.310477+00:00",
+    "campaign": "cmp-cb2842d6687d19c69a6c",
+    "day": 7,
+    "event": "settled",
+    "payload": "{}",
+    "seq": 19
+  },
+  {
+    "at": "2026-10-27T00:07:47.310484+00:00",
+    "campaign": null,
+    "day": 7,
+    "event": "clock_advanced",
+    "payload": "{\"days\":7}",
+    "seq": 20
+  }
+]

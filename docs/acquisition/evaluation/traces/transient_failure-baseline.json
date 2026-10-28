@@ -1,0 +1,162 @@
+[
+  {
+    "at": "2026-10-27T00:07:47.338080+00:00",
+    "campaign": null,
+    "day": 0,
+    "event": "ingested",
+    "payload": "{\"count\":15,\"digest\":\"d7cd46bdfe7fe0c998fdbcf2333c041bc3c05bec43b052293d8a1c2e60db7c21\"}",
+    "seq": 1
+  },
+  {
+    "at": "2026-10-27T00:07:47.338368+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "proposed",
+    "payload": "{\"expected_net_cents\":7200.0,\"method\":\"baseline\",\"model_calls\":0,\"model_cost_usd\":0,\"recommendation\":{\"cost_usd\":null,\"engineer_id\":\"acquisition-script\",\"error\":null,\"model\":null,\"operations_applied\":0,\"phase\":\"implement\",\"process\":null,\"provider_kind\":\"scripted\",\"status\":\"completed\",\"text\":\"Deterministic scripted optimiser; no model inference.\",\"usage\":{}},\"selected\":[\"smb-03\",\"smb-07\"]}",
+    "seq": 2
+  },
+  {
+    "at": "2026-10-27T00:07:47.338553+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "exclusions_reviewed",
+    "payload": "{\"actor\":\"SCRIPTED evaluation reviewer\",\"excluded\":[{\"id\":\"review-duplicate-a\",\"reasons\":[\"duplicate contact records require exclusion review\"]},{\"id\":\"review-duplicate-b\",\"reasons\":[\"duplicate contact records require exclusion review\"]},{\"id\":\"review-missing\",\"reasons\":[\"invalid margin_cents\"]}]}",
+    "seq": 3
+  },
+  {
+    "at": "2026-10-27T00:07:47.338807+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "approved",
+    "payload": "{\"actor\":\"SCRIPTED evaluation approver\",\"budget_cents\":2400}",
+    "seq": 4
+  },
+  {
+    "at": "2026-10-27T00:07:47.339034+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "execution_started",
+    "payload": "{\"failure_injection\":\"once\"}",
+    "seq": 5
+  },
+  {
+    "at": "2026-10-27T00:07:47.339254+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "provider_attempt",
+    "payload": "{\"attempt\":1,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-03\"}",
+    "seq": 6
+  },
+  {
+    "at": "2026-10-27T00:07:47.339269+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "provider_failed",
+    "payload": "{\"operation\":\"cmp-5d68f010b138e3a7e711:smb-03\",\"tool_cost_usd\":0}",
+    "seq": 7
+  },
+  {
+    "at": "2026-10-27T00:07:47.339484+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "provider_attempt",
+    "payload": "{\"attempt\":1,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-07\"}",
+    "seq": 8
+  },
+  {
+    "at": "2026-10-27T00:07:47.339518+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "mock_provider_accepted",
+    "payload": "{\"cost_cents\":1200,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-07\",\"tool_cost_usd\":0}",
+    "seq": 9
+  },
+  {
+    "at": "2026-10-27T00:07:47.339638+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "operation_completed",
+    "payload": "{\"operation\":\"cmp-5d68f010b138e3a7e711:smb-07\"}",
+    "seq": 10
+  },
+  {
+    "at": "2026-10-27T00:07:47.339745+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "execution_finished",
+    "payload": "{\"status\":\"FAILED\"}",
+    "seq": 11
+  },
+  {
+    "at": "2026-10-27T00:07:47.340986+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "execution_started",
+    "payload": "{\"failure_injection\":\"none\"}",
+    "seq": 12
+  },
+  {
+    "at": "2026-10-27T00:07:47.341333+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "provider_attempt",
+    "payload": "{\"attempt\":2,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-03\"}",
+    "seq": 13
+  },
+  {
+    "at": "2026-10-27T00:07:47.341369+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "mock_provider_accepted",
+    "payload": "{\"cost_cents\":1200,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-03\",\"tool_cost_usd\":0}",
+    "seq": 14
+  },
+  {
+    "at": "2026-10-27T00:07:47.341528+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "operation_completed",
+    "payload": "{\"operation\":\"cmp-5d68f010b138e3a7e711:smb-03\"}",
+    "seq": 15
+  },
+  {
+    "at": "2026-10-27T00:07:47.341695+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 0,
+    "event": "execution_finished",
+    "payload": "{\"status\":\"COMPLETED\"}",
+    "seq": 16
+  },
+  {
+    "at": "2026-10-27T00:07:47.341853+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 7,
+    "event": "conversion_observed",
+    "payload": "{\"converted\":true,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-07\"}",
+    "seq": 17
+  },
+  {
+    "at": "2026-10-27T00:07:47.341863+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 7,
+    "event": "conversion_observed",
+    "payload": "{\"converted\":true,\"operation\":\"cmp-5d68f010b138e3a7e711:smb-03\"}",
+    "seq": 18
+  },
+  {
+    "at": "2026-10-27T00:07:47.341896+00:00",
+    "campaign": "cmp-5d68f010b138e3a7e711",
+    "day": 7,
+    "event": "settled",
+    "payload": "{}",
+    "seq": 19
+  },
+  {
+    "at": "2026-10-27T00:07:47.341902+00:00",
+    "campaign": null,
+    "day": 7,
+    "event": "clock_advanced",
+    "payload": "{\"days\":7}",
+    "seq": 20
+  }
+]
