@@ -12,6 +12,7 @@ export type Snapshot = {
   events: RecordData[];
   goals: RecordData[];
   provisions?: RecordData[];
+  conversations?: Conversation[];
   paused: boolean;
   limit: number;
   revision: number;
@@ -20,15 +21,56 @@ export type Snapshot = {
   version: string;
 };
 
-export type Tab = 'overview' | 'projects' | 'build' | 'agents' | 'review';
+export type Tab = 'chat' | 'overview' | 'projects' | 'build' | 'agents' | 'review';
 
 export const TABS: {key: Tab; label: string}[] = [
+  {key: 'chat', label: 'Chat'},
   {key: 'overview', label: 'Overview'},
   {key: 'projects', label: 'Projects'},
   {key: 'build', label: 'Build'},
   {key: 'agents', label: 'Agents'},
   {key: 'review', label: 'Review'},
 ];
+
+// Conversations with the director (GET /api/v1/conversations, snapshot.conversations).
+export type PlanTask = {title: string; instructions?: string; scope?: string[]; dependencies?: number[]; acceptance?: string[]; complexity?: string; risk?: string};
+export type PlanMilestone = {code: string; title: string; tasks?: PlanTask[]};
+export type Spec = {outcome?: string; acceptance?: string[]; constraints?: string[]; notes?: string; plan?: {milestones?: PlanMilestone[]} | null} | null;
+// The owner's own words start a build; the exact phrase depends on whether a plan exists.
+export const planTasks = (spec: Spec): PlanTask[] => (spec?.plan?.milestones || []).flatMap(m => m.tasks || []);
+export const buildPhrase = (spec: Spec) => (planTasks(spec).length ? 'Execute this plan' : 'Build it');
+export type Conversation = {
+  id: string;
+  rev: number;
+  title: string;
+  created: number;
+  updated: number;
+  project_id: string | null;
+  spec: Spec;
+  status: 'idle' | 'thinking';
+  builds?: {goal_id: string; task_id: string; time: number}[];
+};
+export type ChatMessage = {
+  id: number;
+  time: number;
+  role: 'user' | 'assistant';
+  text: string;
+  model?: string;
+  effort?: string | null;
+  provider?: string;
+  seconds?: number;
+  inspected?: string | null;
+  project_selected?: string;
+  offer_build?: boolean;
+  clarify?: boolean;
+  build_started?: boolean;
+  goal_id?: string;
+  task_id?: string;
+  project?: string;
+  launch_error?: string;
+  error?: boolean;
+};
+export type ConversationDetail = Conversation & {project: {id: string; name: string} | null; messages: ChatMessage[]};
 
 export const ACTIVE_ATTEMPT = ['leased', 'running', 'verifying'];
 export const ACTIVE_TASK = ['leased', 'running', 'verifying', 'reviewing', 'recovering'];

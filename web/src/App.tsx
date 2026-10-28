@@ -1,6 +1,7 @@
 import React, {createContext, useContext, useEffect, useRef, useState} from 'react';
 import {ACTIVE_ATTEMPT, ACTIVE_TASK, TABS, needsYou, shortSha, type RecordData, type Snapshot, type Tab} from './types';
 import {Icon, LiveDot, Mark, Wordmark} from './ui';
+import {Chat} from './screens/Chat';
 import {Overview} from './screens/Overview';
 import {Projects} from './screens/Projects';
 import {Build} from './screens/Build';
@@ -11,6 +12,9 @@ import {DialogBody} from './screens/Dialogs';
 export type Modal = {kind: 'goal' | 'task' | 'review' | 'device' | 'account' | 'enrol'; id?: string} | null;
 export type Evidence = {label: string; text: string; kind: 'diff' | 'text'; warn?: string} | null;
 export type Link = 'live' | 'polling' | 'reconnecting';
+// An SSE `update` whose kind is conversation.* names the thread it touched, so the Chat
+// screen can refetch that thread's messages without waiting for the next snapshot.
+export type ChatPing = {id: string; n: number};
 
 export type Ctx = {
   data: Snapshot;
@@ -29,6 +33,8 @@ export type Ctx = {
   setModal: (m: Modal) => void;
   action: (path: string, body: RecordData, success: string, close?: boolean) => Promise<void>;
   post: (path: string, body: RecordData) => Promise<any>;
+  get: (path: string) => Promise<any>;
+  chatPing: ChatPing;
   notify: (s: string) => void;
   evidence: Evidence;
   setEvidence: (e: Evidence) => void;
@@ -45,7 +51,7 @@ const ArenaContext = createContext<Ctx>(null!);
 export const useArena = () => useContext(ArenaContext);
 
 // Visual labels follow the phone mockup; the accessible names stay the contract names.
-const VISUAL: Record<Tab, string> = {overview: 'Home', projects: 'Projects', build: 'Builds', agents: 'Agents', review: 'Review'};
+const VISUAL: Record<Tab, string> = {chat: 'Chat', overview: 'Home', projects: 'Projects', build: 'Builds', agents: 'Agents', review: 'Review'};
 
 const RESTARTING = 'Arena is restarting — reconnecting…';
 
@@ -88,7 +94,7 @@ export function App() {
   const [data, setData] = useState<Snapshot | null>(null);
   const [paired, setPaired] = useState<boolean | null>(null);
   const [csrf, setCsrf] = useState('');
-  const [tab, setTabState] = useState<Tab>('overview');
+  const [tab, setTabState] = useState<Tab>('chat');
   const [online, setOnline] = useState(false);
   const [sse, setSse] = useState(false);
   const [lastSeen, setLastSeen] = useState('');
@@ -99,6 +105,7 @@ export function App() {
   const [goal, setGoal] = useState<string | null>(null);
   const [handoff, setHandoff] = useState(readHandoff);
   const [search, setSearch] = useState('');
+  const [chatPing, setChatPing] = useState<ChatPing>({id: '', n: 0});
   const [, setTick] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const csrfRef = useRef('');
@@ -179,7 +186,19 @@ export function App() {
     if (!paired) return;
     refresh();
     const ev = new EventSource('/api/v1/events');
-    ev.addEventListener('update', refresh);
+    const onUpdate = (e: MessageEvent) => {
+      refresh();
+      try {
+        const row = JSON.parse(e.data);
+        if (typeof row?.kind === 'string' && row.kind.startsWith('conversation.')) {
+          const d = typeof row.data === 'string' ? JSON.parse(row.data) : row.data;
+          setChatPing({id: String(d?.conversation_id || ''), n: Date.now()});
+        }
+      } catch {
+        /* a malformed event still refreshed the snapshot above */
+      }
+    };
+    ev.addEventListener('update', onUpdate);
     ev.addEventListener('snapshot', refresh);
     ev.onerror = () => {
       setSse(false);
@@ -408,6 +427,8 @@ export function App() {
     setModal,
     action,
     post,
+    get,
+    chatPing,
     notify,
     evidence,
     setEvidence,
@@ -521,6 +542,7 @@ export function App() {
             </div>
           )}
 
+          {tab === 'chat' && <Chat />}
           {tab === 'overview' && <Overview />}
           {tab === 'projects' && <Projects />}
           {tab === 'build' && <Build />}
