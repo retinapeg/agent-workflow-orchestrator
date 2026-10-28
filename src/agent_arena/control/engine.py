@@ -163,7 +163,7 @@ class Engine:
                 "Enrollment requires explicit review of repository checks/hooks/plugins"
             )
         scope = safe_scope(scope)
-        protected = safe_scope(protected)
+        protected = safe_scope(protected) if protected else []  # checks may live outside
         # Protected paths may sit inside the writable scope (they stay frozen: the worker
         # rejects any change to them); a scope that is itself frozen makes no sense.
         if any(within(path, protected) for path in scope):
@@ -811,6 +811,7 @@ class Engine:
                             specification=specification,
                             complexity=item.get("complexity", "moderate"),
                             risk=item.get("risk", "medium"),
+                            milestone=item.get("milestone", ""),
                             # Children start with fresh budgets; the parent's repair history
                             # belongs to the planning stage, not to each build.
                             repairs=0,

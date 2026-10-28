@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import provisioning
 from .engine import ACTIVE, Engine, git
 from .intent import resolve_project
 from .store import Conflict, Store, encode
@@ -51,6 +52,15 @@ class Change(Model):
 
 class Pair(Model):
     code: str = Field(min_length=8, max_length=128)
+
+
+class ProjectIdea(Model):
+    description: str = Field(min_length=12, max_length=20000)
+
+
+class Provision(Model):
+    proposal_id: str = Field(min_length=8, max_length=64)
+    revision: int = 0
 
 
 # A trusted device pairs once. Its session lasts SESSION_SECONDS and is renewed on use
@@ -346,6 +356,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             "server_time": time.time(),
             "api_fallback": False,
             "goals": store.rows("goals"),
+            "provisions": provisioning.provisions(store),
         }
 
     @app.get("/api/v1/overview")
@@ -428,6 +439,28 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             planning=True,
             director=True,
         )
+
+    @app.post("/api/v1/projects/proposals")
+    def project_proposal(body: ProjectIdea, request: Request):
+        # Names only; nothing is created until the owner approves the exact proposal.
+        return provisioning.propose(store, body.description)
+
+    @app.post("/api/v1/projects/provision")
+    def project_provision(body: Provision, request: Request):
+        def approve(db):
+            proposal = provisioning.load_proposal(store, body.proposal_id)
+            record = provisioning.Provisioner(store, engine).start(proposal, approved_by="phone")
+            detail = "Creating the local repository and private GitHub repository"
+            return {**record, "detail": detail}
+
+        return JSONResponse(command(request, body.model_dump(), approve), status_code=202)
+
+    @app.get("/api/v1/provisions/{ident}")
+    def provision_status(ident: str):
+        for record in provisioning.provisions(store, limit=200):
+            if record["id"] == ident:
+                return record
+        raise KeyError(ident)
 
     @app.post("/api/v1/projects/{project_id}/requests")
     def product_request(project_id: str, body: Intent, request: Request):

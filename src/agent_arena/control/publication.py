@@ -179,6 +179,22 @@ def publish(store, approval):
                 reason=reason,
                 branch="main",
             )
+    if state == "integrated" and project.get("push_remote"):
+        from .provisioning import push_main
+
+        try:
+            detail = push_main(source)
+            outcome, reason = "pushed", detail
+        except ValueError as exc:
+            outcome, reason = "push_failed", str(exc)
+        with store.transaction() as db:
+            store.event(
+                db,
+                "integration." + outcome,
+                approval_id=approval["id"],
+                candidate=candidate,
+                reason=reason,
+            )
     if state == "integrated" and project.get("self"):
         schedule_activation(store, project, candidate)
 

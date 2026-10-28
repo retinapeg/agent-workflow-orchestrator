@@ -16,6 +16,9 @@ class PlannedTask(BaseModel):
     acceptance: list[str] = Field(default_factory=list, max_length=12)
     complexity: str = Field(default="moderate", pattern="^(simple|moderate|complex)$")
     risk: str = Field(default="medium", pattern="^(low|medium|high)$")
+    milestone: str = Field(
+        default="", max_length=120, pattern=r"^(M\d+(\.\d+)*\s+[—-]\s+.{1,100})?$"
+    )
 
 
 class Plan(BaseModel):
@@ -153,8 +156,16 @@ diff, the frozen checks or a reviewer reading the code - never demand reports or
 this pipeline does not produce), constraints (safety string array),
 strategy (single|parallel|sequential|clarify), question (empty except clarify),
 tasks [{title,instructions,scope:[relative paths],dependencies:[zero-based task indices],
-acceptance:[testable criteria],complexity:simple|moderate|complex,risk:low|medium|high}].
+acceptance:[testable criteria],complexity:simple|moderate|complex,risk:low|medium|high,
+milestone:"M2.1 — Frontend"}].
 Up to eight tasks. A clarify response has no tasks.
+Milestones: give every task a milestone code and short title ("M2 — Implementation",
+"M2.1 — Backend", "M2.3.1 — Schema migration"). Codes nest with dots; choose the actual
+milestones and depth the request needs (a small change is one milestone; a new product may
+need architecture, data, backend, frontend and integration milestones). M0 (inspect and
+specify), independent review and final integration are performed by the pipeline itself —
+do not create tasks for them. Dependencies must reflect what genuinely must land first;
+independent milestones run in parallel on separate workers.
 Prefer one task for small work. Use parallel tasks for independent, non-overlapping changes;
 shared interfaces must precede dependents. Sequential tasks depend on their predecessor.
 Every task must include concrete implementation instructions grounded in inspected code.
