@@ -7,7 +7,8 @@ import {resolve} from 'node:path';
 
 if (process.env.ARENA_LIVE !== '1') throw Error('ARENA_LIVE=1 is required: this drives real subscription agents');
 const root = process.cwd();
-const {ARENA_HOME: home, ARENA_URL: url, ARENA_PROJECT: projectId, ARENA_INSTRUCTIONS: instructions, ARENA_GOAL: attachGoal} = process.env;
+const {ARENA_HOME: home, ARENA_URL: url, ARENA_INSTRUCTIONS: instructions, ARENA_GOAL: attachGoal} = process.env;
+let projectId = process.env.ARENA_PROJECT;
 if (!home || !url || !projectId || (!instructions && !attachGoal)) throw Error('ARENA_HOME, ARENA_URL, ARENA_PROJECT and ARENA_INSTRUCTIONS (or ARENA_GOAL to attach to an existing request) are required');
 const integrate = process.env.ARENA_INTEGRATE === '1';
 const limitMs = Number(process.env.ARENA_LIMIT_SECONDS || 1800) * 1000;
@@ -60,16 +61,21 @@ try {
     log(`Attached to existing request ${attachGoal}: ${describe(existing)}`);
   } else {
     await page.getByRole('button', {name: 'New request', exact: true}).click();
-    await page.getByLabel('Your project').selectOption(projectId);
+    if (projectId !== 'auto') await page.getByLabel('Your project').selectOption(projectId);
     await page.getByLabel('What would you like to change?').fill(instructions);
     t0 = Date.now();
     await page.getByRole('button', {name: 'Build this for me', exact: true}).click();
     await page.getByRole('dialog').waitFor({state: 'hidden'});
     const acknowledgedMs = Date.now() - t0;
     const submitted = await overview(page);
-    const created = submitted.tasks.filter((t) => t.project_id === projectId && !before.tasks.some((b) => b.id === t.id));
+    const created = submitted.tasks.filter((t) => (projectId === 'auto' || t.project_id === projectId) && !before.tasks.some((b) => b.id === t.id));
     if (created.length !== 1) throw Error('Expected exactly one new request task, saw ' + created.length);
     goalId = created[0].goal_id;
+    if (projectId === 'auto') {
+      projectId = created[0].project_id;
+      result.resolved_project = submitted.projects.find((p) => p.id === projectId)?.name;
+      log(`Arena chose the project itself: ${result.resolved_project}`);
+    }
     result.goal_id = goalId;
     result.request_task = created[0].id;
     result.acknowledged_ms = acknowledgedMs;

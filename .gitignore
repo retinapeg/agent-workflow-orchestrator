@@ -17,3 +17,4 @@ web/playwright-report/
 .arena-backups/
 .arena-control/
 .arena-releases/
+.claude/
