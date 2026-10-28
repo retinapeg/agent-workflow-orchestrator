@@ -1,3 +1,105 @@
+# Operate the Autobuild alpha (current — 28 October 2026)
+
+Everything below this section is the historical build log; this section is what you use.
+
+## Local URL and pairing
+
+- URL on the Mac: **http://127.0.0.1:8791**
+- New one-time pairing code (10 minutes, one device per code):
+
+  ```sh
+  cd ~/Projects/agent-workflow-orchestrator && .venv/bin/python -m agent_arena.control --home .arena-control pair
+  ```
+
+The controller is a launchd login service (`local.agent-arena.control.1a6834e84b5a`, plist
+`.arena-control/control.plist` symlinked from `~/Library/LaunchAgents`). It starts at login,
+restarts itself if it crashes, keeps the Mac from idle-sleeping (`caffeinate -i`), and does not
+depend on any Terminal window or browser tab. Closing the lid still sleeps a MacBook Air: leave
+the lid open (or use clamshell mode with power and an external display) while builds run.
+
+## Service commands (run from the repository)
+
+```sh
+# Is it running?
+launchctl print gui/$(id -u)/local.agent-arena.control.1a6834e84b5a | grep -E "state|pid"
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8791/        # 200 = UI served
+
+# Restart on new code (workers keep running; the scheduler reconciles them on return)
+launchctl kickstart -k gui/$(id -u)/local.agent-arena.control.1a6834e84b5a
+
+# Stop the service (state, evidence and worker ownership are preserved)
+.venv/bin/python -m agent_arena.control --home .arena-control uninstall-service
+# Start it again / recover after a stop
+.venv/bin/python -m agent_arena.control --home .arena-control install-service --port 8791 --origin http://127.0.0.1:8791
+
+# Health of the host, accounts and private transport (no provider call)
+.venv/bin/python -m agent_arena.control --home .arena-control doctor
+# Re-check subscription logins; --probe validates Fable 5.1 (max) on Claude slots
+.venv/bin/python -m agent_arena.control --home .arena-control check-accounts --probe
+# Logs
+tail -f .arena-control/service.log
+```
+
+Never run the manual `start` command while the launchd job is loaded for the same state
+directory; the second scheduler refuses the lock and exits.
+
+## Using it
+
+1. Open the URL, enter a pairing code once; the device stays paired for seven days.
+2. **New request** → choose a project → type or dictate what you want → **Build this for me**.
+3. Watch **Build**: the director (Codex `gpt-6-astra` at max effort, or a validated Claude
+   Fable 5.1 slot at max when Codex is busy) inspects the repository and writes the
+   specification; tasks run on Codex and Claude workers; frozen checks, independent
+   cross-provider review and the director's evidence review follow; verified work is staged.
+4. Integration into the project's local `main`:
+   - **Manual** policy (default): **Review** → Inspect evidence & diff → Accept → Integrate into main.
+   - **Automatic** policy (Projects → "Integrate verified work automatically"): every gate
+     above must pass, then the exact staged commit integrates on its own. Nothing is ever
+     pushed to a remote; that remains a separate human action.
+5. Controls: Pause/Resume queue, project priority, Stop task, Stop all workers, Retry,
+   queue an instruction for a running build, answer a director question, Unpair device.
+
+## Enrolling one of your own repositories
+
+Projects are enrolled on the Mac, never from the phone. The source must be a clean, committed
+checkout with `main` checked out. Write a manifest and review its checks (they run inside the
+macOS sandbox against every candidate):
+
+```json
+{
+  "name": "My app",
+  "repo": "/Users/you/Projects/my-app",
+  "scope": ["src", "web"],
+  "checks": [{"name": "Tests", "argv": ["{python}", "-m", "pytest", "-q"], "timeout": 600}],
+  "protected": ["tests/acceptance"],
+  "trusted": true,
+  "integration_policy": "auto_local_main"
+}
+```
+
+```sh
+.venv/bin/python -m agent_arena.control --home .arena-control enroll-project --manifest /path/to/manifest.json
+```
+
+`scope` is the only place workers may write; `protected` paths are frozen (checks live there).
+Repositories carrying `AGENTS.md`, `CLAUDE.md`, `.codex/` or `.claude/` are refused until
+audited isolation exists for them.
+
+## Private phone access (deferred until Tailscale is signed in)
+
+```sh
+tailscale login                                    # one-time, opens a browser sign-in
+.venv/bin/python -m agent_arena.control --home .arena-control configure-remote --port 8791
+.venv/bin/python -m agent_arena.control --home .arena-control uninstall-service
+.venv/bin/python -m agent_arena.control --home .arena-control install-service --port 8791 --origin https://<mac>.<tailnet>.ts.net
+.venv/bin/python -m agent_arena.control --home .arena-control pair
+```
+
+Serve (not Funnel) publishes the HTTPS origin inside your tailnet only; application pairing
+is still required on top of it. Install Tailscale on the phone with the same account.
+
+---
+
 # Autobuild: phone-to-Mac build control
 
 The existing implementation is on `integration/mobile-build-control`. The web UI is
