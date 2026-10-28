@@ -33,6 +33,12 @@ def main():
     parser.add_argument(
         "--source", required=True, help="the enrolled repository (for node_modules/.venv)"
     )
+    parser.add_argument(
+        "--pytest-ignore",
+        action="append",
+        default=[],
+        help="test paths that need the network or a display and cannot run in the sandbox",
+    )
     args = parser.parse_args()
     workspace = Path.cwd().resolve()
     source = Path(args.source).resolve()
@@ -68,9 +74,10 @@ def main():
             else str(workspace),
         }
         if (workspace / "tests").is_dir():
+            ignores = [f"--ignore={path}" for path in args.pytest_ignore]
             run(
                 "pytest",
-                [python, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider"],
+                [python, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *ignores],
                 workspace,
                 pyenv,
             )

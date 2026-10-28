@@ -229,18 +229,19 @@ class Engine:
         scope = safe_scope(scope)
         if not all(within(p, project["scope"]) for p in scope):
             raise ValueError("Task scope exceeds enrolled project authority")
-        if project.get("self"):
+        busy = [
+            t
+            for t in self.store.rows("tasks", db)
+            if t["project_id"] == project_id and t["state"] not in TERMINAL
+        ]
+        if project.get("self") and busy:
             # One self-improvement at a time: no recursive or piled-up self-modification.
-            busy = [
-                t
-                for t in self.store.rows("tasks", db)
-                if t["project_id"] == project_id and t["state"] not in TERMINAL
-            ]
-            if busy:
-                raise Conflict(
-                    "Arena is already working on itself; wait for that build to integrate "
-                    "and activate before asking for another change to Arena"
-                )
+            raise Conflict(
+                "Arena is already working on itself; wait for that build to integrate "
+                "and activate before asking for another change to Arena"
+            )
+        if not busy:
+            project = self.sync_staging(db, project)
         if not title.strip() or not instructions.strip() or len(instructions) > 20000:
             raise ValueError(
                 "Provide an outcome and bounded instructions (maximum 20,000 characters)"
@@ -289,6 +290,32 @@ class Engine:
             db, "goal.created", goal_id=goal_id, task_id=task_id, project_id=project_id, title=title
         )
         return {"goal_id": goal_id, "task_id": task_id}
+
+    def sync_staging(self, db, project):
+        """Start new work from the source's current main when it moved ahead of staging by
+        plain commits (the owner committed directly). A diverged main is left alone: builds
+        then fail integration with a clear reason instead of silently rebasing."""
+        repo, staging = Path(project["repo"]), Path(project["staging"])
+        try:
+            source_main = git(repo, "rev-parse", "refs/heads/main")
+        except ValueError:
+            return project
+        if source_main == project["head"]:
+            return project
+        git(staging, "fetch", "--no-tags", str(repo), "refs/heads/main")
+        try:
+            git(staging, "merge-base", "--is-ancestor", project["head"], source_main)
+        except ValueError:
+            return project  # Diverged or behind: not a fast-forward.
+        git(staging, "merge", "--ff-only", source_main)
+        for key in ("head", "base", "integrated_head", "accepted_head"):
+            project[key] = source_main
+        db.execute(
+            "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+            (encode({k: v for k, v in project.items() if k not in {"id", "rev"}}), project["id"]),
+        )
+        self.store.event(db, "project.synced", project_id=project["id"], head=source_main)
+        return project
 
     def start(self, wait_seconds=60):
         # A restarting service overlaps its predecessor for a few seconds while that one

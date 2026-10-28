@@ -793,3 +793,35 @@ def test_self_enrolment_is_explicit_and_one_self_build_at_a_time(setup, tmp_path
     assert manifest["integration_policy"] == "auto_local_main"
     assert "repo_check.py" in manifest["checks"][0]["argv"][1]
     assert manifest["keywords"] == ["billing", "invoices", "theirs"]
+
+
+def test_new_requests_start_from_a_source_main_that_moved_ahead(setup):
+    store, engine, project, source = setup
+    git(source, "branch", "-M", "main")
+    (source / "src/owner.txt").write_text("committed by the owner\n")
+    git(source, "add", "src/owner.txt")
+    git(source, "commit", "-qm", "Owner commit after enrolment")
+    advanced = git(source, "rev-parse", "main")
+    task_id = goal(store, engine, project)
+    current = store.get("projects", project["id"])
+    assert current["head"] == advanced and current["base"] == advanced
+    assert git(Path(current["staging"]), "rev-parse", "HEAD") == advanced
+    assert store.get("tasks", task_id)["state"] == "ready"
+    # A diverged main is never rewritten: staging keeps its own history.
+    git(source, "commit", "-q", "--allow-empty", "-m", "another owner commit")
+    (Path(current["staging"]) / "src/staged.txt").write_text("staged\n")
+    git(Path(current["staging"]), "add", "src/staged.txt")
+    git(Path(current["staging"]), "commit", "-qm", "staged work")
+    staged = git(Path(current["staging"]), "rev-parse", "HEAD")
+    with store.transaction() as db:
+        row = store.get("projects", project["id"], db)
+        row["head"] = staged
+        db.execute(
+            "UPDATE projects SET data=? WHERE id=?",
+            (encode({k: v for k, v in row.items() if k not in {"id", "rev"}}), project["id"]),
+        )
+    with store.transaction() as db:
+        for t in store.rows("tasks", db):
+            store.update_task(db, t, "completed", "done")
+    goal(store, engine, project, "src/b.txt")
+    assert git(Path(current["staging"]), "rev-parse", "HEAD") == staged

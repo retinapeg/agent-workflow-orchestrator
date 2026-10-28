@@ -25,7 +25,7 @@ DEFAULT_HOME = Path.home() / ".local/share/agent-arena/build-control"
 SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".next"}
 
 
-def inferred_manifest(repo, name=None, policy="auto_local_main", keywords=""):
+def inferred_manifest(repo, name=None, policy="auto_local_main", keywords="", pytest_ignore=()):
     """A reviewed-by-print manifest for an ordinary repository: whole tree minus build junk,
     generic checks from scripts/repo_check.py (uses the repo's own node_modules/.venv)."""
     repo = Path(repo).expanduser().resolve()
@@ -46,7 +46,13 @@ def inferred_manifest(repo, name=None, policy="auto_local_main", keywords=""):
         checks=[
             {
                 "name": "Repository build and tests",
-                "argv": ["{python}", str(checker), "--source", str(repo)],
+                "argv": [
+                    "{python}",
+                    str(checker),
+                    "--source",
+                    str(repo),
+                    *[a for path in pytest_ignore for a in ("--pytest-ignore", path)],
+                ],
                 "timeout": 600,
             }
         ],
@@ -191,6 +197,12 @@ def main(argv=None):
     p.add_argument("--policy", choices=["manual", "auto_local_main"], default="auto_local_main")
     p.add_argument("--keywords", default="", help="comma-separated hints for intent matching")
     p.add_argument("--dry-run", action="store_true", help="print the manifest without enrolling")
+    p.add_argument(
+        "--pytest-ignore",
+        action="append",
+        default=[],
+        help="test path the repository's suite cannot run offline in the sandbox (repeatable)",
+    )
     p = sub.add_parser("enroll-self", help="enrol Arena's own repository as a build target")
     p.add_argument("--policy", choices=["manual", "auto_local_main"], default="auto_local_main")
     sub.add_parser("create-sandbox")
@@ -407,7 +419,9 @@ def main(argv=None):
         m = json.loads(args.manifest.read_text())
         print(encode(Engine(store).enroll(**m)))
     elif args.command == "enroll-repo":
-        manifest = inferred_manifest(args.repo, args.name, args.policy, args.keywords)
+        manifest = inferred_manifest(
+            args.repo, args.name, args.policy, args.keywords, args.pytest_ignore
+        )
         print(encode(manifest))
         if not args.dry_run:
             print(encode(Engine(store).enroll(**manifest)))
