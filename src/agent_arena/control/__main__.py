@@ -224,6 +224,8 @@ def main(argv=None):
             workers=1,
             proxy_headers=False,
             access_log=False,
+            # Open event streams must not block a restart; clients reconnect on their own.
+            timeout_graceful_shutdown=5,
         )
     elif args.command == "start":
         path = store.home / "server.json"
