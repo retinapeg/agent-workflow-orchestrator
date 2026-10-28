@@ -46,7 +46,7 @@ try{
  await page.getByLabel('What would you like to change?').waitFor();
  await page.keyboard.press('Escape');
  await page.getByRole('dialog').waitFor({state:'hidden'});
- await page.getByRole('button',{name:'Device session'}).click();
+ await page.getByRole('button',{name:'Device session'}).first().click();
  await page.getByRole('button',{name:'Unpair this device'}).waitFor();
  await page.screenshot({path:`${out}/device-session-1440.png`,fullPage:false});
  await page.getByRole('button',{name:'Unpair this device'}).click();

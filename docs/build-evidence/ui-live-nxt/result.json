@@ -1,0 +1,14 @@
+{
+  "url": "https://leonards-macbook-air-1.tail11ad03.ts.net",
+  "checks": {
+    "bundle": "index-Dbcfvvyj.js",
+    "hero": 1,
+    "mic": 1,
+    "segmented": 1,
+    "blocked_tasks_in_data": 5,
+    "needs_you_panel_excerpt": "0\nNeeds you\nnothing waiting",
+    "blocked_visible_on_home": 0,
+    "page_errors": []
+  },
+  "passed": true
+}
