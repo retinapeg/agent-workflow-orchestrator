@@ -22,6 +22,42 @@ class Conflict(ValueError):
     pass
 
 
+PAIRING_CODE_SECONDS = 30 * 60
+
+
+def pairing_codes(home: Path):
+    """Outstanding one-time pairing codes (hashes only); legacy single-code files still load."""
+    path = home / "pairing.json"
+    try:
+        data = json.loads(path.read_text())
+    except (OSError, ValueError):
+        return []
+    codes = data.get("codes") if isinstance(data, dict) and "codes" in data else [data]
+    now = time.time()
+    return [c for c in codes if isinstance(c, dict) and c.get("hash") and c.get("expires", 0) > now]
+
+
+def issue_pairing_code(home: Path, issued_by="host"):
+    """Mint a code without invalidating codes already handed out; returns the plain code once."""
+    import hashlib
+    import secrets
+
+    code = secrets.token_urlsafe(18)
+    codes = pairing_codes(home) + [
+        {
+            "hash": hashlib.sha256(code.encode()).hexdigest(),
+            "expires": time.time() + PAIRING_CODE_SECONDS,
+            "issued_by": issued_by,
+            "issued": time.time(),
+        }
+    ]
+    tmp = home / "pairing.json.tmp"
+    tmp.write_text(json.dumps({"codes": codes[-20:]}))
+    tmp.chmod(0o600)
+    tmp.replace(home / "pairing.json")
+    return code, codes[-1]["expires"]
+
+
 class Store:
     def __init__(self, home: Path):
         self.home = home.expanduser().resolve()

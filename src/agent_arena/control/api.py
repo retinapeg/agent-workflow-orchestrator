@@ -185,14 +185,17 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             return JSONResponse(
                 {"detail": "Pairing rate limited; wait one minute"}, status_code=429
             )
-        path = store.home / "pairing.json"
+        from .store import pairing_codes
+
+        presented = hashlib.sha256(body.code.encode()).hexdigest()
         with store.transaction() as db:
-            code = json.loads(path.read_text()) if path.exists() else {}
-            if code.get("expires", 0) < time.time() or not secrets.compare_digest(
-                code.get("hash", ""), hashlib.sha256(body.code.encode()).hexdigest()
-            ):
+            matches = [
+                c for c in pairing_codes(store.home) if secrets.compare_digest(c["hash"], presented)
+            ]
+            if not matches:
                 failures.append(time.time())
                 return JSONResponse({"detail": "Pairing code expired or invalid"}, status_code=403)
+            code = matches[0]
             if db.execute("SELECT 1 FROM meta WHERE key=?", ("paired:" + code["hash"],)).fetchone():
                 return JSONResponse({"detail": "Pairing code already used"}, status_code=403)
             token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
@@ -238,6 +241,17 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             }
             for r in rows
         ]
+
+    @app.post("/api/v1/devices/invite")
+    def invite_device(body: Change, request: Request):
+        """A paired device mints a one-time code for another device (CSRF-protected)."""
+        from .store import issue_pairing_code
+
+        auth = session(request)
+        code, expires = issue_pairing_code(store.home, "device:" + (auth.get("id") or "legacy"))
+        with store.transaction() as db:
+            store.event(db, "device.invited", by=auth.get("id"), expires=expires)
+        return {"code": code, "expires": expires, "origin": origin}
 
     @app.post("/api/v1/devices/{ident}/revoke")
     def revoke_device(ident: str, body: Change, request: Request):

@@ -694,3 +694,33 @@ def test_device_sessions_persist_renew_and_revoke(setup):
     # Explicit logout ends this device's session.
     assert client.post("/api/v1/logout", json={}, headers=headers).status_code == 200
     assert client.get("/api/v1/overview").status_code == 401
+
+
+def test_multiple_pairing_codes_coexist_and_paired_devices_can_invite(setup):
+    from agent_arena.control.store import issue_pairing_code
+
+    store, engine, project, source = setup
+    first, _ = issue_pairing_code(store.home, "host")
+    second, _ = issue_pairing_code(store.home, "host")  # Must not cancel the first.
+    app = make_app(store.home, run_scheduler=False)
+    origin = {"Origin": "http://127.0.0.1:8790"}
+    a = TestClient(app, base_url="http://127.0.0.1:8790")
+    assert a.post("/api/v1/pair", json={"code": first}, headers=origin).status_code == 200
+    assert a.post("/api/v1/pair", json={"code": first}, headers=origin).status_code == 403  # once
+    b = TestClient(app, base_url="http://127.0.0.1:8790")
+    assert b.post("/api/v1/pair", json={"code": second}, headers=origin).status_code == 200
+    # Only a paired device may mint a code for another device.
+    anon = TestClient(app, base_url="http://127.0.0.1:8790")
+    denied = anon.post("/api/v1/devices/invite", json={"revision": 0}, headers=origin)
+    assert denied.status_code == 401
+    csrf = a.get("/api/v1/session").json()["csrf"]
+    invite = a.post(
+        "/api/v1/devices/invite",
+        json={"revision": 0},
+        headers={**origin, "X-CSRF-Token": csrf, "Idempotency-Key": "invite-1"},
+    )
+    assert invite.status_code == 200, invite.text
+    c = TestClient(app, base_url="http://127.0.0.1:8790")
+    paired = c.post("/api/v1/pair", json={"code": invite.json()["code"]}, headers=origin)
+    assert paired.status_code == 200
+    assert len(a.get("/api/v1/devices").json()) == 3

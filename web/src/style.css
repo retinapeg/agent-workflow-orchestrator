@@ -1730,3 +1730,5 @@ pre.code .d-file {
     transition: none !important;
   }
 }
+
+.invite{margin:12px 0;padding:14px;border:1px solid var(--line, #24364d);border-radius:12px;background:rgba(8,14,24,.6)}.invite-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;letter-spacing:1px;overflow-wrap:anywhere;margin:8px 0;user-select:all}

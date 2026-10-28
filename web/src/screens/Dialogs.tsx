@@ -382,7 +382,7 @@ function ReviewDialog({review, task}: {review: RecordData; task: RecordData}) {
 }
 
 export function DialogBody() {
-  const {data, now, modal, setModal, action, disabled, unpair, link, lastSeen} = useArena();
+  const {data, now, modal, setModal, action, disabled, unpair, link, lastSeen, post} = useArena();
   const task = modal?.kind === 'task' ? data.tasks.find(t => t.id === modal.id) : null;
   const review = modal?.kind === 'review' ? data.approvals.find(a => a.id === modal.id) : null;
   const reviewedTask = review ? data.tasks.find(t => t.id === review.task_id) : null;
@@ -420,7 +420,7 @@ export function DialogBody() {
                 ['Server time', when(data.server_time)],
               ]}
             />
-            <Devices action={action} disabled={disabled} />
+            <Devices action={action} disabled={disabled} post={post} />
             <p className="small muted">A sleeping Mac cannot execute tasks. Stopping all workers pauses dispatch and asks every owned attempt to stop.</p>
             <div className="dialog-actions">
               <button className="btn danger" disabled={disabled} onClick={() => action('control/stop-all', {revision: data.revision}, 'Dispatch paused and all owned attempts asked to stop', true)}>

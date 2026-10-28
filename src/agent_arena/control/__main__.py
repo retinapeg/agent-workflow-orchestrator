@@ -5,7 +5,6 @@ import hashlib
 import json
 import os
 import plistlib
-import secrets
 import shutil
 import signal
 import subprocess
@@ -283,11 +282,9 @@ def main(argv=None):
             )
         )
     elif args.command == "pair":
-        code = secrets.token_urlsafe(18)
-        atomic_json(
-            store.home / "pairing.json",
-            {"hash": hashlib.sha256(code.encode()).hexdigest(), "expires": time.time() + 600},
-        )
+        from .store import issue_pairing_code
+
+        code, _ = issue_pairing_code(store.home, "host")
         print(code)
     elif args.command == "revoke-sessions":
         with store.transaction() as db:
