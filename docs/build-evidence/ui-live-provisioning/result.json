@@ -1,0 +1,12 @@
+{
+  "checks": {
+    "proposal_excerpt": "PROPOSED PROJECT Nothing created yet Tiny Weather Widget Local /Users/leonardaarons-ditson/Projects/tiny-weather-widget GitHub retinapeg/tiny-weather-widget (private) Approving creates this folder on the Mac and a private repository on GitHub, enrols the project and sends your description to the dir",
+    "approve_button": 1,
+    "smoke_project_listed": 2,
+    "github_link": 0,
+    "milestones_heading": 1,
+    "final_integrated": 1,
+    "page_errors": []
+  },
+  "passed": true
+}
