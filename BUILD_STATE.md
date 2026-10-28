@@ -1,3 +1,53 @@
+# Build state — 28 October 2026 (current)
+
+## Autobuild alpha: what works, with evidence
+
+All runs below used the real authenticated Codex and Claude Code subscriptions through
+the production controller on **http://127.0.0.1:8791** (launchd login service, state in
+`.arena-control`). Every evidence directory under `docs/build-evidence/` holds the
+driver timeline, screenshots and `result.json` with attempt ids, models, timings and
+integration receipts.
+
+| Run | What it proves | Result |
+|---|---|---|
+| `first-build-attempt1` | Director/reviewer prompt defect found by a real run (correct code rejected three times for unproducible "evidence"); repair budget exhausted → **blocked**, visible in UI | fixed in `e3befc8` |
+| `first-build` | Ordinary instruction typed into the 390px UI → `gpt-6-astra` director (max) → Codex build → Claude review → director sign-off → accepted and integrated from the UI; browser closed 60 s mid-run | `fa1024a` in 178 s |
+| `restart-recovery` + `parallel-build` | Director split one request into two independent tasks; **Codex and Claude built concurrently**; controller stopped mid-build and restarted; one attempt per task after reconciliation; cross-provider reviews; `direct` phase ran on **Claude Fable 5.1 (max)** because Codex was busy; integrated from the UI | `7821b1f` |
+| `single-strategy-build` | Director chose a single task for the same request on a fresh snapshot; integrated from the UI | `2296939` |
+| `zero-tap-build` | Project policy `auto_local_main`: instruction → verified → **integrated with no taps** | `5507b7c` in 210 s |
+| `final-unattended-build` | Two-part request on a fresh snapshot after the safety fixes, automatic integration | see result.json |
+| `safety-review` | 91-agent adversarial review: 28 claimed, 27 confirmed defects; all unattended-reliability items fixed in `cd36c26` with tests | `tests/control/test_safety_fixes.py` |
+| `ui-live`, `ui-acceptance` | Redesigned UI on real controller data at 390/1440 px; browser acceptance against the fixture server | passing |
+
+Release checks on this code: `ruff` clean; full suite **269 passed** before the safety
+fixes (`.arena-backups/regression-current.txt`); final run recorded in
+`.arena-backups/regression-final.txt`; `npm run build` passes; `node web/ui-acceptance.mjs`
+passes. The previously failing host cancellation test passes on the normal host (12/12 in
+`tests/test_cancellation.py` + `tests/test_process.py`).
+
+## Operating facts
+
+- Service: `local.agent-arena.control.1a6834e84b5a` (RunAtLoad, KeepAlive, `caffeinate -i`).
+  Start/stop/recover commands: `docs/MOBILE_BUILD_CONTROL.md` (top section).
+- Director: Codex `gpt-6-astra` at `max` (advertised in the local model catalog); validated
+  stand-in Claude `claude-fable-5-1` at `max` when no Codex slot is free (`check-accounts --probe`).
+- Workers: Codex (model/effort routed per task: luna/sol/astra, low→max) and Claude (`sonnet`,
+  tool-free validated file operations). Reviews are always by the other provider.
+- Integration policy per project: `manual` (default) or `auto_local_main`. Nothing is pushed.
+- Three enrolled proof projects are disposable snapshots of this repository
+  (`.arena-control/proof-source*`); the stale 8790 runtime was stopped and preserved.
+
+## Not yet done
+
+- Private phone access: Tailscale on this Mac is logged out; `tailscale login` needs the
+  owner's browser sign-in, then `configure-remote` + service reinstall with the HTTPS origin
+  (commands in the operator guide). No public exposure exists.
+- Second Claude account (third slot): enrol after the owner signs it in (`enroll-account`).
+- Remaining low-severity review items (global pairing rate limiter, ignored-file overwrite on
+  fast-forward, per-branch enrolment) are documented in `docs/build-evidence/safety-review/summary.md`.
+
+---
+
 # Build state — 28 October 2026
 
 Canonical checkout: `/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator`
