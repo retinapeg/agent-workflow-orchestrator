@@ -166,7 +166,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                 and request.headers.get("origin") not in origins
             ):
                 return JSONResponse({"detail": "Origin rejected"}, status_code=403)
-            if request.url.path != "/api/v1/pair":
+            if request.url.path not in {"/api/v1/pair", "/api/v1/health"}:
                 auth = session(request)
                 if not auth:
                     return JSONResponse(

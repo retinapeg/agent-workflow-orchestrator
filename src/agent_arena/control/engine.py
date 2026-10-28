@@ -121,6 +121,7 @@ def alive(attempt):
 # director sign-off, combined staging checks) integrate into the enrolled source's LOCAL
 # main without a tap. Remote publication is never automatic.
 INTEGRATION_POLICIES = ("manual", "auto_local_main")
+TERMINAL = {"completed", "cancelled", "blocked", "interrupted", "needs_auth", "needs_permission"}
 
 
 class Engine:
@@ -134,12 +135,28 @@ class Engine:
         self.integrator = ThreadPoolExecutor(max_workers=2, thread_name_prefix="arena-integration")
 
     def enroll(
-        self, name, repo, scope, checks, protected, trusted=False, integration_policy="manual"
+        self,
+        name,
+        repo,
+        scope,
+        checks,
+        protected,
+        trusted=False,
+        integration_policy="manual",
+        self_target=False,
+        keywords=(),
     ):
         repo = Path(repo).expanduser().resolve()
         controller = Path(__file__).resolve().parents[3]
-        if repo == controller or repo in controller.parents or repo == Path.home():
-            raise ValueError("The running controller and home directory cannot be worker projects")
+        if repo == Path.home() or (repo in controller.parents):
+            raise ValueError("The home directory and parents of the controller cannot be projects")
+        if repo == controller and not self_target:
+            raise ValueError(
+                "Enrolling Arena itself requires self_target=true; builds then run in isolated "
+                "workspaces, integrate into local main and activate through a release worktree"
+            )
+        if self_target and repo != controller:
+            raise ValueError("self_target is only valid for the controller's own repository")
         if not trusted:
             raise ValueError(
                 "Enrollment requires explicit review of repository checks/hooks/plugins"
@@ -184,6 +201,8 @@ class Engine:
             last_dispatch=0,
             trusted=True,
             integration_policy=integration_policy,
+            self=bool(self_target),
+            keywords=list(keywords),
             created=time.time(),
         )
         with self.store.transaction() as db:
@@ -210,6 +229,18 @@ class Engine:
         scope = safe_scope(scope)
         if not all(within(p, project["scope"]) for p in scope):
             raise ValueError("Task scope exceeds enrolled project authority")
+        if project.get("self"):
+            # One self-improvement at a time: no recursive or piled-up self-modification.
+            busy = [
+                t
+                for t in self.store.rows("tasks", db)
+                if t["project_id"] == project_id and t["state"] not in TERMINAL
+            ]
+            if busy:
+                raise Conflict(
+                    "Arena is already working on itself; wait for that build to integrate "
+                    "and activate before asking for another change to Arena"
+                )
         if not title.strip() or not instructions.strip() or len(instructions) > 20000:
             raise ValueError(
                 "Provide an outcome and bounded instructions (maximum 20,000 characters)"
@@ -259,13 +290,21 @@ class Engine:
         )
         return {"goal_id": goal_id, "task_id": task_id}
 
-    def start(self):
+    def start(self, wait_seconds=60):
+        # A restarting service overlaps its predecessor for a few seconds while that one
+        # finishes shutting down. Waiting here (instead of exiting and letting launchd
+        # retry every 10 s) is what keeps the phone from seeing 502s during a restart.
         self.lock = (self.store.home / "scheduler.lock").open("a")
-        try:
-            fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            self.lock.close()
-            raise RuntimeError("Another scheduler owns this state directory") from None
+        deadline = time.monotonic() + wait_seconds
+        while True:
+            try:
+                fcntl.flock(self.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    self.lock.close()
+                    raise RuntimeError("Another scheduler owns this state directory") from None
+                time.sleep(0.5)
         self.thread = threading.Thread(target=self.loop, name="arena-scheduler", daemon=True)
         self.thread.start()
 

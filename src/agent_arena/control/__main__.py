@@ -22,6 +22,41 @@ from .worker import auth_status
 DEFAULT_HOME = Path.home() / ".local/share/agent-arena/build-control"
 
 
+SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "dist", "build", "__pycache__", ".next"}
+
+
+def inferred_manifest(repo, name=None, policy="auto_local_main", keywords=""):
+    """A reviewed-by-print manifest for an ordinary repository: whole tree minus build junk,
+    generic checks from scripts/repo_check.py (uses the repo's own node_modules/.venv)."""
+    repo = Path(repo).expanduser().resolve()
+    if not (repo / ".git").exists():
+        raise ValueError(f"{repo} is not a git repository")
+    entries = sorted(
+        p.name
+        for p in repo.iterdir()
+        if p.name not in SKIP_DIRS and not p.name.startswith(".") and not p.is_symlink()
+    )
+    if not entries:
+        raise ValueError("Repository has no enrollable files")
+    checker = Path(__file__).resolve().parents[3] / "scripts" / "repo_check.py"
+    return dict(
+        name=name or repo.name,
+        repo=str(repo),
+        scope=entries,
+        checks=[
+            {
+                "name": "Repository build and tests",
+                "argv": ["{python}", str(checker), "--source", str(repo)],
+                "timeout": 600,
+            }
+        ],
+        protected=[],
+        trusted=True,
+        integration_policy=policy,
+        keywords=[k.strip() for k in keywords.split(",") if k.strip()] + [repo.name],
+    )
+
+
 def claude_identity(config_home):
     """Email of the Claude account signed in under a config directory, or None."""
     from .worker import clean_environment
@@ -150,6 +185,14 @@ def main(argv=None):
     p.add_argument("--model")
     p = sub.add_parser("enroll-project")
     p.add_argument("--manifest", type=Path, required=True)
+    p = sub.add_parser("enroll-repo", help="enrol a clean repository with an inferred manifest")
+    p.add_argument("repo", type=Path)
+    p.add_argument("--name")
+    p.add_argument("--policy", choices=["manual", "auto_local_main"], default="auto_local_main")
+    p.add_argument("--keywords", default="", help="comma-separated hints for intent matching")
+    p.add_argument("--dry-run", action="store_true", help="print the manifest without enrolling")
+    p = sub.add_parser("enroll-self", help="enrol Arena's own repository as a build target")
+    p.add_argument("--policy", choices=["manual", "auto_local_main"], default="auto_local_main")
     sub.add_parser("create-sandbox")
     p = sub.add_parser("backup")
     p.add_argument("destination", type=Path)
@@ -363,6 +406,32 @@ def main(argv=None):
     elif args.command == "enroll-project":
         m = json.loads(args.manifest.read_text())
         print(encode(Engine(store).enroll(**m)))
+    elif args.command == "enroll-repo":
+        manifest = inferred_manifest(args.repo, args.name, args.policy, args.keywords)
+        print(encode(manifest))
+        if not args.dry_run:
+            print(encode(Engine(store).enroll(**manifest)))
+    elif args.command == "enroll-self":
+        root = Path(__file__).resolve().parents[3]
+        manifest = dict(
+            name="Arena",
+            repo=str(root),
+            scope=["src", "web/src", "web/public", "web/index.html", "tests", "docs", "scripts"],
+            checks=[
+                {
+                    "name": "Arena self-check",
+                    "argv": ["{python}", "scripts/self_check.py"],
+                    "timeout": 600,
+                }
+            ],
+            protected=["scripts/self_check.py", "src/agent_arena/control/activation.py"],
+            trusted=True,
+            integration_policy=args.policy,
+            self_target=True,
+            keywords=["arena", "autobuild", "dashboard", "build view", "controller", "agents"],
+        )
+        print(encode(manifest))
+        print(encode(Engine(store).enroll(**manifest)))
     elif args.command == "create-sandbox":
         root = store.home / "sandbox-source"
         if root.exists():

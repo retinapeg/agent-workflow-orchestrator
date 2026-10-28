@@ -179,3 +179,40 @@ def publish(store, approval):
                 reason=reason,
                 branch="main",
             )
+    if state == "integrated" and project.get("self"):
+        schedule_activation(store, project, candidate)
+
+
+def schedule_activation(store, project, candidate):
+    """Arena improved itself: hand the integrated commit to the detached activator, which
+    checks it out as a release worktree, swaps the login service, verifies health and rolls
+    back on failure. Detached so it survives the controller it replaces."""
+    import subprocess
+    import sys
+
+    try:
+        server = json.loads((store.home / "server.json").read_text())
+        port = int(server["port"])
+    except (OSError, ValueError, KeyError):
+        port = 8791
+    log = (store.home / "activation.log").open("ab")
+    argv = [
+        sys.executable,
+        "-m",
+        "agent_arena.control.activation",
+        "--home",
+        str(store.home),
+        "--repo",
+        project["repo"],
+        "activate",
+        candidate,
+        "--port",
+        str(port),
+    ]
+    process = subprocess.Popen(
+        argv, stdout=log, stderr=log, stdin=subprocess.DEVNULL, start_new_session=True
+    )
+    with store.transaction() as db:
+        store.event(
+            db, "activation.scheduled", sha=candidate, pid=process.pid, project_id=project["id"]
+        )

@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 
 from agent_arena.control.api import make_app
 from agent_arena.control.engine import Engine, atomic_json, git, overlap
-from agent_arena.control.store import Store, encode
+from agent_arena.control.store import Conflict, Store, encode
 from agent_arena.control.worker import auth_status, invocation
 from agent_arena.process import ProcessRunner
 
@@ -229,7 +229,7 @@ def test_singleton_scheduler_owner(setup):
     engine.start()
     try:
         with pytest.raises(RuntimeError, match="Another scheduler"):
-            Engine(store).start()
+            Engine(store).start(wait_seconds=0)
     finally:
         engine.close()
 
@@ -755,3 +755,36 @@ def test_multiple_pairing_codes_coexist_and_paired_devices_can_invite(setup):
     paired = c.post("/api/v1/pair", json={"code": invite.json()["code"]}, headers=origin)
     assert paired.status_code == 200
     assert len(a.get("/api/v1/devices").json()) == 3
+
+
+def test_self_enrolment_is_explicit_and_one_self_build_at_a_time(setup, tmp_path):
+    from agent_arena.control.__main__ import inferred_manifest
+
+    store, engine, project, source = setup
+    controller = Path(__file__).resolve().parents[2]
+    with pytest.raises(ValueError, match="self_target"):
+        engine.enroll("Arena", str(controller), ["src"], [{"argv": ["x"]}], [], True)
+    with pytest.raises(ValueError, match="only valid for the controller"):
+        engine.enroll("Other", str(source), ["src"], [{"argv": ["x"]}], [], True, self_target=True)
+    # A project flagged as Arena itself accepts one request at a time.
+    with store.transaction() as db:
+        current = store.get("projects", project["id"], db)
+        current["self"] = True
+        db.execute(
+            "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+            (encode({k: v for k, v in current.items() if k not in {"id", "rev"}}), project["id"]),
+        )
+    goal(store, engine, project)
+    with pytest.raises(Conflict, match="already working on itself"):
+        goal(store, engine, project)
+    # Inferred manifests skip build junk and point checks at the generic repo check.
+    repo = tmp_path / "theirs"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "node_modules").mkdir()
+    (repo / "app").mkdir()
+    (repo / "README.md").write_text("x")
+    manifest = inferred_manifest(repo, keywords="billing, invoices")
+    assert manifest["scope"] == ["README.md", "app"]
+    assert manifest["integration_policy"] == "auto_local_main"
+    assert "repo_check.py" in manifest["checks"][0]["argv"][1]
+    assert manifest["keywords"] == ["billing", "invoices", "theirs"]

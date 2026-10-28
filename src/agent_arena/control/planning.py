@@ -127,6 +127,16 @@ def director_context(store, project, task, workspace):
         ],
         "repair_evidence": task.get("repair_evidence"),
         "previous_specification": task.get("specification"),
+        "self_target": bool(project.get("self")),
+        "self_target_rules": (
+            "This project is Arena itself (the controller that runs this pipeline). Keep the "
+            "change small and isolated; never edit protected activation/check files, launchd "
+            "plists, credentials or state directories; do not create follow-up tasks that "
+            "modify Arena again; the verified result is activated as a new release "
+            "automatically and rolled back if it fails health checks."
+            if project.get("self")
+            else ""
+        ),
     }
 
 

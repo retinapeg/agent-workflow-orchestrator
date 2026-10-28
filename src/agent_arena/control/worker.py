@@ -47,6 +47,10 @@ def clean_environment(home=None):
 
 def sandbox_check(argv, workspace):
     # Trusted frozen checks still execute candidate code. On macOS use the OS sandbox.
+    if os.environ.get("ARENA_INSIDE_SANDBOX") == "1":
+        # Already confined by an outer sandbox-exec (Arena checking itself); macOS refuses
+        # nested profiles, and the outer one still bounds every child process.
+        return list(argv)
     if sys.platform != "darwin":
         raise ValueError(
             "Unattended checks require the supported macOS sandbox; "
