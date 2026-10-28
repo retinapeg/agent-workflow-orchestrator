@@ -8,10 +8,10 @@
     "days": 30
   },
   "steps": [
-    "2026-10-28T06:38:32.541Z Paired once; cookie HttpOnly+Secure+SameSite=Strict, expires in 30.0 days",
-    "2026-10-28T06:38:33.079Z Reopened browser: paired without a code",
-    "2026-10-28T06:38:40.417Z Controller restarted (service back after 1s): paired without a code",
-    "2026-10-28T06:38:46.664Z Tailscale reconnected (origin reachable after 0s): paired without a code",
-    "2026-10-28T06:38:48.302Z Unpair ends the session immediately (401 afterwards)"
+    "2026-10-28T06:50:56.613Z Paired once; cookie HttpOnly+Secure+SameSite=Strict, expires in 30.0 days",
+    "2026-10-28T06:50:57.199Z Reopened browser: paired without a code",
+    "2026-10-28T06:51:03.974Z Controller restarted (service back after 1s): paired without a code",
+    "2026-10-28T06:51:09.700Z Tailscale reconnected (origin reachable after 0s): paired without a code",
+    "2026-10-28T06:51:11.069Z Unpair ends the session immediately (401 afterwards)"
   ]
 }

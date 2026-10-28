@@ -55,7 +55,7 @@ directory; the second scheduler refuses the lock and exits.
 
 ## Using it
 
-1. Open the URL, enter a pairing code once; the device stays paired for seven days.
+1. Open the URL, enter a pairing code once; the device stays paired for 30 days, renewed on use.
 2. **New request** → choose a project → type or dictate what you want → **Build this for me**.
 3. Watch **Build**: the director (Codex `gpt-6-astra` at max effort, or a validated Claude
    Fable 5.1 slot at max when Codex is busy) inspects the repository and writes the
@@ -161,8 +161,8 @@ lid, logout and reboot have different effects from closing a browser tab.
    ```
 
 4. Open the HTTPS URL on the phone with Tailscale connected. Enter the one-use
-   pairing code within ten minutes. Each device gets its own seven-day HttpOnly,
-   SameSite=Strict session. HTTPS configuration sets Secure cookies; use the
+   pairing code within ten minutes. Each device gets its own 30-day sliding HttpOnly,
+   SameSite=Strict session (renewed on use, capped at 180 days). HTTPS configuration sets Secure cookies; use the
    HTTPS URL for the UI after switching, including on the Mac.
 5. Submit a disposable scoped goal, close the browser, reopen it, inspect the
    persisted task/attempts/checks, read the combined diff and accept the exact

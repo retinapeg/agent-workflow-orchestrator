@@ -102,6 +102,12 @@ export function App() {
           setPaired(false); // The only answer that means this device is not paired.
           return;
         }
+        if (r.status === 403 || r.status === 404) {
+          // Permanent for this address (wrong origin/host, old URL): say why, do not spin.
+          const j = await r.json().catch(() => ({}));
+          setBootError(`${j.detail || 'Host refused this address'} (HTTP ${r.status}). Open the private HTTPS address from the Device session screen.`);
+          return;
+        }
         if (!r.ok) throw Error(`Host answered ${r.status}`);
         const s = await r.json();
         setCsrf(s.csrf);

@@ -656,8 +656,39 @@ def test_device_sessions_persist_renew_and_revoke(setup):
     with contextlib.closing(store.connect()) as db:
         row = dict(db.execute("SELECT * FROM sessions").fetchone())
     assert row["expires"] - time.time() > 29 * 86400 and row["id"] and row["created"]
-    # Fresh session: no renewal needed, overview works.
-    assert client.get("/api/v1/overview").status_code == 200
+    # Fresh session: no renewal needed, overview works, and no cookie churn on every poll.
+    fresh = client.get("/api/v1/overview")
+    assert fresh.status_code == 200 and "set-cookie" not in fresh.headers
+    # Rows written before device columns existed are listed by hash prefix and revocable.
+    with store.transaction() as db:
+        db.execute(
+            "INSERT INTO sessions(hash,expires,csrf) VALUES(?,?,?)",
+            ("a" * 64, time.time() + 86400, "legacy-csrf"),
+        )
+    legacy = next(d for d in client.get("/api/v1/devices").json() if d["id"] == "a" * 12)
+    assert "before device labels" in legacy["label"]
+    r = client.post(
+        f"/api/v1/devices/{legacy['id']}/revoke",
+        json={"revision": 0},
+        headers={**headers, "Idempotency-Key": "revoke-legacy"},
+    )
+    assert r.status_code == 200 and r.json()["revoked"] is True
+    r = client.post(
+        f"/api/v1/devices/{legacy['id']}/revoke",
+        json={"revision": 0},
+        headers={**headers, "Idempotency-Key": "revoke-legacy-again"},
+    )
+    assert r.status_code == 200 and r.json()["revoked"] is False
+    # Past the absolute cap, use no longer renews: the session will lapse.
+    with store.transaction() as db:
+        db.execute(
+            "UPDATE sessions SET created=?, expires=?",
+            (time.time() - 181 * 86400, time.time() + 20 * 86400),
+        )
+    capped = client.get("/api/v1/session")
+    assert capped.status_code == 200 and "set-cookie" not in capped.headers
+    with store.transaction() as db:
+        db.execute("UPDATE sessions SET created=?", (time.time() - 86400,))
     # Age the session past the renewal interval; the next request extends it and re-sets the cookie.
     with store.transaction() as db:
         db.execute("UPDATE sessions SET expires=?", (time.time() + 20 * 86400,))

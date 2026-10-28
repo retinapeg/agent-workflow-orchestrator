@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
@@ -56,6 +57,9 @@ class Pair(Model):
 # one expires. Logout and per-device revocation end a session immediately.
 SESSION_SECONDS = 30 * 86400
 RENEW_AFTER_SECONDS = 7 * 86400
+# Renewal stops after this long since pairing: an always-open tab cannot keep a session
+# alive forever, so every device re-pairs at most twice a year.
+MAX_SESSION_SECONDS = 180 * 86400
 
 
 class Intent(Model):
@@ -125,15 +129,30 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     def touch(auth, request, response):
         """Record activity; renew the cookie and expiry once the renewal interval passed."""
         now = time.time()
-        renew = auth["expires"] - now < SESSION_SECONDS - RENEW_AFTER_SECONDS
+        created = auth.get("created") or now
+        renew = (
+            auth["expires"] - now < SESSION_SECONDS - RENEW_AFTER_SECONDS
+            and now - created < MAX_SESSION_SECONDS
+        )
         seen = auth.get("last_seen") or 0
         if not renew and now - seen < 60:
             return
-        with store.transaction() as db:
-            db.execute(
-                "UPDATE sessions SET last_seen=?, expires=? WHERE hash=?",
-                (now, now + SESSION_SECONDS if renew else auth["expires"], auth["hash"]),
-            )
+        try:
+            with store.transaction() as db:
+                if renew:
+                    # MAX keeps a slower concurrent request from shortening the session.
+                    db.execute(
+                        "UPDATE sessions SET last_seen=?, created=COALESCE(created,?), "
+                        "expires=MAX(expires,?) WHERE hash=?",
+                        (now, now, now + SESSION_SECONDS, auth["hash"]),
+                    )
+                else:
+                    db.execute(
+                        "UPDATE sessions SET last_seen=?, created=COALESCE(created,?) WHERE hash=?",
+                        (now, now, auth["hash"]),
+                    )
+        except Exception:
+            return  # Bookkeeping only; a busy database must not fail the request.
         if renew:
             session_cookie(response, request.cookies["arena_session"])
 
@@ -160,7 +179,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                     return JSONResponse({"detail": "CSRF token rejected"}, status_code=403)
                 response = await call_next(request)
                 if request.url.path != "/api/v1/logout":
-                    touch(auth, request, response)
+                    await run_in_threadpool(touch, auth, request, response)
                 return finish_headers(request, response)
         response = await call_next(request)
         return finish_headers(request, response)
@@ -259,11 +278,10 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             row = db.execute(
                 "SELECT hash FROM sessions WHERE id=? OR substr(hash,1,12)=?", (ident, ident)
             ).fetchone()
-            if not row:
-                raise KeyError(ident)
-            db.execute("DELETE FROM sessions WHERE hash=?", (row["hash"],))
-            store.event(db, "device.revoked", device_id=ident)
-        return {"ok": True}
+            if row:  # Idempotent: revoking an already-gone device is still success.
+                db.execute("DELETE FROM sessions WHERE hash=?", (row["hash"],))
+                store.event(db, "device.revoked", device_id=ident)
+        return {"ok": True, "revoked": bool(row)}
 
     @app.post("/api/v1/logout")
     def logout(request: Request):
