@@ -766,7 +766,10 @@ def test_self_enrolment_is_explicit_and_one_self_build_at_a_time(setup, tmp_path
     from agent_arena.control.__main__ import inferred_manifest
 
     store, engine, project, source = setup
-    controller = Path(__file__).resolve().parents[2]
+    # The same path enroll() derives, so this holds inside a worker workspace too.
+    from agent_arena.control import engine as engine_module
+
+    controller = Path(engine_module.__file__).resolve().parents[3]
     with pytest.raises(ValueError, match="self_target"):
         engine.enroll("Arena", str(controller), ["src"], [{"argv": ["x"]}], [], True)
     with pytest.raises(ValueError, match="only valid for the controller"):

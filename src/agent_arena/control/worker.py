@@ -435,7 +435,9 @@ def main(home, attempt_id):
                     '{"op":"delete","path":"relative/path"}. '
                     "The controller validates every path and runs frozen checks. "
                     "Do not return commands. Do not replace omitted files blindly.\n"
-                    + encode(repository_context(workspace, project))
+                    # The task's own scope first: a whole-file builder needs the files it may
+                    # write, not the entire project, within its context budget.
+                    + encode(repository_context(workspace, {**project, "scope": task["scope"]}))
                 )
         (artifact / "prompt.txt").write_text(prompt)
         argv = invocation(account, workspace, attempt["phase"])
