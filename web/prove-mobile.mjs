@@ -71,7 +71,7 @@ try{
  await page.getByRole('button',{name:'Read combined diff'}).click();
  await page.screenshot({path:evidence+'/review.png',fullPage:true});
  const project=snapshot.projects.find(p=>p.id===process.env.ARENA_PROJECT);
- const input=JSON.parse(readFileSync(home+'/proof-input.json','utf8'));
+ const input=JSON.parse(readFileSync(process.env.ARENA_PROOF_INPUT||home+'/proof-input.json','utf8'));
  for(const file of input.scope){
   const patch=execFileSync('git',['-C',project.staging,'diff',project.base,'HEAD','--',file],{encoding:'utf8'});
   if(!patch.trim())throw Error('Goal did not change required file: '+file);

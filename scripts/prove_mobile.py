@@ -30,15 +30,17 @@ INSTRUCTIONS = """Make this app easier to recognise on my phone, and stop malfor
 addresses getting through. Keep the existing behaviour working."""
 
 
-def prepare(home):
+def prepare(home, label=""):
     store = Store(home)
     for provider in ("codex", "claude"):
         if not any(a["provider"] == provider for a in store.rows("accounts")):
             add_account(store, provider.title(), provider)
-    existing = [p for p in store.rows("projects") if p["name"] == "Orchestrator live proof"]
+    name = ("Orchestrator live proof " + label).strip()
+    suffix = "-" + label if label else ""
+    existing = [p for p in store.rows("projects") if p["name"] == name]
     if existing:
         return store, existing[0]
-    source = store.home / "proof-source"
+    source = store.home / ("proof-source" + suffix)
     if source.exists():
         raise ValueError("Proof source exists without enrollment; preserved for inspection")
     git(ROOT, "clone", "--no-hardlinks", "--", str(ROOT), str(source))
@@ -87,7 +89,7 @@ print("Changed-file contracts and baseline compatibility passed")
     git(source, "add", "--all")
     git(source, "commit", "-qm", "Preserved orchestrator snapshot with frozen live proof checks")
     project = Engine(store).enroll(
-        "Orchestrator live proof",
+        name,
         str(source),
         SCOPE,
         [
@@ -100,7 +102,7 @@ print("Changed-file contracts and baseline compatibility passed")
         ["acceptance"],
         trusted=True,
     )
-    (store.home / "proof-input.json").write_text(
+    (store.home / f"proof-input{suffix}.json").write_text(
         json.dumps(
             {
                 "project_id": project["id"],
@@ -119,8 +121,9 @@ def main():
     parser.add_argument("--home", type=Path, default=ROOT / ".arena-control")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--url", default="http://127.0.0.1:8791")
+    parser.add_argument("--label", default="", help="fresh snapshot project name suffix")
     args = parser.parse_args()
-    store, project = prepare(args.home)
+    store, project = prepare(args.home, args.label)
     if args.prepare_only:
         print(
             json.dumps({"project": project["id"], "source": project["repo"], "state": "prepared"})
@@ -174,6 +177,9 @@ def main():
         ARENA_URL=args.url,
         ARENA_PROJECT=project["id"],
         ARENA_INSTRUCTIONS=INSTRUCTIONS,
+        ARENA_PROOF_INPUT=str(
+            store.home / ("proof-input" + ("-" + args.label if args.label else "") + ".json")
+        ),
     )
     subprocess.run(["node", "web/prove-mobile.mjs"], cwd=ROOT, env=env, check=True)
     return 0
