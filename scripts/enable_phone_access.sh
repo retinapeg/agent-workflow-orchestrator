@@ -23,6 +23,10 @@ while [ $i -lt 90 ]; do
   if ! lsof -nP -iTCP:$PORT -sTCP:LISTEN >/dev/null 2>&1; then break; fi
   i=$((i+1)); sleep 1
 done
+# The generated plist is origin-specific; keep the previous one aside rather than editing it.
+if [ -f $HOME_DIR/control.plist ] && ! grep -q "$ORIGIN" $HOME_DIR/control.plist; then
+  mv $HOME_DIR/control.plist .arena-backups/control.plist.previous-$(date +%Y%m%d%H%M%S)
+fi
 $PY -m agent_arena.control --home $HOME_DIR install-service --port $PORT --origin "$ORIGIN"
 echo "4/5 Verify TLS and that unauthenticated access is denied"
 i=0

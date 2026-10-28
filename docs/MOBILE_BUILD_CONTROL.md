@@ -2,9 +2,11 @@
 
 Everything below this section is the historical build log; this section is what you use.
 
-## Local URL and pairing
+## URL and pairing
 
-- URL on the Mac: **http://127.0.0.1:8791**
+- Private URL (phone and Mac, Tailscale connected): **https://leonards-macbook-air-1.tail11ad03.ts.net**
+  (Tailscale Serve, tailnet-only, Funnel off; enabled 28 Oct 2026). After this switch the
+  loopback address answers 403 "Host not allowed" by design; use the HTTPS URL on the Mac too.
 - New one-time pairing code (10 minutes, one device per code):
 
   ```sh
@@ -85,14 +87,13 @@ macOS sandbox against every candidate):
 Repositories carrying `AGENTS.md`, `CLAUDE.md`, `.codex/` or `.claude/` are refused until
 audited isolation exists for them.
 
-## Private phone access (deferred until Tailscale is signed in)
+## Private phone access (configured 28 Oct 2026; re-run after a Tailscale change)
 
 ```sh
 tailscale login                                    # one-time, opens a browser sign-in
-.venv/bin/python -m agent_arena.control --home .arena-control configure-remote --port 8791
-.venv/bin/python -m agent_arena.control --home .arena-control uninstall-service
-.venv/bin/python -m agent_arena.control --home .arena-control install-service --port 8791 --origin https://<mac>.<tailnet>.ts.net
-.venv/bin/python -m agent_arena.control --home .arena-control pair
+# Enable Serve/HTTPS certificates for the tailnet when `tailscale serve` prints the admin link;
+# leave Funnel unticked. Then one command does the rest and prints the URL and pairing code:
+scripts/enable_phone_access.sh
 ```
 
 Serve (not Funnel) publishes the HTTPS origin inside your tailnet only; application pairing

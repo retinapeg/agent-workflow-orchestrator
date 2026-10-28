@@ -39,9 +39,9 @@ passes. The previously failing host cancellation test passes on the normal host 
 
 ## Not yet done
 
-- Private phone access: Tailscale on this Mac is logged out; `tailscale login` needs the
-  owner's browser sign-in, then `configure-remote` + service reinstall with the HTTPS origin
-  (commands in the operator guide). No public exposure exists.
+- Private phone access is configured: Tailscale Serve (tailnet-only, Funnel off) at
+  `https://leonards-macbook-air-1.tail11ad03.ts.net`, TLS verified, unpaired requests denied
+  (401); the service runs with that origin. Owner's cellular verification pending.
 - Second Claude account (third slot): enrol after the owner signs it in (`enroll-account`).
 - Remaining low-severity review items (global pairing rate limiter, ignored-file overwrite on
   fast-forward, per-branch enrolment) are documented in `docs/build-evidence/safety-review/summary.md`.
