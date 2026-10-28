@@ -1,0 +1,333 @@
+{
+  "passed": true,
+  "url": "http://127.0.0.1:8791",
+  "project": "project_3fa4c44d362c348a",
+  "instructions": "Make this app easier to recognise on my phone, and stop malformed server addresses getting through. Keep the existing behaviour working.",
+  "integrate": false,
+  "timeline": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/docs/build-evidence/final-unattended-build/timeline.log",
+  "goal_id": "goal_cf0b1960ce0967aa",
+  "request_task": "task_bb58fdf1f32e333d",
+  "acknowledged_ms": 3858,
+  "reconnected_state": [
+    {
+      "id": "task_bb58fdf1f32e333d",
+      "phase": "plan",
+      "state": "running"
+    }
+  ],
+  "transitions": [
+    {
+      "time": 1793166571.18,
+      "state": "plan:Make this app easier to recognise on my  → running"
+    },
+    {
+      "time": 1793166586.49,
+      "state": "plan:Make this app easier to recognise on my  → completed | build:Clarify phone app metadata and reject un → running"
+    },
+    {
+      "time": 1793166603.53,
+      "state": "plan:Make this app easier to recognise on my  → completed | build:Clarify phone app metadata and reject un → verifying"
+    },
+    {
+      "time": 1793166606.045,
+      "state": "plan:Make this app easier to recognise on my  → completed | review:Clarify phone app metadata and reject un → reviewing"
+    },
+    {
+      "time": 1793166612.814,
+      "state": "plan:Make this app easier to recognise on my  → completed | direct:Clarify phone app metadata and reject un → running"
+    },
+    {
+      "time": 1793166640.402,
+      "state": "plan:Make this app easier to recognise on my  → completed | direct:Clarify phone app metadata and reject un → integrating"
+    },
+    {
+      "time": 1793166642.786,
+      "state": "plan:Make this app easier to recognise on my  → completed | direct:Clarify phone app metadata and reject un → ready_for_approval"
+    }
+  ],
+  "seconds_to_verified": 201.369,
+  "director": {
+    "acceptance": [
+      "The manifest parses as JSON, has description 'Control your private engineering agents from your phone.' and lang 'en', and preserves every other existing field and value.",
+      "validate_origin raises ValueError before URL parsing for any literal whitespace, ASCII control character, or backslash anywhere in the input, including all four malformed examples in acceptance/proof.py.",
+      "Valid HTTPS origins and HTTP origins using localhost, 127.0.0.1, or bracketed ::1 remain supported. https://example.com and http://127.0.0.1:8790 return unchanged; an otherwise valid origin ending in one slash returns without that slash.",
+      "Existing rejection behavior remains intact for remote HTTP, missing hosts, unsupported schemes, nonempty credentials, non-root paths, queries, fragments, and zero, nonnumeric, or out-of-range ports.",
+      "Both authorized files contain substantive changes, and the unchanged frozen command '{python} acceptance/proof.py' passes."
+    ],
+    "constraints": [
+      "Modify only src/agent_arena/control/configuration.py and web/public/manifest.webmanifest; leave acceptance and all other files unchanged.",
+      "Keep validate_origin's public interface, existing validation rules, and return behavior compatible for valid inputs. Reject prohibited characters rather than silently removing them.",
+      "Add no dependencies, network requests, DNS lookups, or import-time side effects; configuration.py must remain independently loadable by runpy.",
+      "Preserve the existing app name, short name, icon definitions, start URL, display mode, orientation, and colors.",
+      "Retain M1 build, M2 frozen verification, M3 independent review, M4 composition checks, and M5 explicit main-integration approval. Do not publish, grant permissions, access other projects, or change pipeline policy."
+    ],
+    "observations": [
+      "src/agent_arena/control/configuration.py calls urlsplit before inspecting the original input. Direct execution confirmed that it currently accepts all four unsafe examples in acceptance/proof.py: an embedded space, a backslash, a trailing newline, and a leading tab.",
+      "src/agent_arena/control/__main__.py and src/agent_arena/control/api.py both use validate_origin. The API uses its returned string in its allowed-origin set, so preserving valid addresses and trailing-slash normalization matters.",
+      "tests/control/test_control.py covers rejection of remote HTTP, credentials, paths, queries, unsupported schemes, and invalid ports, plus preservation of remote connection settings during service configuration.",
+      "web/public/manifest.webmanifest contains the technical description introduced in commit cde9bc4 and lacks lang. web/index.html already declares English and uses the Arena identity and existing /icon.svg asset.",
+      "At repository head a944819, acceptance/proof.py requires the exact description 'Control your private engineering agents from your phone.' and lang 'en'. It skips untouched baseline files, so both authorized files must change to deliver the complete requested outcome."
+    ],
+    "outcome": "Make Arena easier to identify on a phone through clear English app metadata, and reject malformed server addresses while preserving valid connections and existing launch behavior.",
+    "question": "",
+    "strategy": "single",
+    "summary": "The app will have a clearer phone-focused description. Server addresses containing whitespace, hidden control characters, or backslashes will be rejected. Existing valid connections, the Arena name, icon, and launch behavior will stay compatible.",
+    "tasks": [
+      {
+        "acceptance": [
+          "The manifest has the exact required description and English language declaration, with all existing identity, icon, appearance, and launch values preserved.",
+          "The origin guard rejects whitespace, ASCII controls, and backslashes before urlsplit, including each malformed input in the frozen check.",
+          "Valid HTTPS and supported loopback HTTP origins retain their existing return values and trailing-slash normalization; existing invalid-origin checks remain effective.",
+          "The candidate changes both scoped files, changes no other files, and passes the unchanged frozen origin and manifest contracts."
+        ],
+        "complexity": "simple",
+        "dependencies": [],
+        "instructions": "In src/agent_arena/control/configuration.py, add a guard at the start of validate_origin, before urlsplit(origin). Inspect the original string and raise ValueError if any character satisfies str.isspace(), has an ordinal below 32 or equal to 127, or is a literal backslash. Use a concise error message and explain in a short comment that validation must precede URL parsing because parsing can discard control characters. Preserve the existing scheme, host, credential, path, query, fragment, loopback HTTP, and port checks, as well as origin.rstrip('/') on success. In web/public/manifest.webmanifest, replace description with exactly 'Control your private engineering agents from your phone.' and add lang with value 'en'; preserve every other field and value. Keep both edits minimal and use the existing frozen acceptance/proof.py check without modifying it.",
+        "risk": "low",
+        "scope": [
+          "src/agent_arena/control/configuration.py",
+          "web/public/manifest.webmanifest"
+        ],
+        "title": "Clarify phone app metadata and reject unsafe origin characters"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "task_bb58fdf1f32e333d",
+      "title": "Make this app easier to recognise on my phone, and stop malformed server addresses getting through. ",
+      "phase": "plan",
+      "state": "completed",
+      "scope": [
+        "src/agent_arena/control/configuration.py",
+        "web/public/manifest.webmanifest"
+      ],
+      "reason": "The app will have a clearer phone-focused description. Server addresses containing whitespace, hidden control characters, or backslashes will be rejected. Existing valid connections, the Arena name, icon, and launch behavior will stay compatible.",
+      "repairs": 0
+    },
+    {
+      "id": "task_b00e0f7b8ae3a43b",
+      "title": "Clarify phone app metadata and reject unsafe origin characters",
+      "phase": "direct",
+      "state": "ready_for_approval",
+      "scope": [
+        "src/agent_arena/control/configuration.py",
+        "web/public/manifest.webmanifest"
+      ],
+      "reason": "Verified; integrating into local main under the project's policy",
+      "repairs": 0
+    }
+  ],
+  "attempts": [
+    {
+      "id": "attempt_04ef5d9c43b8f3ef",
+      "task_id": "task_bb58fdf1f32e333d",
+      "phase": "plan",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-astra",
+      "effort": "max",
+      "seconds": 141.935,
+      "provider_started": 1793166445.968448,
+      "provider_ended": 1793166584.9376938,
+      "usage": [
+        {
+          "cache_read": 111360,
+          "cache_write": 0,
+          "call": 1,
+          "input": 128497,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-astra",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 3621,
+          "provider": "codex_cli",
+          "reasoning": 1423,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "reason": "Bounded plan schema, authority and dependency graph validated",
+      "session_ids": [
+        "01a1810c-904d-7fb0-a103-4b9f90d33f66"
+      ]
+    },
+    {
+      "id": "attempt_825c78f6669dd1bc",
+      "task_id": "task_b00e0f7b8ae3a43b",
+      "phase": "build",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-luna",
+      "effort": "low",
+      "seconds": 17.961,
+      "provider_started": 1793166587.223425,
+      "provider_ended": 1793166603.310478,
+      "usage": [
+        {
+          "cache_read": 93824,
+          "cache_write": 0,
+          "call": 1,
+          "input": 109067,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-luna",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 713,
+          "provider": "codex_cli",
+          "reasoning": 0,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [
+        {
+          "argv": [
+            "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+            "acceptance/proof.py"
+          ],
+          "artifact": "checks-0.txt",
+          "exit_code": 0,
+          "name": "Frozen origin and manifest contracts",
+          "seconds": 0.212,
+          "sha256": "c9f54a82a53ff75959bce6fb75ee211078f1daeafecc7d938adb496aa33f756b",
+          "status": "PASS"
+        }
+      ],
+      "candidate": "431fd49cc260ce2ddf6cc9b3f30b27525aeef229",
+      "reason": "CLI completed and frozen acceptance checks passed",
+      "session_ids": [
+        "01a1810e-b81c-7f80-b92c-f9c6daf6e3ea"
+      ]
+    },
+    {
+      "id": "attempt_83a9fe891cb80fb9",
+      "task_id": "task_b00e0f7b8ae3a43b",
+      "phase": "review",
+      "state": "passed",
+      "provider": "claude",
+      "account": "Claude",
+      "model": "sonnet",
+      "effort": null,
+      "seconds": 6.016,
+      "provider_started": 1793166607.262625,
+      "provider_ended": 1793166610.648422,
+      "usage": [
+        {
+          "cache_read": 649,
+          "cache_write": 4384,
+          "cache_write_1h": 4384,
+          "cache_write_5m": 0,
+          "call": 1,
+          "input": 2,
+          "input_includes_cache_read": false,
+          "model": "claude-sonnet-5-5",
+          "model_source": "reported",
+          "not_applicable": [
+            "reasoning"
+          ],
+          "output": 16,
+          "provider": "claude_cli",
+          "reasoning": null,
+          "service_tier": "standard",
+          "single_request": true,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "review": {
+        "approved": true,
+        "findings": []
+      },
+      "candidate": "431fd49cc260ce2ddf6cc9b3f30b27525aeef229",
+      "reason": "Independent review passed",
+      "session_ids": [
+        "d280a7b9-e023-445a-8614-7f19eef09773"
+      ]
+    },
+    {
+      "id": "attempt_a9469474ebd43b1b",
+      "task_id": "task_b00e0f7b8ae3a43b",
+      "phase": "direct",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-astra",
+      "effort": "max",
+      "seconds": 28.2,
+      "provider_started": 1793166613.412172,
+      "provider_ended": 1793166639.8841128,
+      "usage": [
+        {
+          "cache_read": 12160,
+          "cache_write": 0,
+          "call": 1,
+          "input": 19557,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-astra",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 534,
+          "provider": "codex_cli",
+          "reasoning": 455,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "review": {
+        "approved": true,
+        "findings": [],
+        "summary": "Both scoped edits satisfy the agreed outcome. The manifest has the exact description and English declaration, with all other values preserved. The origin guard rejects whitespace, ASCII controls, and backslashes before parsing while preserving existing validation and return behavior. Only the authorized files changed; the unchanged frozen check and independent review passed."
+      },
+      "candidate": "431fd49cc260ce2ddf6cc9b3f30b27525aeef229",
+      "reason": "Independent review passed",
+      "session_ids": [
+        "01a1810f-1e35-7380-ac8d-2ff6ac8c450a"
+      ]
+    }
+  ],
+  "providers_that_built": [
+    "codex"
+  ],
+  "concurrent": false,
+  "publication": {
+    "automatic": true,
+    "branch": "main",
+    "expected_source": "a944819e284ff82391d6bb29acbfe3db76fba3b3",
+    "reason": "Verified candidate integrated into local main",
+    "receipt": {
+      "approval_id": "approval_36cc53c32d84724e",
+      "base": "a944819e284ff82391d6bb29acbfe3db76fba3b3",
+      "branch": "main",
+      "candidate": "2ab37fa3c7a7a5cdffd925c10bb2bf5fe99e2288",
+      "checks": [
+        {
+          "argv": [
+            "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+            "acceptance/proof.py"
+          ],
+          "artifact": "integration-0.txt",
+          "exit_code": 0,
+          "name": "Frozen origin and manifest contracts",
+          "seconds": 0.128,
+          "sha256": "c9f54a82a53ff75959bce6fb75ee211078f1daeafecc7d938adb496aa33f756b",
+          "status": "PASS"
+        }
+      ],
+      "pushed": false,
+      "source": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.arena-control/proof-source-final",
+      "time": 1793166642.602301
+    },
+    "requested": 1793166641.658442,
+    "state": "integrated"
+  },
+  "integrated_commit": "2ab37fa3c7a7a5cdffd925c10bb2bf5fe99e2288",
+  "source_repo": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.arena-control/proof-source-final",
+  "zero_click": true,
+  "browser_errors": [],
+  "ended": "2026-10-28T05:50:44.171Z"
+}
