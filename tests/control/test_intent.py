@@ -20,7 +20,7 @@ def test_self_phrases_pick_the_project_flagged_self():
     ]:
         result = resolve_project(text, [ARENA, TRACKER, SHOP])
         assert result["project"] is ARENA, (text, result)
-        assert "Arena itself" in result["reason"]
+        assert "Arena" in result["reason"]
     # Without the self flag the word "arena" is just a name match, still explainable.
     plain = {**ARENA, "self": False}
     result = resolve_project("Improve Arena's review screen", [plain, TRACKER, SHOP])
@@ -147,7 +147,7 @@ def test_auto_request_asks_which_project_when_ambiguous(setup, tmp_path):  # noq
     )
     assert r.status_code == 200, r.text
     assert r.json()["project_id"] == second["id"]
-    assert r.json()["why"].startswith("Tracker: named 'Tracker'")
+    assert r.json()["why"].startswith("Tracker: named")
 
     with store.transaction() as db:
         p = store.get("projects", second["id"], db)

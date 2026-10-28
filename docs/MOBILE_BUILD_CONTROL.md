@@ -69,6 +69,21 @@ directory; the second scheduler refuses the lock and exits.
 5. Controls: Pause/Resume queue, project priority, Stop task, Stop all workers, Retry,
    queue an instruction for a running build, answer a director question, Unpair device.
 
+## Talking to the director (Chat, the home screen)
+
+Chat is the first tab. Ask anything: "What repo are we in?", "Look through my GitHub
+repos", "What's going on with <project>?" — the director answers from a read-only catalog
+of enrolled projects, local repositories under `~/Projects` and your GitHub repositories
+(via the signed-in `gh` CLI), and inspects the selected or mentioned local repository in a
+read-only sandbox (files and git history; it cannot change anything). Naming an enrolled
+project selects it for the thread; unenrolled repositories can be discussed but not built.
+As you discuss a feature the director keeps a specification and a milestone plan (visible
+under "Specification so far"), revising it as you change your mind. Nothing is built until
+you say so in your own words ("Build it", "Execute this plan"); the compiled plan is then
+filed through the normal request path and the Build screen shows progress. Threads,
+project selection and plans persist across reconnects and restarts; "New chat" starts
+another thread. Replies show the model, effort and time used.
+
 ## Starting a brand-new project from the phone
 
 In "Tell me what to build" switch to **New project**, describe the product, tap **Propose

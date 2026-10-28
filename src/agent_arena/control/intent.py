@@ -9,7 +9,7 @@ UI can show them and the owner can override with one tap when nothing clearly wi
 from __future__ import annotations
 
 import re
-from pathlib import PurePath
+from pathlib import Path, PurePath
 
 # Phrases that mean "this tool itself": the project whose record carries ``self: true``.
 SELF_PHRASES = (
@@ -152,6 +152,32 @@ def resolve_project(text: str, projects: list[dict]) -> dict:
             "project": by_id[only["id"]],
             "candidates": scored,
             "reason": f"Only one project is enrolled: {only['name']}",
+        }
+    # A project named in full (its enrolled name or repository folder, as a phrase) wins
+    # outright. Longer names are consumed first so that "arena-smoke-20261028" does not also
+    # count as naming a project called "Arena"; two distinct full names stay ambiguous.
+    lowered = " " + re.sub(r"[^a-z0-9]+", " ", text.lower()) + " "
+    phrases = []
+    for p in projects:
+        for raw in (str(p.get("name") or ""), Path(str(p.get("repo") or "")).name):
+            ph = re.sub(r"[^a-z0-9]+", " ", raw.lower()).strip()
+            words = ph.split()
+            if len(ph) >= 3 and any(w not in STOPWORDS for w in words):
+                phrases.append((ph, p))
+    phrases.sort(key=lambda e: -len(e[0]))
+    exact = []
+    for ph, p in phrases:
+        token = " " + ph + " "
+        if token in lowered:
+            lowered = lowered.replace(token, "  ")
+            if all(e.get("id") != p.get("id") for e in exact):
+                exact.append(p)
+    if len(exact) == 1:
+        chosen = next(c for c in scored if c["id"] == exact[0].get("id"))
+        return {
+            "project": exact[0],
+            "candidates": scored,
+            "reason": f"{chosen['name']}: named in full",
         }
     top, second = scored[0], scored[1]
     if top["score"] >= MIN_SCORE and top["score"] >= MIN_MARGIN * second["score"]:

@@ -48,9 +48,12 @@ you are asked about (you may read files and git history in your working director
 modify anything), explain status in plain language, discuss and refine requirements, and keep
 a running specification. Keep replies short and specific (a few sentences; lists when useful).
 Facts about repositories come only from the CONTEXT below and from what you read; never invent
-repositories, commits, files or build results.
-Project selection: the owner selects a project by naming it. If they name an enrolled project,
-set project_hint to its exact enrolled name. If they name a local or GitHub repository that is
+repositories, commits, files or build results. Do not mention your scratch working directory;
+when no project is selected simply say so and name the enrolled projects.
+Project selection: the owner selects a project by naming it (or its repository). Whenever the
+discussion is about an enrolled project, set project_hint to its exact enrolled name on
+every turn — including when you merely inspect or plan for it. If they name a local or GitHub
+repository that is
 NOT enrolled, explain that Arena can discuss it but cannot build there until it is enrolled on
 the Mac (or created through "New project"), and set project_hint to null.
 Planning: as the discussion matures, maintain a structured PLAN inside spec: milestones with
@@ -414,16 +417,21 @@ class Director:
                 live = self.store.get("conversations", conversation_id, db)
                 if isinstance(answer.get("spec"), dict):
                     live["spec"] = answer["spec"]
-                hint = answer.get("project_hint")
-                if hint:
-                    match = resolve_project(
-                        str(hint),
-                        [p for p in self.store.rows("projects", db) if p.get("enabled", True)],
-                    )
-                    if match.get("project"):
+                # Selection is deterministic: the director's hint, else the owner's own words
+                # — whichever names exactly one enrolled project.
+                enabled = [p for p in self.store.rows("projects", db) if p.get("enabled", True)]
+                for candidate, strict in ((answer.get("project_hint"), False), (text, True)):
+                    if not candidate:
+                        continue
+                    match = resolve_project(str(candidate), enabled)
+                    if not match.get("project"):
+                        continue
+                    if strict and "named in full" not in match["reason"]:
+                        continue  # The owner's words must actually name the project.
+                    if match["project"]["id"] != live.get("project_id"):
                         live["project_id"] = match["project"]["id"]
                         extra["project_selected"] = match["project"]["name"]
-                live["status"] = "idle"
+                    break
                 _save(self.store, db, live)
             action = answer.get("action")
             explicit = bool(BUILD_INTENT.search(text))
@@ -436,11 +444,11 @@ class Director:
         except Exception as exc:
             reply = "I couldn't answer that: " + redact(str(exc))[:400]
             extra = {"error": True}
-            with self.store.transaction() as db:
-                live = self.store.get("conversations", conversation_id, db)
-                live["status"] = "idle"
-                _save(self.store, db, live)
         add_message(self.store, conversation_id, "assistant", reply, **extra)
+        with self.store.transaction() as db:
+            live = self.store.get("conversations", conversation_id, db)
+            live["status"] = "idle"
+            _save(self.store, db, live)
 
     def _launch(self, conversation_id):
         conv = self.store.get("conversations", conversation_id)
