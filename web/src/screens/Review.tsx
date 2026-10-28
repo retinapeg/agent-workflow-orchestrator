@@ -1,15 +1,19 @@
 import React from 'react';
 import {useArena} from '../App';
-import {BLOCKED_TASK, cap, family, seconds, stateLabel, when, type RecordData} from '../types';
-import {Chip, Empty, Eyebrow, Icon, Panel, Sha} from '../ui';
+import {ago, cap, family, isHistoryTask, needsYou, seconds, stateLabel, when, type RecordData} from '../types';
+import {Chip, Empty, Eyebrow, Glyph, Icon, Panel, Sha} from '../ui';
 
 export function Review() {
-  const {data, setModal, setEvidence} = useArena();
-  const open = data.approvals.filter(a => a.state === 'pending' || (a.state === 'accept' && a.publication?.state !== 'integrated'));
-  const history = data.approvals
+  const {data, now, setModal, setEvidence} = useArena();
+  const needs = needsYou(data);
+  const accepted = data.approvals.filter(a => a.state === 'accept' && a.publication?.state !== 'integrated');
+  const autoPending = data.approvals.filter(a => a.state === 'pending' && !needs.approvals.includes(a));
+  const open = [...needs.approvals, ...accepted];
+  const historyApprovals = data.approvals
     .filter(a => a.publication?.state === 'integrated' || ['reject', 'request_changes', 'superseded'].includes(a.state))
     .sort((a, b) => (b.publication?.receipt?.time || b.created) - (a.publication?.receipt?.time || a.created));
-  const humans = data.tasks.filter(t => BLOCKED_TASK.includes(t.state) || t.state === 'awaiting_input');
+  const historyTasks = data.tasks.filter(isHistoryTask).sort((a, b) => b.updated - a.updated);
+  const humans = [...needs.answers, ...needs.access];
   const taskOf = (a: RecordData) => data.tasks.find(t => t.id === a.task_id);
   const summaryOf = (a: RecordData) => {
     const t = taskOf(a);
@@ -19,10 +23,10 @@ export function Review() {
   };
   return (
     <>
-      <div className="heading">
+      <div className="page-head">
         <div>
-          <h1>Review & results.</h1>
-          <p>Checks passing is different from permission to publish. Inspect the exact candidate, then decide.</p>
+          <h2 className="page-title">Review</h2>
+          <p className="page-sub">Checks passing is different from permission to publish. Inspect the exact candidate, then decide.</p>
         </div>
       </div>
 
@@ -76,13 +80,15 @@ export function Review() {
       </div>
 
       {humans.length > 0 && (
-        <Panel title="Needs a human" aside={<span className="count num">{humans.length}</span>} className="mt">
+        <Panel title="Needs a human" aside={<span className="count num">{humans.length}</span>} className="mt accent-amber">
           {humans.map(t => (
             <button className="list-row press" key={t.id} onClick={() => setModal({kind: 'task', id: t.id})}>
-              <Chip tone={family(t.state)}>{stateLabel(t.state)}</Chip>
+              <Glyph tone={family(t.state)} size={32} />
               <div className="list-main">
                 <b>{t.title}</b>
-                <span className="small muted">{t.question || t.reason}</span>
+                <span className="small muted">
+                  <span className={'tone ' + family(t.state)}>{stateLabel(t.state)}</span> · {ago(t.updated, now)} · {t.question || t.reason}
+                </span>
               </div>
               <Icon name="arrow" size={16} />
             </button>
@@ -90,27 +96,40 @@ export function Review() {
         </Panel>
       )}
 
-      {!open.length && !humans.length && (
-        <Empty title="Review queue clear">Verified changes appear here with their checks, the independent review and the exact commit.</Empty>
+      {autoPending.length > 0 && (
+        <Panel title="Integrating automatically" aside={<span className="count num">{autoPending.length}</span>} className="mt">
+          {autoPending.map(a => (
+            <button className="list-row press" key={a.id} onClick={() => setModal({kind: 'review', id: a.id})}>
+              <Glyph tone="running" size={32} />
+              <div className="list-main">
+                <b>{taskOf(a)?.title}</b>
+                <span className="small muted">Verified candidate {a.candidate?.slice(0, 10)} · this project integrates verified work without asking</span>
+              </div>
+              <Icon name="arrow" size={16} />
+            </button>
+          ))}
+        </Panel>
       )}
 
-      <Panel title="Integrated results" aside={<Eyebrow>History</Eyebrow>} className="mt">
-        {history.map(a => {
+      {!open.length && !humans.length && <Empty title="Review queue clear">Verified changes appear here with their checks, the independent review and the exact commit.</Empty>}
+
+      <Panel title="History" aside={<Eyebrow>Records stay inspectable</Eyebrow>} className="mt">
+        {historyApprovals.map(a => {
           const t = taskOf(a);
           const r = a.publication?.receipt;
           const integrated = a.publication?.state === 'integrated';
           return (
             <div className="list-row" key={a.id}>
-              <Chip tone={integrated ? 'done' : 'off'}>{integrated ? 'Integrated' : cap(a.state.replaceAll('_', ' '))}</Chip>
+              <Glyph tone={integrated ? 'done' : 'off'} size={32} />
               <div className="list-main">
                 <b>{t?.title}</b>
                 <span className="small muted">
                   {integrated ? (
                     <>
-                      <Sha value={a.candidate} /> → {r?.branch || 'main'} · {when(r?.time || a.created)}
+                      Integrated <Sha value={a.candidate} /> → {r?.branch || 'main'} · {when(r?.time || a.created)}
                     </>
                   ) : (
-                    a.feedback || a.publication?.reason || when(a.created)
+                    `${cap(a.state.replaceAll('_', ' '))} · ${a.feedback || a.publication?.reason || when(a.created)}`
                   )}
                 </span>
               </div>
@@ -120,7 +139,19 @@ export function Review() {
             </div>
           );
         })}
-        {!history.length && <p className="panel-body muted small">Integrated commits and recorded decisions will be listed here.</p>}
+        {historyTasks.map(t => (
+          <button className="list-row press" key={t.id} onClick={() => setModal({kind: 'task', id: t.id})}>
+            <Glyph tone="off" size={32} />
+            <div className="list-main">
+              <b>{t.title}</b>
+              <span className="small muted">
+                {stateLabel(t.state)} · {when(t.updated)} · {t.reason}
+              </span>
+            </div>
+            <Icon name="arrow" size={16} />
+          </button>
+        ))}
+        {!historyApprovals.length && !historyTasks.length && <p className="panel-body muted small">Integrated commits, recorded decisions and stopped attempts will be listed here.</p>}
       </Panel>
     </>
   );

@@ -1,16 +1,16 @@
 import React from 'react';
 import {useArena} from '../App';
 import {ACTIVE_ATTEMPT, cap, clock, duration, human, num, providerGlyph, providerName, stateLabel, usageTotals, when} from '../types';
-import {Chip, Eyebrow, Facts, Icon, LiveDot} from '../ui';
+import {Chip, Eyebrow, Facts, Icon, LiveDot, Provider} from '../ui';
 
 export function Agents() {
   const {data, now, disabled, action, setModal} = useArena();
   return (
     <>
-      <div className="heading">
+      <div className="page-head">
         <div>
-          <h1>Agents.</h1>
-          <p>Three supported subscription slots. Every invocation has a job, a limit and an owner. No API fallback.</p>
+          <h2 className="page-title">Agents</h2>
+          <p className="page-sub">Three supported subscription slots. Every invocation has a job, a limit and an owner. No API fallback.</p>
         </div>
       </div>
       <div className="cards three">
@@ -33,7 +33,7 @@ export function Agents() {
             <article className={'card agent ' + (job ? 'on' : '')} key={agent.id}>
               <div className="row between wrap">
                 <div className="row">
-                  <span className={'glyph lg ' + (job ? 'on' : '')}>{providerGlyph(agent.provider)}</span>
+                  <Provider glyph={providerGlyph(agent.provider)} size="lg" on={!!job} />
                   <div>
                     <h2>{agent.name}</h2>
                     <p className="small muted">
@@ -111,7 +111,7 @@ export function Agents() {
         {Array.from({length: Math.max(0, 3 - data.agents.length)}, (_, i) => (
           <article className="card agent empty-slot" key={'empty' + i}>
             <div className="row between">
-              <span className="glyph lg">··</span>
+              <Provider glyph="··" size="lg" />
               <Chip tone="off">Not enrolled</Chip>
             </div>
             <h2>Worker slot {data.agents.length + i + 1}</h2>

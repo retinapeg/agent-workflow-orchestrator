@@ -451,7 +451,7 @@ export function DialogBody() {
   const task = modal?.kind === 'task' ? data.tasks.find(t => t.id === modal.id) : null;
   const review = modal?.kind === 'review' ? data.approvals.find(a => a.id === modal.id) : null;
   const reviewedTask = review ? data.tasks.find(t => t.id === review.task_id) : null;
-  const title = modal?.kind === 'goal' ? 'What would you like to improve?' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : task?.title || reviewedTask?.title || 'Build control';
+  const title = modal?.kind === 'goal' ? 'What would you like to improve?' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : task?.title || reviewedTask?.title || 'Build control';
   const heartbeatAge = data.heartbeat ? now - data.heartbeat : null;
   return (
     <>
@@ -473,6 +473,15 @@ export function DialogBody() {
             <p className="note">
               A second Claude account needs its own config directory signed in on the Mac (CLAUDE_CONFIG_DIR=~/.claude-second claude auth login --email …), then enroll-account --config-home for that directory; enrolment refuses a directory that holds the same account as an existing slot. Never paste account tokens here.
             </p>
+          </>
+        )}
+        {modal?.kind === 'enrol' && (
+          <>
+            <p>Projects are enrolled on the Mac, never from the browser, so a reviewed manifest decides what the agents may touch.</p>
+            <p className="note">
+              On the host run <code>python -m agent_arena.control enroll</code> with the repository path, the scope the agents may edit, the frozen acceptance checks and the protected paths. Enrolling Arena itself needs <code>self_target</code>; builds then run in isolated workspaces and activate through a release worktree. The new project appears here as soon as the host records it.
+            </p>
+            <p className="small muted">Browser requests can select only enrolled paths and run only their frozen checks. Nothing is assumed about a repository that is not enrolled.</p>
           </>
         )}
         {modal?.kind === 'device' && (

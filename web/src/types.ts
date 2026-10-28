@@ -274,3 +274,80 @@ export function eventLine(e: RecordData, snap: Snapshot): string {
       return d.reason || d.title || cap(human(e.kind.replaceAll('.', ' ')));
   }
 }
+
+// Relative time for readouts ("12m ago"). `now` is the host-corrected clock from App.
+export function ago(epoch: number | null | undefined, now: number): string {
+  if (!epoch) return '';
+  const s = Math.max(0, Math.floor(now - epoch));
+  if (s < 60) return 'just now';
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 48) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+// Tasks whose record is kept for inspection but which never ask the owner for anything.
+export const HISTORY_TASK = ['blocked', 'interrupted', 'cancelled'];
+export const isHistoryTask = (t: RecordData) => HISTORY_TASK.includes(t.state);
+
+// "Needs you" is strictly what the owner can act on now: an unanswered director question,
+// a worker that needs sign-in or permission on the Mac, and a verified candidate waiting
+// for a decision on a project that integrates manually. Nothing historical counts.
+export type NeedsYou = {answers: RecordData[]; access: RecordData[]; approvals: RecordData[]; count: number};
+export function needsYou(snap: Snapshot): NeedsYou {
+  const answers = snap.tasks.filter(t => t.state === 'awaiting_input');
+  const access = snap.tasks.filter(t => t.state === 'needs_auth' || t.state === 'needs_permission');
+  const manual = new Set(snap.projects.filter(p => p.integration_policy !== 'auto_local_main').map(p => p.id));
+  const approvals = snap.approvals.filter(a => a.state === 'pending' && manual.has(snap.tasks.find(t => t.id === a.task_id)?.project_id));
+  return {answers, access, approvals, count: answers.length + access.length + approvals.length};
+}
+
+// Front-page class of a request. "active" has live or queued work; "needs" is waiting on the
+// owner; "done" finished cleanly; "history" is blocked, interrupted or cancelled work that is
+// kept for inspection but never presented as something to act on.
+export type GoalClass = 'active' | 'needs' | 'done' | 'history';
+export function goalClass(view: GoalView): GoalClass {
+  const states = view.tasks.map(t => t.state as string);
+  if (states.some(s => ACTIVE_TASK.includes(s) || s === 'integrating' || QUEUED_TASK.includes(s))) return 'active';
+  if (states.some(s => s === 'awaiting_input' || s === 'needs_auth' || s === 'needs_permission' || s === 'ready_for_approval')) return 'needs';
+  const live = view.tasks.filter(t => t.state !== 'cancelled');
+  if (live.length && live.every(t => t.state === 'completed')) return 'done';
+  return 'history';
+}
+
+// Status line for a request on the front page and in history, from recorded states only.
+export function goalStatus(view: GoalView): {label: string; tone: Family} {
+  const cls = goalClass(view);
+  if (cls === 'history') {
+    const last = [...view.tasks].sort((a, b) => b.updated - a.updated).find(t => HISTORY_TASK.includes(t.state));
+    return {label: last ? stateLabel(last.state) : 'Cancelled', tone: 'off'};
+  }
+  if (cls === 'done') return {label: view.tasks.some(t => t.integrated_commit) ? 'Integrated' : 'Completed', tone: 'done'};
+  if (cls === 'needs') {
+    const t = view.tasks.find(t => ['awaiting_input', 'needs_auth', 'needs_permission', 'ready_for_approval'].includes(t.state));
+    return {label: t ? stateLabel(t.state) : view.status, tone: 'decision'};
+  }
+  return {label: view.status, tone: view.tone};
+}
+
+// Which provider glyphs to show for a build: the accounts that actually recorded attempts.
+export function providersOf(view: GoalView, snap: Snapshot): string[] {
+  const ids = new Set(view.tasks.map(t => t.id));
+  const seen: string[] = [];
+  for (const a of snap.attempts) {
+    if (!ids.has(a.task_id)) continue;
+    const agent = snap.agents.find(x => x.id === a.account_id);
+    const p = agent?.provider || '';
+    if (p && !seen.includes(p)) seen.push(p);
+  }
+  return seen;
+}
+
+// Elapsed time of a build: from the request until its last recorded update (or now while live).
+export function goalElapsed(view: GoalView, now: number): number {
+  const start = view.goal.created as number;
+  if (view.active) return now - start;
+  const last = Math.max(start, ...view.tasks.map(t => (t.updated as number) || 0));
+  return last - start;
+}

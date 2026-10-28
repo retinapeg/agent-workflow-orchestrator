@@ -1,6 +1,6 @@
 import React, {createContext, useContext, useEffect, useRef, useState} from 'react';
-import {ACTIVE_ATTEMPT, ACTIVE_TASK, BLOCKED_TASK, TABS, shortSha, type RecordData, type Snapshot, type Tab} from './types';
-import {Icon, LiveDot, Mark} from './ui';
+import {ACTIVE_ATTEMPT, ACTIVE_TASK, TABS, needsYou, shortSha, type RecordData, type Snapshot, type Tab} from './types';
+import {Icon, LiveDot, Mark, Wordmark} from './ui';
 import {Overview} from './screens/Overview';
 import {Projects} from './screens/Projects';
 import {Build} from './screens/Build';
@@ -8,7 +8,7 @@ import {Agents} from './screens/Agents';
 import {Review} from './screens/Review';
 import {DialogBody} from './screens/Dialogs';
 
-export type Modal = {kind: 'goal' | 'task' | 'review' | 'device' | 'account'; id?: string} | null;
+export type Modal = {kind: 'goal' | 'task' | 'review' | 'device' | 'account' | 'enrol'; id?: string} | null;
 export type Evidence = {label: string; text: string; kind: 'diff' | 'text'; warn?: string} | null;
 export type Link = 'live' | 'polling' | 'reconnecting';
 
@@ -37,12 +37,15 @@ export type Ctx = {
   unpair: () => Promise<void>;
   handoff: string;
   clearHandoff: () => void;
+  search: string;
+  setSearch: (s: string) => void;
 };
 
 const ArenaContext = createContext<Ctx>(null!);
 export const useArena = () => useContext(ArenaContext);
 
-const LABELS: Record<Tab, string> = Object.fromEntries(TABS.map(t => [t.key, t.label])) as Record<Tab, string>;
+// Visual labels follow the phone mockup; the accessible names stay the contract names.
+const VISUAL: Record<Tab, string> = {overview: 'Home', projects: 'Projects', build: 'Builds', agents: 'Agents', review: 'Review'};
 
 const RESTARTING = 'Arena is restarting — reconnecting…';
 
@@ -66,6 +69,21 @@ function readHandoff(): string {
 // Thrown by post() so callers can read the host's structured answer (e.g. project candidates).
 export type PostError = Error & {status: number; body: any};
 
+function Splash({children}: {children: React.ReactNode}) {
+  return (
+    <div className="pairing">
+      <div className="pair-card">
+        <div className="splash-brand">
+          <Mark size={120} />
+          <Wordmark className="xl" />
+          <span className="tagline">Ideas → Agents → Real software</span>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const [data, setData] = useState<Snapshot | null>(null);
   const [paired, setPaired] = useState<boolean | null>(null);
@@ -80,6 +98,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [goal, setGoal] = useState<string | null>(null);
   const [handoff, setHandoff] = useState(readHandoff);
+  const [search, setSearch] = useState('');
   const [, setTick] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const csrfRef = useRef('');
@@ -284,15 +303,12 @@ export function App() {
 
   if (paired === null)
     return (
-      <div className="pairing">
-        <div className="pair-card">
-          <Mark size={44} />
-          <h1>Connecting…</h1>
-          <p className="muted" aria-live="polite">
-            {bootError || 'Reaching your build host.'}
-          </p>
-        </div>
-      </div>
+      <Splash>
+        <h1 className="splash-title">Connecting…</h1>
+        <p className="muted" aria-live="polite">
+          {bootError || 'Reaching your build host.'}
+        </p>
+      </Splash>
     );
 
   if (!paired)
@@ -321,12 +337,13 @@ export function App() {
             }
           }}
         >
-          <div className="brand">
-            <Mark size={40} />
-            <span className="wordmark">ARENA</span>
+          <div className="splash-brand">
+            <Mark size={120} />
+            <Wordmark className="xl" />
+            <span className="tagline">Ideas → Agents → Real software</span>
           </div>
           <span className="eyebrow">Device pairing</span>
-          <h1>
+          <h1 className="splash-title">
             Your builds.
             <br />
             Within reach.
@@ -353,30 +370,26 @@ export function App() {
 
   if (!data)
     return (
-      <div className="pairing">
-        <div className="pair-card">
-          <Mark size={44} />
-          <h1>Connecting…</h1>
-          <p className="muted">Waiting for a fresh host snapshot.</p>
-          <button className="btn" onClick={refresh}>
-            Reconnect
-          </button>
-        </div>
-      </div>
+      <Splash>
+        <h1 className="splash-title">Connecting…</h1>
+        <p className="muted">Waiting for a fresh host snapshot.</p>
+        <button className="btn" onClick={refresh}>
+          Reconnect
+        </button>
+      </Splash>
     );
 
   const link: Link = !online ? 'reconnecting' : sse ? 'live' : 'polling';
   const disabled = busy || !online;
   const running = data.tasks.filter(t => ACTIVE_TASK.includes(t.state) || t.state === 'integrating').length;
-  const attention =
-    data.approvals.filter(a => a.state === 'pending' || (a.state === 'accept' && a.publication?.state !== 'integrated')).length +
-    data.tasks.filter(t => t.state === 'awaiting_input' || BLOCKED_TASK.includes(t.state)).length;
+  const attention = needsYou(data).count;
   const counts: Partial<Record<Tab, number>> = {build: running, review: attention};
   const heartbeatAge = data.heartbeat ? data.server_time - data.heartbeat : null;
   const scheduler =
-    heartbeatAge === null ? {tone: 'off' as const, text: 'Not running'} : heartbeatAge > 30 ? {tone: 'warn' as const, text: `Stale · ${Math.round(heartbeatAge)}s`} : {tone: 'ok' as const, text: `Beat ${Math.round(heartbeatAge)}s ago`};
+    heartbeatAge === null ? {tone: 'off' as const, text: 'Scheduler off'} : heartbeatAge > 30 ? {tone: 'warn' as const, text: `Stale · ${Math.round(heartbeatAge)}s`} : {tone: 'ok' as const, text: 'Online'};
   const linkTone = link === 'live' ? 'live' : link === 'polling' ? 'ok' : 'warn';
-  const linkText = link === 'live' ? `Live · ${lastSeen}` : link === 'polling' ? `Polling · ${lastSeen}` : `Reconnecting · read-only`;
+  const ready = data.agents.filter(a => a.enabled && a.health === 'ready').length;
+  const busyAgents = data.agents.filter(a => data.attempts.some(x => x.account_id === a.id && ACTIVE_ATTEMPT.includes(x.state))).length;
 
   const ctx: Ctx = {
     data,
@@ -403,6 +416,8 @@ export function App() {
     unpair,
     handoff,
     clearHandoff: () => setHandoff(''),
+    search,
+    setSearch,
   };
 
   return (
@@ -410,9 +425,9 @@ export function App() {
       <div className="shell">
         <aside className="sidebar">
           <div className="brand side-brand">
-            <Mark size={38} />
+            <Mark size={44} />
             <div>
-              <span className="wordmark">ARENA</span>
+              <Wordmark />
               <span className="brand-sub">Build control</span>
             </div>
           </div>
@@ -421,11 +436,16 @@ export function App() {
               <button
                 key={t.key}
                 className={'nav-btn' + (tab === t.key ? ' active' : '')}
+                aria-label={t.label}
                 aria-current={tab === t.key ? 'page' : undefined}
                 onClick={() => setTab(t.key)}
               >
-                <Icon name={t.key} />
-                <span>{t.label}</span>
+                <span className="nav-icon">
+                  <Icon name={t.key} />
+                </span>
+                <span className="nav-label" aria-hidden="true">
+                  {VISUAL[t.key]}
+                </span>
                 {counts[t.key] ? (
                   <b className="nav-count num" aria-hidden="true">
                     {counts[t.key]}
@@ -434,42 +454,43 @@ export function App() {
               </button>
             ))}
           </nav>
-          <div className="side-status">
-            <div className="side-row">
-              <span className="k">Link</span>
-              <span className="v">
-                <LiveDot tone={linkTone} />
-                {link === 'live' ? 'Live' : link === 'polling' ? 'Polling' : 'Reconnecting'}
+          <button className="side-status" onClick={() => setModal({kind: 'device'})} aria-label="System status">
+            <span className="k">System</span>
+            <span className="v">
+              <LiveDot tone={link === 'reconnecting' ? 'warn' : scheduler.tone === 'ok' ? 'ok' : scheduler.tone} />
+              {link === 'reconnecting' ? 'Reconnecting' : scheduler.text}
+            </span>
+            <span className="v">
+              <LiveDot tone={busyAgents ? 'live' : ready ? 'ok' : 'off'} />
+              <span className="num">
+                {busyAgents ? `${busyAgents} busy · ` : ''}
+                {ready}/{data.agents.length || 0} agents
               </span>
-            </div>
-            <div className="side-row">
-              <span className="k">Scheduler</span>
-              <span className="v">
-                <LiveDot tone={scheduler.tone} />
-                {scheduler.text}
-              </span>
-            </div>
-            <div className="side-row">
-              <span className="k">Host</span>
-              <span className="v num">{data.version}</span>
-            </div>
-          </div>
+            </span>
+            <span className="v small">
+              <LiveDot tone={linkTone} />
+              {link === 'live' ? 'Live link' : link === 'polling' ? 'Polling' : 'Read-only'}
+              {data.paused ? ' · Dispatch paused' : ''}
+            </span>
+          </button>
         </aside>
 
         <main>
           <header className="topbar">
             <div className="brand mobile-brand">
-              <Mark size={32} />
-              <span className="wordmark">ARENA</span>
+              <Mark size={40} />
+              <Wordmark />
             </div>
-            <div className="crumb">
-              Workspace <span>/</span>
-              <b>{LABELS[tab]}</b>
-            </div>
+            <label className="search">
+              <Icon name="search" size={18} />
+              <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search builds, projects or agents…" aria-label="Search builds, projects or agents" />
+            </label>
             <div className="topbar-actions">
               <button
-                className={'btn ghost' + (data.paused ? ' paused' : '')}
+                className={'btn ghost icon-btn' + (data.paused ? ' paused' : '')}
                 disabled={disabled}
+                aria-label={data.paused ? 'Resume queue' : 'Pause queue'}
+                title={data.paused ? 'Resume queue' : 'Pause queue'}
                 onClick={() =>
                   action(
                     'control/' + (data.paused ? 'resume-dispatch' : 'pause-dispatch'),
@@ -478,45 +499,27 @@ export function App() {
                   )
                 }
               >
-                <Icon name={data.paused ? 'play' : 'pause'} size={16} />
-                {data.paused ? 'Resume queue' : 'Pause queue'}
+                <Icon name={data.paused ? 'play' : 'pause'} size={18} />
+                <span className="btn-text">{data.paused ? 'Resume queue' : 'Pause queue'}</span>
               </button>
               <button className="avatar" aria-label="Device session" onClick={() => setModal({kind: 'device'})}>
-                <Icon name="user" size={16} />
+                <Icon name="user" size={18} />
               </button>
             </div>
           </header>
 
-          <div className={'instrument ' + link}>
-            <div>
-              <span className="k">Link</span>
-              <span className="v">
-                <LiveDot tone={linkTone} />
-                {linkText}
-              </span>
+          {link === 'reconnecting' && (
+            <div className="instrument reconnecting" role="status">
+              <LiveDot tone="warn" />
+              Reconnecting to the build host · read-only until the link returns
             </div>
-            <div>
-              <span className="k">Scheduler</span>
-              <span className="v">
-                <LiveDot tone={scheduler.tone} />
-                {scheduler.text}
-              </span>
+          )}
+          {data.paused && link !== 'reconnecting' && (
+            <div className="instrument paused">
+              <LiveDot tone="warn" />
+              Dispatch is paused · running work continues, nothing new starts
             </div>
-            <div>
-              <span className="k">Workers</span>
-              <span className="v num">
-                <LiveDot tone={running ? 'live' : 'off'} />
-                {running} / {data.limit} slots
-              </span>
-            </div>
-            <div>
-              <span className="k">Dispatch</span>
-              <span className="v">
-                <LiveDot tone={data.paused ? 'warn' : 'ok'} />
-                {data.paused ? 'Paused' : 'Open'}
-              </span>
-            </div>
-          </div>
+          )}
 
           {tab === 'overview' && <Overview />}
           {tab === 'projects' && <Projects />}

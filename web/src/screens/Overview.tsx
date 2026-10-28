@@ -3,34 +3,33 @@ import {useArena} from '../App';
 import {useSpeech} from '../speech';
 import {AUTO, ProjectAsk, askedFrom, type Asked} from './Dialogs';
 import {
-  ACTIVE_ATTEMPT,
   ACTIVE_TASK,
-  BLOCKED_TASK,
   QUEUED_TASK,
   STAGES,
   STAGES_SHORT,
-  cap,
-  clock,
+  ago,
   duration,
   eventLine,
-  family,
+  goalClass,
+  goalElapsed,
+  goalStatus,
   goalView,
+  needsYou,
   providerGlyph,
-  providerName,
+  providersOf,
   stageIndex,
   stateLabel,
   when,
   type GoalView,
   type RecordData,
 } from '../types';
-import {Chip, Empty, Eyebrow, Icon, LiveDot, Panel, Sha} from '../ui';
+import {Chip, Empty, Eyebrow, Glyph, Icon, LiveDot, Mark, Panel, Provider, StageBar, Waveform} from '../ui';
 
 // Per-build stepper. Every "done" comes from a recorded state or attempt result, never
 // from elapsed time: plan task completed → Plan; build attempt passed → Code; its frozen
 // checks all PASS → Test; independent review attempt passed → Review; integrated commit
 // recorded → Integrate. The current step reuses the task stage derivation (stageIndex).
 export const STEPS = ['Plan', 'Code', 'Test', 'Review', 'Integrate'];
-const STEPS_SHORT = ['Plan', 'Code', 'Test', 'Review', 'Merge'];
 const STAGE_TO_STEP = [0, 1, 2, 3, 3, 4, 4];
 
 export function buildSteps(view: GoalView, attempts: RecordData[]): {done: boolean[]; active: number; detail: string[]} {
@@ -63,32 +62,50 @@ export function buildSteps(view: GoalView, attempts: RecordData[]): {done: boole
   return {done, active, detail};
 }
 
-export function BuildSteps({view}: {view: GoalView}) {
+// Connected circles: check (done) · glowing ring (current) · hollow (pending).
+export function BuildSteps({view, size = 'md'}: {view: GoalView; size?: 'sm' | 'md'}) {
   const {data} = useArena();
   const {done, active, detail} = buildSteps(view, data.attempts);
   return (
-    <ol className="rail compact" aria-label="Build steps">
-      {STEPS.map((name, i) => (
-        <li key={name} className={done[i] ? 'done' : i === active ? 'active' : ''} title={`${name} · ${detail[i]}`} aria-label={`${name}: ${done[i] ? 'done' : i === active ? 'in progress' : 'not started'} · ${detail[i]}`}>
-          <i />
-          <span className="full">{name}</span>
-          <span className="abbr" aria-hidden="true">
-            {STEPS_SHORT[i]}
-          </span>
-        </li>
-      ))}
+    <ol className={'stepper ' + size} aria-label="Build steps">
+      {STEPS.map((name, i) => {
+        const state = done[i] ? 'done' : i === active ? 'active' : 'pending';
+        return (
+          <li key={name} className={state} title={`${name} · ${detail[i]}`} aria-label={`${name}: ${state === 'done' ? 'done' : state === 'active' ? 'in progress' : 'not started'} · ${detail[i]}`}>
+            <i>{done[i] ? <Icon name="check" size={size === 'sm' ? 10 : 14} /> : null}</i>
+            <span>{name}</span>
+          </li>
+        );
+      })}
     </ol>
   );
+}
+
+// Overall pipeline stage of a request: the least advanced live task, out of the six
+// recorded stages. Used for slim stage bars; never a percentage.
+export function goalStage(view: GoalView): number {
+  const tasks = view.children.length ? view.children : view.tasks;
+  const indexes = tasks.map(stageIndex).filter(i => i >= 0);
+  if (view.plan && !view.children.length) indexes.push(stageIndex(view.plan));
+  if (!indexes.length) return 0;
+  const cls = goalClass(view);
+  if (cls === 'done') return STAGES.length;
+  return Math.min(...indexes);
 }
 
 // "Tell me what to build": the everyday entry. Quick intents prefill the text, the
 // project defaults to "Let Arena decide", and a shared spec (ChatGPT → Share → Arena)
 // lands here through the handoff read on load.
 const INTENTS = [
-  {label: 'Build a new feature', prefix: 'Build a new feature: ', self: false},
-  {label: 'Fix a bug', prefix: 'Fix a bug: ', self: false},
-  {label: 'Improve Arena', prefix: 'Improve Arena: ', self: true},
-  {label: 'Add to an existing project', prefix: 'Add to an existing project: ', self: false},
+  {label: 'Build a new feature', prefix: 'Build a new feature: ', self: false, mode: 'build'},
+  {label: 'Fix a bug', prefix: 'Fix a bug: ', self: false, mode: 'fix'},
+  {label: 'Improve Arena', prefix: 'Improve Arena: ', self: true, mode: 'improve'},
+  {label: 'Add to an existing project', prefix: 'Add to an existing project: ', self: false, mode: 'build'},
+];
+const MODES = [
+  {key: 'build', label: 'Build'},
+  {key: 'fix', label: 'Fix'},
+  {key: 'improve', label: 'Improve'},
 ];
 const PREFIX = /^(Build a new feature|Fix a bug|Improve Arena|Add to an existing project): ?/;
 
@@ -103,6 +120,7 @@ function TellArena() {
   const speech = useSpeech(text => setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + ' ' : '') + text));
   const self = data.projects.find(p => p.self);
   const enabled = data.projects.filter(p => p.enabled !== false);
+  const mode = draft.startsWith('Fix a bug:') ? 'fix' : draft.startsWith('Improve Arena:') ? 'improve' : draft.startsWith('Build a new feature:') ? 'build' : '';
 
   useEffect(() => {
     if (!handoff) return;
@@ -146,79 +164,110 @@ function TellArena() {
     }
   };
 
+  const tapMic = () => {
+    if (speech.supported) speech.toggle();
+    else {
+      box.current?.focus();
+      notify('Dictation is not available in this browser. Type below, or use your keyboard microphone.');
+    }
+  };
+
   const busy = disabled || sending;
   return (
-    <Panel title="Tell me what to build" aside={<Eyebrow>{speech.supported ? 'Voice or text' : 'Text'}</Eyebrow>}>
-      <div className="panel-body stack" style={{gap: 12}}>
-        <div className="btn-row" style={{marginTop: 0}} role="group" aria-label="Quick intents">
-          {INTENTS.map(i => (
-            <button key={i.label} type="button" className="btn" disabled={i.self && !self} title={i.self && !self ? 'Arena is not enrolled as a project on this host' : undefined} onClick={() => intent(i)}>
-              {i.label}
-            </button>
-          ))}
-        </div>
-        <div className="field" style={{marginBottom: 0}}>
-          <div className="field-row">
-            <label htmlFor="tell-text">What should Arena build?</label>
-            {speech.supported && (
-              <button type="button" className={'mic' + (speech.listening ? ' on' : '')} aria-pressed={speech.listening} onClick={speech.toggle}>
-                <Icon name={speech.listening ? 'stop' : 'mic'} size={15} />
-                {speech.listening ? 'Stop' : 'Dictate'}
-              </button>
-            )}
-          </div>
-          <textarea
-            id="tell-text"
-            ref={box}
-            rows={5}
-            style={{fontSize: 17, minHeight: 132}}
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            onKeyDown={e => {
-              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(project);
-            }}
-            placeholder="Describe the feature, the bug, or paste the spec you finished in ChatGPT."
-          />
-          {speech.listening && (
-            <p className="listening" aria-live="polite">
-              <LiveDot tone="live" />
-              Listening{speech.interim ? ` · ${speech.interim}` : ' · speak now; the transcript is appended when you pause.'}
-            </p>
-          )}
-          {speech.error && <p className="field-help warn">{speech.error}</p>}
-        </div>
-        <div className="row wrap" style={{alignItems: 'flex-end'}}>
-          <div className="field inline" style={{flex: '1 1 220px'}}>
-            <label htmlFor="tell-project">Build for</label>
-            <select
-              id="tell-project"
-              ref={picker}
-              value={project}
-              onChange={e => {
-                setProject(e.target.value);
-                setAsked(null);
-              }}
-            >
-              <option value={AUTO}>Let Arena decide</option>
-              {enabled.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                  {p.self ? ' (this app)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button type="button" className="btn primary" style={{flex: '1 1 160px'}} disabled={busy || !draft.trim() || !enabled.length} onClick={() => submit(project)}>
-            <Icon name="bolt" size={16} />
-            Start building
-          </button>
-        </div>
-        <p className="field-help" style={{margin: 0}}>
-          From ChatGPT: Share → Arena, or paste your spec here.{!enabled.length ? ' Enrol a project on the Mac first.' : ''}
-        </p>
-        {asked && <ProjectAsk asked={asked} busy={busy} onPick={submit} onCancel={() => setAsked(null)} />}
+    <section className="hero" aria-labelledby="hero-title">
+      <div className="hero-top">
+        <h1 id="hero-title" className="hero-eyebrow">
+          Build control.
+        </h1>
+        <Eyebrow className="only-desk">{speech.supported ? 'Voice or text' : 'Text'}</Eyebrow>
       </div>
-    </Panel>
+      <div className="segmented" role="group" aria-label="Request type">
+        {MODES.map(m => {
+          const i = INTENTS.find(x => x.mode === m.key && !x.label.startsWith('Add to'))!;
+          return (
+            <button key={m.key} type="button" className={mode === m.key ? 'on' : ''} aria-pressed={mode === m.key} disabled={i.self && !self} onClick={() => intent(i)}>
+              {m.label}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mic-stage">
+        <Waveform live={speech.listening} />
+        <button type="button" className={'mic-big' + (speech.listening ? ' on' : '')} aria-pressed={speech.supported ? speech.listening : undefined} aria-label={speech.listening ? 'Stop listening' : 'Tap to speak'} onClick={tapMic}>
+          <span className="mic-ring" />
+          <span className="mic-face">
+            <Icon name={speech.listening ? 'stop' : 'mic'} size={40} />
+          </span>
+        </button>
+        <Waveform live={speech.listening} />
+      </div>
+      <div className="hero-copy">
+        <p className="hero-title">
+          <span className="only-phone">Tell me what to build.</span>
+          <span className="only-desk">Voice to Build</span>
+        </p>
+        <p className="hero-sub">{speech.listening ? 'Listening · speak now, the transcript lands below.' : speech.supported ? 'Tap to speak · or type' : 'Type below · or use your keyboard microphone'}</p>
+      </div>
+      {speech.listening && (
+        <p className="listening" aria-live="polite">
+          <LiveDot tone="live" />
+          {speech.interim ? speech.interim : 'Listening…'}
+        </p>
+      )}
+      {speech.error && <p className="field-help warn">{speech.error}</p>}
+      <div className="field hero-field">
+        <label htmlFor="tell-text">What should Arena build?</label>
+        <textarea
+          id="tell-text"
+          ref={box}
+          rows={3}
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(project);
+          }}
+          placeholder="Describe the feature, the bug, or paste the spec you finished in ChatGPT."
+        />
+      </div>
+      <div className="hero-row">
+        <div className="field inline">
+          <label htmlFor="tell-project">Build for</label>
+          <select
+            id="tell-project"
+            ref={picker}
+            value={project}
+            onChange={e => {
+              setProject(e.target.value);
+              setAsked(null);
+            }}
+          >
+            <option value={AUTO}>Let Arena decide</option>
+            {enabled.map(p => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.self ? ' (this app)' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button type="button" className="btn primary" disabled={busy || !draft.trim() || !enabled.length} onClick={() => submit(project)}>
+          <Icon name="bolt" size={16} />
+          Start building
+        </button>
+      </div>
+      {asked && <ProjectAsk asked={asked} busy={busy} onPick={submit} onCancel={() => setAsked(null)} />}
+      <div className="chips" role="group" aria-label="Quick intents">
+        {INTENTS.map(i => (
+          <button key={i.label} type="button" className="chip-btn" disabled={i.self && !self} title={i.self && !self ? 'Arena is not enrolled as a project on this host' : undefined} onClick={() => intent(i)}>
+            <span>{i.label}</span>
+            <Icon name="arrow" size={14} />
+          </button>
+        ))}
+      </div>
+      <p className="field-help hero-help">
+        From ChatGPT: Share → Arena, or paste your spec here.{!enabled.length ? ' Enrol a project on the Mac first.' : ''}
+      </p>
+    </section>
   );
 }
 
@@ -247,237 +296,211 @@ export function StageRail({view}: {view: GoalView}) {
   );
 }
 
-function Stack({view}: {view: GoalView}) {
+function BuildRow({view}: {view: GoalView}) {
   const {data, now, openGoal} = useArena();
-  const director = view.goal.specification?.summary || (view.plan && !view.children.length ? view.plan.reason : '');
+  const status = goalStatus(view);
+  const stage = goalStage(view);
+  const providers = providersOf(view, data);
+  const live = view.tasks.find(t => ACTIVE_TASK.includes(t.state));
+  const current = live?.title || view.children.find(t => t.state !== 'completed' && t.state !== 'cancelled')?.title || view.goal.request;
   return (
-    <article className="stack-card">
-      <div className="row between wrap">
-        <Eyebrow>
-          {view.project?.name || 'Project'} · {when(view.goal.created)}
-        </Eyebrow>
-        <Chip tone={view.tone}>{view.status}</Chip>
-      </div>
-      <h3 className="stack-request">{view.goal.request}</h3>
-      {director && (
-        <p className="stack-director">
-          <span className="eyebrow">Director</span>
-          {director}
-        </p>
-      )}
-      {view.children.length > 0 && (
-        <ol className="stack-tasks">
-          {view.children.map(t => {
-            const attempt = data.attempts.find(a => a.task_id === t.id && ACTIVE_ATTEMPT.includes(a.state));
-            return (
-              <li key={t.id}>
-                <Chip tone={family(t.state)}>{stateLabel(t.state)}</Chip>
-                <span className="stack-task-title">{t.title}</span>
-                <span className="num muted small">{attempt ? duration(now - attempt.created) : t.integrated_commit ? t.integrated_commit.slice(0, 7) : cap(t.phase)}</span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      <BuildSteps view={view} />
-      <div className="row between stack-foot">
-        <span className="small muted">
-          {view.children.length ? `${view.children.filter(t => t.state === 'completed').length}/${view.children.length} tasks completed` : 'Director is preparing the specification'}
+    <button className="build-row" onClick={() => openGoal(view.goal.id)}>
+      <Glyph tone={status.tone} />
+      <span className="build-main">
+        <span className="build-name">
+          <b>{view.project?.name || 'Project'}</b>
+          <span className="dash" aria-hidden="true">
+            –
+          </span>
+          <span className="clamp1">{current}</span>
         </span>
-        <button className="text-btn" onClick={() => openGoal(view.goal.id)}>
-          Open build <Icon name="arrow" size={14} />
-        </button>
-      </div>
-    </article>
+        <StageBar stage={stage} total={STAGES.length} tone={status.tone} label={`Stage ${Math.min(stage + 1, STAGES.length)} of ${STAGES.length}: ${STAGES[Math.min(stage, STAGES.length - 1)]}`} />
+        <span className="build-meta small">
+          <Chip tone={status.tone}>{status.label}</Chip>
+          <span className="num">{duration(goalElapsed(view, now))}</span>
+          {view.children.length ? <span className="muted num">{view.children.filter(t => t.state === 'completed').length}/{view.children.length} tasks</span> : null}
+        </span>
+      </span>
+      <span className="build-side">
+        <span className="providers">
+          {providers.map(p => (
+            <Provider key={p} glyph={providerGlyph(p)} size="sm" on={!!live} />
+          ))}
+        </span>
+        <Icon name="arrow" size={18} />
+      </span>
+    </button>
+  );
+}
+
+function RecentRow({view}: {view: GoalView}) {
+  const {now, openGoal} = useArena();
+  const status = goalStatus(view);
+  const last = Math.max(view.goal.created, ...view.tasks.map(t => t.updated || 0));
+  return (
+    <button className="list-row press recent" onClick={() => openGoal(view.goal.id)}>
+      <Glyph tone={status.tone} size={32} />
+      <span className="list-main">
+        <b className="clamp1">{view.goal.request}</b>
+        <span className="small muted">
+          <span className={'tone ' + status.tone}>{status.label}</span> · {ago(last, now)}
+          {view.project ? ` · ${view.project.name}` : ''}
+        </span>
+      </span>
+      <Icon name="arrow" size={18} />
+    </button>
   );
 }
 
 export function Overview() {
-  const {data, now, disabled, setModal, setTab} = useArena();
+  const {data, now, disabled, setModal, search} = useArena();
+  const q = search.trim().toLowerCase();
   const tasks = data.tasks;
   const working = tasks.filter(t => ACTIVE_TASK.includes(t.state) || t.state === 'integrating');
   const queued = tasks.filter(t => QUEUED_TASK.includes(t.state));
-  const completed = tasks.filter(t => t.state === 'completed').sort((a, b) => b.updated - a.updated);
-  const blocked = tasks.filter(t => BLOCKED_TASK.includes(t.state));
-  const answers = tasks.filter(t => t.state === 'awaiting_input');
-  const pending = data.approvals.filter(a => a.state === 'pending');
-  const accepted = data.approvals.filter(a => a.state === 'accept' && a.publication?.state !== 'integrated');
-  const attention = pending.length + accepted.length + answers.length + blocked.length;
+  const day = tasks.filter(t => t.state === 'completed' && t.updated >= now - 86400);
+  const integrated24 = day.filter(t => t.integrated_commit).length;
+  const needs = needsYou(data);
   const views = (data.goals || []).map(g => goalView(g, data)).sort((a, b) => b.goal.created - a.goal.created);
-  const activeViews = views.filter(v => v.active);
-  const shown = activeViews.length ? activeViews : views.slice(0, 2);
-  const integrated = completed.filter(t => t.integrated_commit).length;
+  const matches = (v: GoalView) => !q || `${v.goal.request} ${v.goal.title || ''} ${v.project?.name || ''} ${v.tasks.map(t => t.title).join(' ')}`.toLowerCase().includes(q);
+  const active = views.filter(v => ['active', 'needs'].includes(goalClass(v)) && matches(v));
+  const recent = views.filter(v => goalClass(v) === 'done' && matches(v)).slice(0, 6);
   const taskTitle = (id: string) => tasks.find(t => t.id === id)?.title || id;
+  const stale = (t: number) => t < now - 86400;
+  const needRows = [
+    ...needs.approvals.map(a => ({id: a.id, at: a.created as number, tone: 'decision' as const, label: 'Approve', title: taskTitle(a.task_id), sub: `Verified candidate ${a.candidate?.slice(0, 10)} awaits your decision`, open: () => setModal({kind: 'review', id: a.id})})),
+    ...needs.answers.map(t => ({id: t.id, at: t.updated as number, tone: 'decision' as const, label: 'Answer', title: t.title, sub: t.question || t.reason, open: () => setModal({kind: 'task', id: t.id})})),
+    ...needs.access.map(t => ({id: t.id, at: t.updated as number, tone: 'blocked' as const, label: stateLabel(t.state), title: t.title, sub: t.reason, open: () => setModal({kind: 'task', id: t.id})})),
+  ].sort((a, b) => b.at - a.at);
+  const fresh = needRows.filter(r => !stale(r.at));
+  const earlier = needRows.filter(r => stale(r.at));
+  const needRow = (r: (typeof needRows)[number]) => (
+    <button className="list-row press" key={r.id} onClick={r.open}>
+      <Glyph tone={r.tone} size={32} />
+      <span className="list-main">
+        <b className="clamp2">{r.title}</b>
+        <span className="small muted clamp2">
+          <span className={'tone ' + r.tone}>{r.label}</span> · {ago(r.at, now)} · {r.sub}
+        </span>
+      </span>
+      <Icon name="arrow" size={18} />
+    </button>
+  );
 
   return (
-    <>
-      <div className="heading">
-        <div>
-          <h1>Build control.</h1>
-          <p>Describe the outcome. Your director plans, the agents build, you decide.</p>
-        </div>
-        <button className="btn primary" disabled={disabled || !data.projects.length} onClick={() => setModal({kind: 'goal'})}>
-          <Icon name="plus" size={16} />
-          New request
-        </button>
-      </div>
-
-      <div className="stack" style={{marginBottom: 22}}>
+    <div className="home">
+      <aside className="home-side">
         <TellArena />
-      </div>
-
-      <div className="tiles">
-        <div className={'tile' + (working.length ? ' hot' : '')}>
-          <span className="k">Running</span>
-          <div className="v">
-            {working.length}
-            <small>/ {data.limit} slots</small>
+        <div className="lion-panel" aria-hidden="true">
+          <Mark size={200} />
+          <span className="tagline">
+            Ideas
+            <br />
+            Agents
+            <br />
+            Real software
+          </span>
+        </div>
+      </aside>
+      <div className="home-main">
+        <div className="page-head">
+          <div>
+            <h2 className="page-title">Overview</h2>
+            <p className="page-sub">Your director plans, the agents build, you decide.</p>
           </div>
-          <span className="s">{data.paused ? 'dispatch paused' : working.length ? 'live workers' : 'idle · no model calls'}</span>
+          <button className="btn primary" disabled={disabled || !data.projects.length} onClick={() => setModal({kind: 'goal'})}>
+            <Icon name="plus" size={16} />
+            New request
+          </button>
         </div>
-        <div className="tile">
-          <span className="k">Waiting</span>
-          <div className="v">{queued.length}</div>
-          <span className="s">queued tasks</span>
-        </div>
-        <div className={'tile' + (attention ? ' warn' : '')}>
-          <span className="k">Needs you</span>
-          <div className="v">{attention}</div>
-          <span className="s">{attention ? 'decisions waiting' : 'nothing waiting'}</span>
-        </div>
-        <div className="tile">
-          <span className="k">Completed</span>
-          <div className="v">{completed.length}</div>
-          <span className="s">{integrated} integrated into main</span>
-        </div>
-      </div>
 
-      <div className="grid">
-        <div className="stack">
-          <Panel title="Build stacks" aside={<span className="count num">{activeViews.length} active</span>}>
-            <div className="panel-body stack">
-              {shown.map(v => (
-                <Stack key={v.goal.id} view={v} />
-              ))}
-              {!shown.length && (
-                <Empty title="No builds yet">Describe what you want changed. Your director inspects the project, plans bounded tasks and coordinates the agents.</Empty>
-              )}
+        <div className="tiles">
+          <div className={'tile' + (working.length ? ' hot' : '')}>
+            <Glyph tone={working.length ? 'running' : 'off'} />
+            <div>
+              <div className="v">{working.length}</div>
+              <span className="k">Running</span>
+              <span className="s">{data.paused ? 'dispatch paused' : `${working.length} / ${data.limit} slots`}</span>
             </div>
-          </Panel>
+          </div>
+          <div className="tile">
+            <Glyph tone={queued.length ? 'waiting' : 'off'} />
+            <div>
+              <div className="v">{queued.length}</div>
+              <span className="k">Waiting</span>
+              <span className="s">queued tasks</span>
+            </div>
+          </div>
+          <div className="tile">
+            <Glyph tone={day.length ? 'done' : 'off'} />
+            <div>
+              <div className="v">{day.length}</div>
+              <span className="k">Completed (24h)</span>
+              <span className="s">{integrated24} integrated into main</span>
+            </div>
+          </div>
+          <div className={'tile' + (needs.count ? ' warn' : '')}>
+            <Glyph tone={needs.count ? 'decision' : 'off'} />
+            <div>
+              <div className="v">{needs.count}</div>
+              <span className="k">Needs you</span>
+              <span className="s">{needs.count ? 'decisions waiting' : 'nothing waiting'}</span>
+            </div>
+          </div>
+        </div>
 
-          <Panel title="Completed work" aside={<span className="count num">{completed.length}</span>}>
-            {completed.slice(0, 6).map(t => (
-              <div className="list-row" key={t.id}>
-                <Chip tone="done">Done</Chip>
-                <div className="list-main">
-                  <b>{t.title}</b>
-                  <span className="small muted">
-                    {t.integrated_commit ? (
-                      <>
-                        Integrated <Sha value={t.integrated_commit} /> ·{' '}
-                      </>
-                    ) : null}
-                    {t.reason}
-                  </span>
+        <Panel title="Active builds" aside={<span className="count num">{active.length} active</span>}>
+          <div className="build-list">
+            {active.map(v => (
+              <BuildRow key={v.goal.id} view={v} />
+            ))}
+            {!active.length && (
+              <div className="panel-body">
+                <Empty title={q ? 'No active builds match' : 'No builds running'}>{q ? 'Clear the search to see everything.' : 'Describe what you want changed. Your director inspects the project, plans bounded tasks and coordinates the agents.'}</Empty>
+              </div>
+            )}
+          </div>
+        </Panel>
+
+        {needs.count > 0 && (
+          <Panel title="Needs you" aside={<span className="count num">{needs.count}</span>} className="accent-amber">
+            {fresh.map(needRow)}
+            {earlier.length > 0 && (
+              <details className="earlier">
+                <summary>
+                  Earlier <span className="count num">{earlier.length}</span>
+                </summary>
+                {earlier.map(needRow)}
+              </details>
+            )}
+          </Panel>
+        )}
+
+        <Panel title="Recent requests" aside={<span className="count num">{recent.length}</span>}>
+          {recent.map(v => (
+            <RecentRow key={v.goal.id} view={v} />
+          ))}
+          {!recent.length && <p className="panel-body muted small">Verified, accepted and integrated work will be listed here with its commit.</p>}
+        </Panel>
+
+        <details className="activity">
+          <summary>
+            Activity log <span className="count num">{data.events.length}</span>
+          </summary>
+          <div className="timeline">
+            {data.events.slice(0, 8).map((e: RecordData) => (
+              <div className="event" key={e.id}>
+                <span className="circle" />
+                <div>
+                  <p>{eventLine(e, data)}</p>
+                  <time className="num">{when(e.time)}</time>
                 </div>
-                <span className="num small muted">{clock(t.updated)}</span>
               </div>
             ))}
-            {!completed.length && <p className="panel-body muted small">Verified, accepted and integrated work will be listed here with its commit.</p>}
-          </Panel>
-        </div>
-
-        <div className="stack">
-          <Panel title="Needs your decision" aside={<span className="count num">{attention}</span>} className={attention ? 'accent-amber' : ''}>
-            {pending.map(a => (
-              <button className="list-row press" key={a.id} onClick={() => setModal({kind: 'review', id: a.id})}>
-                <Chip tone="decision">Approve</Chip>
-                <div className="list-main">
-                  <b>{taskTitle(a.task_id)}</b>
-                  <span className="small muted">Verified candidate {a.candidate?.slice(0, 10)} awaits your decision</span>
-                </div>
-                <Icon name="arrow" size={16} />
-              </button>
-            ))}
-            {accepted.map(a => (
-              <button className="list-row press" key={a.id} onClick={() => setModal({kind: 'review', id: a.id})}>
-                <Chip tone={a.publication?.state === 'failed' ? 'blocked' : 'decision'}>{a.publication ? cap(a.publication.state) : 'Integrate'}</Chip>
-                <div className="list-main">
-                  <b>{taskTitle(a.task_id)}</b>
-                  <span className="small muted">{a.publication?.reason || 'Accepted · authorise integration into main'}</span>
-                </div>
-                <Icon name="arrow" size={16} />
-              </button>
-            ))}
-            {answers.map(t => (
-              <button className="list-row press" key={t.id} onClick={() => setModal({kind: 'task', id: t.id})}>
-                <Chip tone="decision">Answer</Chip>
-                <div className="list-main">
-                  <b>{t.title}</b>
-                  <span className="small muted">{t.question || t.reason}</span>
-                </div>
-                <Icon name="arrow" size={16} />
-              </button>
-            ))}
-            {blocked.map(t => (
-              <button className="list-row press" key={t.id} onClick={() => setModal({kind: 'task', id: t.id})}>
-                <Chip tone="blocked">{stateLabel(t.state)}</Chip>
-                <div className="list-main">
-                  <b>{t.title}</b>
-                  <span className="small muted">{t.reason}</span>
-                </div>
-                <Icon name="arrow" size={16} />
-              </button>
-            ))}
-            {!attention && <p className="panel-body muted small">Nothing is waiting on you. Checks passing is never permission to publish; decisions appear here.</p>}
-          </Panel>
-
-          <Panel
-            title="Workers"
-            aside={
-              <button className="text-btn" onClick={() => setTab('agents')}>
-                Manage
-              </button>
-            }
-          >
-            {data.agents.map(agent => {
-              const job = data.attempts.find(a => a.account_id === agent.id && ACTIVE_ATTEMPT.includes(a.state));
-              const task = job && tasks.find(t => t.id === job.task_id);
-              const cooling = (agent.cooldown_until || 0) > now;
-              const tone = job ? 'running' : !agent.enabled ? 'off' : agent.health !== 'ready' ? 'blocked' : cooling ? 'waiting' : 'neutral';
-              const label = job ? cap(job.phase) : !agent.enabled ? 'Disabled' : agent.health !== 'ready' ? stateLabel(agent.health) : cooling ? `Cooling · ${clock(agent.cooldown_until)}` : 'Available';
-              return (
-                <div className="worker-row" key={agent.id}>
-                  <span className={'glyph ' + (job ? 'on' : '')}>{providerGlyph(agent.provider)}</span>
-                  <div className="list-main">
-                    <b>
-                      {agent.name} <span className="muted small num">{job ? `${job.model} · ${job.effort || 'default'}` : agent.model}</span>
-                    </b>
-                    <span className="small muted">{job ? `${task?.title || ''} · ${duration(now - job.created)}` : agent.health !== 'ready' ? agent.reason : providerName(agent.provider)}</span>
-                  </div>
-                  <Chip tone={tone as any}>{label}</Chip>
-                </div>
-              );
-            })}
-            {!data.agents.length && <p className="panel-body muted small">No enrolled accounts. Set up a subscription account on the host.</p>}
-          </Panel>
-
-          <Panel title="Activity" aside={<Eyebrow>Persisted events</Eyebrow>}>
-            <div className="timeline">
-              {data.events.slice(0, 8).map((e: RecordData) => (
-                <div className="event" key={e.id}>
-                  <span className="circle" />
-                  <div>
-                    <p>{eventLine(e, data)}</p>
-                    <time className="num">{when(e.time)}</time>
-                  </div>
-                </div>
-              ))}
-              {!data.events.length && <p className="muted small">No events recorded yet.</p>}
-            </div>
-          </Panel>
-        </div>
+            {!data.events.length && <p className="muted small">No events recorded yet.</p>}
+          </div>
+        </details>
       </div>
-    </>
+    </div>
   );
 }
