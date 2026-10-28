@@ -59,3 +59,27 @@ def test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_canc
     run_data = json.loads((runs[0] / "run.json").read_text(encoding="utf-8"))
     assert run_data["state"] == "cancelled"
     assert (runs[0] / "manifest.json").is_file()
+
+
+def test_denied_cancellation_preserves_failed_run_evidence(arena_fixture, monkeypatch):
+    from agent_arena.process import ProcessRunner, ProcessTerminationError
+
+    config = load_config(arena_fixture["config"])
+    arena = ArenaOrchestrator(config, "hackathon")
+
+    def interrupt(*args):
+        raise KeyboardInterrupt
+
+    def denied(self):
+        raise ProcessTerminationError("Termination unconfirmed: permission denied")
+
+    monkeypatch.setattr(arena, "_run_lifecycle", interrupt)
+    monkeypatch.setattr(ProcessRunner, "cancel_all", denied)
+    with pytest.raises(ProcessTerminationError, match="Termination unconfirmed"):
+        arena.run(arena_fixture["source"], arena_fixture["task"])
+    runs = [path for path in config.run.artifact_root.iterdir() if path.is_dir()]
+    assert len(runs) == 1
+    assert json.loads((runs[0] / "run.json").read_text())["state"] == "failed"
+    assert "permission denied" in (runs[0] / "failure.txt").read_text()
+    assert (runs[0] / "termination.json").is_file()
+    assert (runs[0] / "manifest.json").is_file()

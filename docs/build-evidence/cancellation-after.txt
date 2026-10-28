@@ -1,0 +1,75 @@
+F.....                                                                   [100%]
+=================================== FAILURES ===================================
+_ test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_cancelled _
+
+arena_fixture = {'root': PosixPath('/private/var/folders/yq/_hrwmxwx6q904tfp_11yjxcw0000gn/T/pytest-of-leonardaarons-ditson/pytest-152.../_hrwmxwx6q904tfp_11yjxcw0000gn/T/pytest-of-leonardaarons-ditson/pytest-1528/test_main_thread_interrupt_can0/task.md')}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x102ea3dd0>
+
+    def test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_cancelled(
+        arena_fixture: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        marker = arena_fixture["root"] / "cancelled-provider-must-not-finish"
+        child = (
+            f"import pathlib,time; time.sleep(3); pathlib.Path({str(marker)!r}).write_text('escaped')"
+        )
+        config = load_config(arena_fixture["config"])
+        config = replace(
+            config,
+            engineers=tuple(
+                EngineerConfig(
+                    engineer_id=engineer.engineer_id,
+                    kind="generic_cli",
+                    model=None,
+                    timeout_seconds=20,
+                    options={"command": [sys.executable, "-c", child]},
+                )
+                for engineer in config.engineers
+            ),
+        )
+        arena = ArenaOrchestrator(config, "hackathon")
+    
+        def interrupt_when_a_child_is_owned(futures: Any) -> Iterator[Any]:
+            deadline = time.monotonic() + 2
+            while arena.runner.active_count() == 0 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert arena.runner.active_count() > 0
+            raise KeyboardInterrupt
+            yield from ()
+    
+        monkeypatch.setattr(orchestrator_module, "as_completed", interrupt_when_a_child_is_owned)
+        started = time.monotonic()
+        with pytest.raises(KeyboardInterrupt):
+>           arena.run(arena_fixture["source"], arena_fixture["task"])
+
+tests/test_cancellation.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/agent_arena/orchestrator.py:219: in run
+    repository = RepositoryManager(source_top, base_ref, self.config, audit, self.deadline)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/agent_arena/gitops.py:166: in __init__
+    self.source = self._top_level(self.requested_source)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/agent_arena/gitops.py:186: in _top_level
+    result = self._run(path, "rev-parse", "--show-toplevel", check=False)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/agent_arena/gitops.py:173: in _run
+    return _run_git(
+src/agent_arena/gitops.py:90: in _run_git
+    cleanup._terminate_group(process)
+src/agent_arena/process.py:265: in _terminate_group
+    state = self._terminations[process]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <WeakKeyDictionary at 0x102f003d0>
+key = <Popen: returncode: 0 args: ['git', '-c', 'core.hooksPath=/dev/null', '--lit...>
+
+    def __getitem__(self, key):
+>       return self.data[ref(key)]
+               ^^^^^^^^^^^^^^^^^^^
+E       KeyError: <weakref at 0x102eee6b0; to 'Popen' at 0x100c18c50>
+
+/Library/Frameworks/Python.framework/Versions/3.11/lib/python3.11/weakref.py:415: KeyError
+=========================== short test summary info ============================
+FAILED tests/test_cancellation.py::test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_cancelled
+1 failed, 5 passed in 9.12s

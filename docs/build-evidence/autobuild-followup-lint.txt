@@ -1,0 +1,23 @@
+E501 Line too long (102 > 100)
+   --> src/agent_arena/control/engine.py:275:101
+    |
+273 |                     if task["state"] != "recovering":
+274 |                         self.store.update_task(db, task, "recovering",
+275 |                             "Host denied process inspection; lease retained until ownership is known")
+    |                                                                                                     ^^
+276 |                 continue
+277 |             if result_path.is_file():
+    |
+
+E501 Line too long (112 > 100)
+  --> src/agent_arena/control/recovery.py:21:101
+   |
+19 |             return False
+20 |         process = psutil.Process(child["pid"])
+21 |         if abs(process.create_time() - child["created"]) >= .01 or abs(psutil.boot_time() - child["boot"]) >= 1:
+   |                                                                                                     ^^^^^^^^^^^^
+22 |             return True
+23 |         if process.status() == psutil.STATUS_ZOMBIE:
+   |
+
+Found 2 errors.

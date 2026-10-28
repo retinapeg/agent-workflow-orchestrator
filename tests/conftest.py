@@ -187,3 +187,10 @@ enabled = false
         "config": config,
         "task": task,
     }
+
+
+@pytest.fixture(autouse=True)
+def isolate_derived_ledger(tmp_path, monkeypatch):
+    from agent_arena import ledger
+
+    monkeypatch.setattr(ledger, "DEFAULT_CSV", tmp_path / "harness_vs_prompting.csv")

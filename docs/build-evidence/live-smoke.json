@@ -1,0 +1,194 @@
+{
+  "task": {
+    "approval_id": "approval_d6495339e673400c",
+    "attempt_id": "attempt_2fc86dd6e659e2ea",
+    "author_account": "account_a3aa35a1f8bf594a",
+    "author_provider": "codex",
+    "build_attempt": "attempt_80ef21fdd8bc40a9",
+    "candidate": "fcc2db62379d2ecc67059b0c2c352a1c8cabe3b0",
+    "candidate_base": "feb83c073f1f20c79d9b23ed06665cac5475c822",
+    "cooldown_until": 0,
+    "created": 1793156938.556025,
+    "instructions": "Implement greet(name) in src/greeting.py. Trim whitespace; return Hello, NAME! for a nonempty name and Hello, friend! for an empty/whitespace name. Do not change acceptance checks. This is a harmless disposable fixture.",
+    "instructions_pending": [],
+    "max_repairs": 2,
+    "phase": "review",
+    "reason": "Combined checks passed; exact staging commit awaits acceptance",
+    "repairs": 0,
+    "retries": 0,
+    "review": true,
+    "review_attempt": "attempt_2fc86dd6e659e2ea",
+    "scope": [
+      "src/greeting.py"
+    ],
+    "staged": "9129827450edaa6aac1dcc2c381b9638ee06610b",
+    "timeout": 300,
+    "title": "Make greeting output friendly and predictable",
+    "updated": 1793156981.922645,
+    "id": "task_0a5a9cd65e47cda8",
+    "project_id": "project_839110fbf0dbb41b",
+    "goal_id": "goal_6e7daedbd351ba9a",
+    "state": "ready_for_approval",
+    "rev": 8,
+    "token": 2
+  },
+  "attempts": [
+    {
+      "artifact_dir": "/Users/leonardaarons-ditson/.local/share/agent-arena/build-control/attempts/attempt_80ef21fdd8bc40a9",
+      "base": "feb83c073f1f20c79d9b23ed06665cac5475c822",
+      "created": 1793156938.696289,
+      "effort": "medium",
+      "ended": 1793156971.9426088,
+      "model": "gpt-6-sol",
+      "phase": "build",
+      "reason": "Codex local selected: healthy, available, build eligible",
+      "result": {
+        "artifacts": {
+          "checks-0.txt": "4e50ba1da7082203c34bf1de717005809c4fd5852c927e2d905bbe1314cb4191",
+          "child.json": "9b7d4e077552637334b06c91df1719a9304d96d4a8cade36cc024af309099797",
+          "diff.patch": "ecfe96c1b7aa333af3eb10f297f1eff81cb8af9bb2add87c18e579d592d82c3a",
+          "invocation.json": "0ea86d1071fe7d16abe9de386fe12377c7bc286ba9462e69690d41b70710ec40",
+          "prompt.txt": "b5906974853b2ce008913ec86667b7bee2ff1afa94905161186b1e2344ada4cd",
+          "stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "transcript.jsonl": "7a4808a85323c0904b5dccd01c0b7edf57676f9f825599e536ad24df1d300436",
+          "working.diff": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        },
+        "attempt_id": "attempt_80ef21fdd8bc40a9",
+        "candidate": "fcc2db62379d2ecc67059b0c2c352a1c8cabe3b0",
+        "changed": [
+          "src/greeting.py"
+        ],
+        "checks": [
+          {
+            "argv": [
+              "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+              "acceptance/check.py"
+            ],
+            "artifact": "checks-0.txt",
+            "exit_code": 0,
+            "name": "Greeting acceptance",
+            "seconds": 0.128,
+            "sha256": "4e50ba1da7082203c34bf1de717005809c4fd5852c927e2d905bbe1314cb4191",
+            "status": "PASS"
+          }
+        ],
+        "cost": null,
+        "invocation": {
+          "exit_code": 0,
+          "timed_out": false
+        },
+        "reason": "CLI completed and frozen acceptance checks passed",
+        "seconds": 31.735,
+        "session_ids": [
+          "01a1807b-956f-79b0-9438-dd605ecb1ad0"
+        ],
+        "status": "passed",
+        "summary": "Implemented `greet(name)` in [src/greeting.py](/Users/leonardaarons-ditson/.local/share/agent-arena/build-control/workspaces/attempt_80ef21fdd8bc40a9/src/greeting.py). It trims whitespace and returns `Hello, friend!` when the result is empty. Focused checks passed.",
+        "token": 1,
+        "usage": [
+          {
+            "cache_read": 63360,
+            "cache_write": 0,
+            "call": 1,
+            "input": 69430,
+            "input_includes_cache_read": true,
+            "model": "gpt-6-sol",
+            "model_source": "declared",
+            "not_applicable": [],
+            "output": 484,
+            "provider": "codex_cli",
+            "reasoning": 75,
+            "single_request": false,
+            "wall_time_s": null
+          }
+        ]
+      },
+      "workspace": "/Users/leonardaarons-ditson/.local/share/agent-arena/build-control/workspaces/attempt_80ef21fdd8bc40a9",
+      "id": "attempt_80ef21fdd8bc40a9",
+      "task_id": "task_0a5a9cd65e47cda8",
+      "account_id": "account_a3aa35a1f8bf594a",
+      "token": 1,
+      "state": "passed"
+    },
+    {
+      "artifact_dir": "/Users/leonardaarons-ditson/.local/share/agent-arena/build-control/attempts/attempt_2fc86dd6e659e2ea",
+      "base": "fcc2db62379d2ecc67059b0c2c352a1c8cabe3b0",
+      "created": 1793156971.945736,
+      "effort": "medium",
+      "ended": 1793156981.4362812,
+      "model": "sonnet",
+      "phase": "review",
+      "reason": "Claude review selected: healthy, available, review eligible",
+      "result": {
+        "artifacts": {
+          "child.json": "d5ba4a053e4e6a66a07d7ad6f643dcdd79b47563caa413c1b85515be7e4e7a20",
+          "invocation.json": "a2814fa98202c0feb310b5169dae4ad05b2b99c19f4d3a40cbc76b29b23a6bcd",
+          "prompt.txt": "4fcf245999d56cb5634bfc2291fa57f512089436f92340c5a4c905675437a087",
+          "stderr.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "transcript.jsonl": "fe24f308a44bc91991cc07c1cf8e8366b1add4f1f1421f8996f412ee59176706",
+          "working.diff": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+        },
+        "attempt_id": "attempt_2fc86dd6e659e2ea",
+        "candidate": "fcc2db62379d2ecc67059b0c2c352a1c8cabe3b0",
+        "checks": [],
+        "cost": null,
+        "invocation": {
+          "exit_code": 0,
+          "timed_out": false
+        },
+        "reason": "Independent review passed",
+        "review": {
+          "approved": true,
+          "findings": [
+            "Scope: the diff touches only src/greeting.py, which matches the declared scope; acceptance checks are unmodified.",
+            "Correctness: name.strip() followed by `name or 'friend'` returns 'Hello, NAME!' for nonempty input and 'Hello, friend!' for empty or whitespace-only input, as the task specifies.",
+            "Evidence: the 'Greeting acceptance' check (acceptance/check.py) passed with exit code 0 and an artifact hash was recorded.",
+            "Minor, non-blocking: a non-string input such as None would raise AttributeError on .strip(). The task does not require handling this, so it is acceptable for the fixture."
+          ]
+        },
+        "seconds": 9.083,
+        "session_ids": [
+          "4233c629-2041-43ea-99e6-14edbb6d4a1d"
+        ],
+        "status": "passed",
+        "summary": "{\"approved\":true,\"findings\":[\"Scope: the diff touches only src/greeting.py, which matches the declared scope; acceptance checks are unmodified.\",\"Correctness: name.strip() followed by `name or 'friend'` returns 'Hello, NAME!' for nonempty input and 'Hello, friend!' for empty or whitespace-only input, as the task specifies.\",\"Evidence: the 'Greeting acceptance' check (acceptance/check.py) passed with exit code 0 and an artifact hash was recorded.\",\"Minor, non-blocking: a non-string input such as None would raise AttributeError on .strip(). The task does not require handling this, so it is acceptable for the fixture.\"]}",
+        "token": 2,
+        "usage": [
+          {
+            "cache_read": 649,
+            "cache_write": 2850,
+            "cache_write_1h": 2850,
+            "cache_write_5m": 0,
+            "call": 1,
+            "input": 2,
+            "input_includes_cache_read": false,
+            "model": "claude-sonnet-5-5",
+            "model_source": "reported",
+            "not_applicable": [
+              "reasoning"
+            ],
+            "output": 232,
+            "provider": "claude_cli",
+            "reasoning": null,
+            "service_tier": "standard",
+            "single_request": true,
+            "wall_time_s": null
+          }
+        ]
+      },
+      "workspace": "/Users/leonardaarons-ditson/.local/share/agent-arena/build-control/workspaces/attempt_2fc86dd6e659e2ea",
+      "id": "attempt_2fc86dd6e659e2ea",
+      "task_id": "task_0a5a9cd65e47cda8",
+      "account_id": "account_4fb3c98d7d483a7a",
+      "token": 2,
+      "state": "passed"
+    }
+  ],
+  "errors": [],
+  "seconds": 41.919,
+  "reopen_preserved": true,
+  "viewport_tested": [
+    390,
+    1440
+  ]
+}

@@ -1,0 +1,1 @@
+Host execution needs process-identity sysctl, sandbox-exec, Chromium Mach IPC, and existing subscription keychain access. Run this command in normal Terminal as your signed-in user; do not disable those protections. See preflight.json.

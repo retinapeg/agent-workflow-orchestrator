@@ -1,0 +1,14 @@
+
+> arena-build-control@0.4.0 build
+> tsc && vite build
+
+vite v8.3.5 building client environment for production...
+transforming...
+✓ 15 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                   0.47 kB │ gzip:  0.31 kB
+dist/assets/index-Dhs_Dk1Y.css   11.02 kB │ gzip:  3.21 kB
+dist/assets/index-hEiocXeQ.js   247.34 kB │ gzip: 76.39 kB
+
+✓ built in 203ms

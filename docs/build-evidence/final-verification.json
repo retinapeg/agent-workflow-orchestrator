@@ -1,0 +1,35 @@
+{
+  "complete": false,
+  "lint": "passed",
+  "frontend": "passed",
+  "regression": {
+    "passed": 252,
+    "failed": 5,
+    "seconds": 325.67,
+    "failure_reason": "host sysctl permission denied before provider invocation"
+  },
+  "controller_director": {
+    "passed": 28,
+    "host_dependent_deselected": 5
+  },
+  "browser": "blocked: macOS Chromium Mach IPC denied",
+  "live_director_flow": "blocked: process identity and nested sandbox-exec denied",
+  "private_phone_url": null,
+  "automatic_startup_installed": false,
+  "auth": {
+    "codex_subscription": true,
+    "claude_subscription": true
+  },
+  "director": {
+    "model": "gpt-6-astra",
+    "effort": "max",
+    "catalog_supported": true,
+    "live_verified": false
+  },
+  "next_command": ".venv/bin/python -m scripts.verify_on_host",
+  "routing_controller": {
+    "passed": 33,
+    "host_dependent_deselected": 5,
+    "live_verified": false
+  }
+}

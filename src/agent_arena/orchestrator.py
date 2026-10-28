@@ -220,13 +220,23 @@ class ArenaOrchestrator:
             self.repository = repository
             return self._run_lifecycle(repository, audit, task)
         except KeyboardInterrupt:
-            self.runner.cancel_all()
-            audit.update_run(active_providers=[])
-            audit.transition(RunState.CANCELLED, error="interrupted by user")
-            audit.build_manifest()
+            try:
+                self.runner.cancel_all()
+            except Exception as exc:
+                audit.write_text("failure.txt", f"{type(exc).__name__}: {exc}\n")
+                audit.transition(RunState.FAILED, error=f"cancellation unconfirmed: {exc}")
+                raise
+            else:
+                audit.update_run(active_providers=[])
+                audit.transition(RunState.CANCELLED, error="interrupted by user")
+            finally:
+                audit.write_json("termination.json", self.runner.termination_evidence())
+                audit.build_manifest()
             raise
         except Exception as exc:
-            audit.update_run(active_providers=[])
+            if self.runner.active_count() == 0:
+                audit.update_run(active_providers=[])
+            audit.write_json("termination.json", self.runner.termination_evidence())
             audit.write_text("failure.txt", f"{type(exc).__name__}: {exc}\n")
             audit.transition(RunState.FAILED, error=f"{type(exc).__name__}: {exc}")
             audit.build_manifest()
@@ -525,10 +535,12 @@ class ArenaOrchestrator:
         return results
 
     def _cancel_parallel(self, executor: ThreadPoolExecutor, futures: dict[Any, str]) -> None:
-        self.runner.cancel_all()
-        for future in futures:
-            future.cancel()
-        executor.shutdown(wait=True, cancel_futures=True)
+        try:
+            self.runner.cancel_all()
+        finally:
+            for future in futures:
+                future.cancel()
+            executor.shutdown(wait=True, cancel_futures=True)
 
     def _timeout(self, engineer: EngineerConfig, override: int | None = None) -> int:
         remaining = int(self.deadline - time.monotonic())

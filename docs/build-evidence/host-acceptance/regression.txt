@@ -1,0 +1,107 @@
+........................................................................ [ 27%]
+...........................F............................................ [ 54%]
+........................................................................ [ 82%]
+..............................................                           [100%]
+=================================== FAILURES ===================================
+_ test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_cancelled _
+
+futures = {<Future at 0x10454b590 state=finished returned AgentResult>: 'codex', <Future at 0x104549490 state=finished returned AgentResult>: 'claude'}
+
+    def interrupt_when_a_child_is_owned(futures: Any) -> Iterator[Any]:
+        deadline = time.monotonic() + 2
+        while arena.runner.active_count() == 0 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert arena.runner.active_count() > 0
+>       raise KeyboardInterrupt
+E       KeyboardInterrupt
+
+tests/test_cancellation.py:46: KeyboardInterrupt
+
+During handling of the above exception, another exception occurred:
+
+arena_fixture = {'root': PosixPath('/private/var/folders/yq/_hrwmxwx6q904tfp_11yjxcw0000gn/T/pytest-of-leonardaarons-ditson/pytest-152.../_hrwmxwx6q904tfp_11yjxcw0000gn/T/pytest-of-leonardaarons-ditson/pytest-1523/test_main_thread_interrupt_can0/task.md')}
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x1045a2350>
+
+    def test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_cancelled(
+        arena_fixture: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        marker = arena_fixture["root"] / "cancelled-provider-must-not-finish"
+        child = (
+            f"import pathlib,time; time.sleep(3); pathlib.Path({str(marker)!r}).write_text('escaped')"
+        )
+        config = load_config(arena_fixture["config"])
+        config = replace(
+            config,
+            engineers=tuple(
+                EngineerConfig(
+                    engineer_id=engineer.engineer_id,
+                    kind="generic_cli",
+                    model=None,
+                    timeout_seconds=20,
+                    options={"command": [sys.executable, "-c", child]},
+                )
+                for engineer in config.engineers
+            ),
+        )
+        arena = ArenaOrchestrator(config, "hackathon")
+    
+        def interrupt_when_a_child_is_owned(futures: Any) -> Iterator[Any]:
+            deadline = time.monotonic() + 2
+            while arena.runner.active_count() == 0 and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert arena.runner.active_count() > 0
+            raise KeyboardInterrupt
+            yield from ()
+    
+        monkeypatch.setattr(orchestrator_module, "as_completed", interrupt_when_a_child_is_owned)
+        started = time.monotonic()
+        with pytest.raises(KeyboardInterrupt):
+>           arena.run(arena_fixture["source"], arena_fixture["task"])
+
+tests/test_cancellation.py:52: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+src/agent_arena/orchestrator.py:221: in run
+    return self._run_lifecycle(repository, audit, task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/agent_arena/orchestrator.py:314: in _run_lifecycle
+    initial_results = self._parallel_by_engineer(
+src/agent_arena/orchestrator.py:521: in _parallel_by_engineer
+    self._cancel_parallel(executor, future_to_id)
+src/agent_arena/orchestrator.py:528: in _cancel_parallel
+    self.runner.cancel_all()
+src/agent_arena/process.py:87: in cancel_all
+    self._terminate_group(process)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = ProcessRunner(termination_grace_seconds=1)
+process = <Popen: returncode: -15 args: ['/Users/leonardaarons-ditson/Projects/agent-w...>
+
+    def _terminate_group(self, process: subprocess.Popen[bytes]) -> str | None:
+        if os.name != "posix":
+            if process.poll() is not None:
+                return None
+            process.terminate()
+            try:
+                process.wait(timeout=self.termination_grace_seconds)
+                return "terminated"
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=self.termination_grace_seconds)
+                return "killed"
+    
+        # Popen created a new session, so this group belongs to this invocation.
+        # Its lifetime is independent of its leader: do not gate killpg on poll().
+        try:
+>           os.killpg(process.pid, signal.SIGTERM)
+E           PermissionError: [Errno 1] Operation not permitted
+
+src/agent_arena/process.py:242: PermissionError
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_cancellation.py::test_main_thread_interrupt_cancels_parallel_cli_processes_and_marks_run_cancelled
+1 failed, 261 passed, 1 warning in 192.09s (0:03:12)

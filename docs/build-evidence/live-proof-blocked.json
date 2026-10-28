@@ -1,0 +1,29 @@
+{
+  "execution_ready": false,
+  "checks": [
+    {
+      "name": "process_ownership",
+      "ok": false,
+      "reason": "[Errno 1] Operation not permitted (originated from sysctl())"
+    },
+    {
+      "name": "verification_sandbox",
+      "ok": false,
+      "reason": "sandbox-exec: sandbox_apply: Operation not permitted"
+    },
+    {
+      "name": "Codex",
+      "ok": true,
+      "provider": "codex"
+    },
+    {
+      "name": "Claude",
+      "ok": true,
+      "provider": "claude"
+    }
+  ],
+  "remote": {
+    "ready": false,
+    "reason": "The Tailscale CLI failed to start: Failed to load preferences."
+  }
+}

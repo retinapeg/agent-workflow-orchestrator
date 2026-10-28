@@ -1,0 +1,42 @@
+2026-10-28 Autobuild follow-up, restricted engineering session
+
+Initial full control suite: 7 passed, 5 failed, 1 warning in 176.54s.
+Failing tests:
+- restart_after_spawn_and_artifact_before_commit_does_not_duplicate
+- parallel_candidates_combine_before_dependent_and_review_is_independent
+- approval_bound_to_actual_candidate_and_base
+- rate_limit_cools_one_slot_without_stopping_other_project
+- cancel_terminates_owned_descendants
+Guardian log root cause: psutil.boot_time() -> sysctl() -> PermissionError [Errno 1].
+Workers never reached provider invocation. No relaxation of process ownership checks.
+New focused test confirms denied identity now produces needs_permission before invocation.
+
+Independent host probe:
+/usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true
+Result: sandbox_apply: Operation not permitted.
+Thus even after process inspection, real nested acceptance sandboxes cannot be
+validated from this session. The five full worker tests were not claimed as passing.
+
+Playwright browser launch failed:
+bootstrap_check_in org.chromium.Chromium.MachPortRendezvousServer: Permission denied (1100).
+Approved browser tool was subsequently denied origin access by the browser approval gate.
+No alternate browser route was attempted after that denial.
+
+Tailscale status:
+The Tailscale CLI failed to start: Failed to load preferences.
+Earlier BUILD_STATE reported NeedsLogin. No remote URL was activated or verified.
+
+Running server observed before edits:
+127.0.0.1:8790 listener PID 39450; root HTTP 200; unpaired overview HTTP 401.
+Read-only persisted database snapshot: heartbeat age 0.475 seconds; one greeting task
+ready_for_approval; Codex build and independent Claude review both passed.
+Staged commit: 9129827450edaa6aac1dcc2c381b9638ee06610b.
+No production task, session, account or project was mutated in this follow-up.
+Backend restart was not performed. New backend code is not verified live on 8790.
+Frontend build regenerates the served assets; it retains a labelled old-server diff fallback.
+
+Concurrent editing detected at approximately 03:44 UTC: recovery.py,
+structured_build.py, publication.py and shared backend modules changed outside this
+session. These changes were preserved. Implementation ownership clarification requested.
+Validation above applies to the snapshots tested, not a claim that concurrent work
+is complete or verified. No commits, resets, stashes or source merges performed.

@@ -9,3 +9,10 @@ build/
 *.egg-info/
 .agent-arena-runs/
 pricing.toml
+
+web/node_modules/
+web/dist/
+web/test-results/
+web/playwright-report/
+.arena-backups/
+.arena-control/

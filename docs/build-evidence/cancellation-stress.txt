@@ -1,0 +1,61 @@
+Attempt 1/20
+.                                                                        [100%]
+1 passed in 1.30s
+Attempt 2/20
+.                                                                        [100%]
+1 passed in 1.27s
+Attempt 3/20
+.                                                                        [100%]
+1 passed in 1.23s
+Attempt 4/20
+.                                                                        [100%]
+1 passed in 1.40s
+Attempt 5/20
+.                                                                        [100%]
+1 passed in 1.25s
+Attempt 6/20
+.                                                                        [100%]
+1 passed in 2.34s
+Attempt 7/20
+.                                                                        [100%]
+1 passed in 4.87s
+Attempt 8/20
+.                                                                        [100%]
+1 passed in 2.16s
+Attempt 9/20
+.                                                                        [100%]
+1 passed in 2.30s
+Attempt 10/20
+.                                                                        [100%]
+1 passed in 1.25s
+Attempt 11/20
+.                                                                        [100%]
+1 passed in 1.27s
+Attempt 12/20
+.                                                                        [100%]
+1 passed in 1.37s
+Attempt 13/20
+.                                                                        [100%]
+1 passed in 1.32s
+Attempt 14/20
+.                                                                        [100%]
+1 passed in 1.24s
+Attempt 15/20
+.                                                                        [100%]
+1 passed in 1.21s
+Attempt 16/20
+.                                                                        [100%]
+1 passed in 1.52s
+Attempt 17/20
+.                                                                        [100%]
+1 passed in 2.50s
+Attempt 18/20
+.                                                                        [100%]
+1 passed in 2.07s
+Attempt 19/20
+.                                                                        [100%]
+1 passed in 1.25s
+Attempt 20/20
+.                                                                        [100%]
+1 passed in 1.25s
+20/20 original cancellation tests passed

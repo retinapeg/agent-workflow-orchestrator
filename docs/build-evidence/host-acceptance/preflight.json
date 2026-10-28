@@ -1,0 +1,28 @@
+{
+  "execution_ready": true,
+  "checks": [
+    {
+      "name": "process_ownership",
+      "ok": true
+    },
+    {
+      "name": "verification_sandbox",
+      "ok": true,
+      "reason": "sandbox ready"
+    },
+    {
+      "name": "Codex",
+      "ok": true,
+      "provider": "codex"
+    },
+    {
+      "name": "Claude",
+      "ok": true,
+      "provider": "claude"
+    }
+  ],
+  "remote": {
+    "ready": false,
+    "reason": "Sign in to Tailscale on the Mac and phone"
+  }
+}

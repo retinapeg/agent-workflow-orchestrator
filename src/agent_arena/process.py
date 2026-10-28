@@ -5,13 +5,27 @@ import signal
 import subprocess
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
+from weakref import WeakKeyDictionary
 
 from .models import ProcessResult
+
+
+class ProcessTerminationError(RuntimeError):
+    """The runner could not confirm that its owned process group stopped."""
+
+
+@dataclass
+class _Termination:
+    lock: threading.Lock = field(default_factory=threading.Lock)
+    confirmed: bool = False
+    result: str | None = None
+    error: ProcessTerminationError | None = None
+    observations: list[str] = field(default_factory=list)
 
 
 class _CappedCapture:
@@ -74,6 +88,17 @@ class ProcessRunner:
         default_factory=threading.Lock, init=False, repr=False, compare=False
     )
 
+    _terminations: WeakKeyDictionary[subprocess.Popen[bytes], _Termination] = field(
+        default_factory=WeakKeyDictionary, init=False, repr=False, compare=False
+    )
+    _termination_evidence: list[dict[str, object]] = field(
+        default_factory=list, init=False, repr=False, compare=False
+    )
+
+    def termination_evidence(self) -> list[dict[str, object]]:
+        with self._active_lock:
+            return list(self._termination_evidence)
+
     def reset_cancellation(self) -> None:
         self._cancelled.clear()
 
@@ -83,8 +108,14 @@ class ProcessRunner:
         self._cancelled.set()
         with self._active_lock:
             processes = list(self._active.values())
+        failures = []
         for process in processes:
-            self._terminate_group(process)
+            try:
+                self._terminate_group(process)
+            except ProcessTerminationError as exc:
+                failures.append(str(exc))
+        if failures:
+            raise ProcessTerminationError("; ".join(failures))
 
     def active_count(self) -> int:
         with self._active_lock:
@@ -99,6 +130,8 @@ class ProcessRunner:
         max_output_bytes: int,
         stdin_text: str | None = None,
         env: Mapping[str, str] | None = None,
+        on_output: Callable[[str, bytes], None] | None = None,
+        on_start: Callable[[int], None] | None = None,
     ) -> ProcessResult:
         if not argv or any("\x00" in part for part in argv):
             raise ValueError("argv must contain non-NUL strings")
@@ -119,24 +152,41 @@ class ProcessRunner:
                 start_new_session=(os.name == "posix"),
             )
             self._active[process.pid] = process
+            self._terminations[process] = _Termination()
+        if on_start is not None:
+            try:
+                on_start(process.pid)
+            except BaseException:
+                self._terminate_group(process)
+                with self._active_lock:
+                    self._active.pop(process.pid, None)
+                raise
         stdout_capture = _CappedCapture(max_output_bytes)
         stderr_capture = _CappedCapture(max_output_bytes)
 
-        def drain(stream: BinaryIO, capture: _CappedCapture) -> None:
+        def drain(stream: BinaryIO, capture: _CappedCapture, channel: str) -> None:
             try:
                 while True:
-                    chunk = stream.read(65_536)
+                    chunk = (
+                        stream.read1(65_536) if hasattr(stream, "read1") else stream.read(65_536)
+                    )
                     if not chunk:
                         break
                     capture.append(chunk)
+                    if on_output is not None:
+                        on_output(channel, chunk)
             finally:
                 stream.close()
 
         assert process.stdout is not None
         assert process.stderr is not None
         readers = [
-            threading.Thread(target=drain, args=(process.stdout, stdout_capture), daemon=True),
-            threading.Thread(target=drain, args=(process.stderr, stderr_capture), daemon=True),
+            threading.Thread(
+                target=drain, args=(process.stdout, stdout_capture, "stdout"), daemon=True
+            ),
+            threading.Thread(
+                target=drain, args=(process.stderr, stderr_capture, "stderr"), daemon=True
+            ),
         ]
         for reader in readers:
             reader.start()
@@ -153,7 +203,8 @@ class ProcessRunner:
                 except (BrokenPipeError, OSError):
                     pass
                 finally:
-                    stdin_stream.close()
+                    with suppress(BrokenPipeError, OSError):
+                        stdin_stream.close()
 
             writer = threading.Thread(target=write_input, daemon=True)
             writer.start()
@@ -176,12 +227,15 @@ class ProcessRunner:
             # Descendants may outlive a successful leader, including children that
             # have closed their output pipes. Always clean the owned session group.
             termination = self._terminate_group(process)
+        except ProcessTerminationError:
+            raise
         except BaseException:
             self._terminate_group(process)
             raise
         finally:
             with self._active_lock:
-                self._active.pop(process.pid, None)
+                if self._terminations[process].confirmed:
+                    self._active.pop(process.pid, None)
             if writer:
                 writer.join(timeout=1)
             for reader in readers:
@@ -205,6 +259,46 @@ class ProcessRunner:
         )
 
     def _terminate_group(self, process: subprocess.Popen[bytes]) -> str | None:
+        # Cancellation and the run thread share one cleanup result. Once the group
+        # is confirmed gone, never signal its numeric ID again (it can be reused).
+        with self._active_lock:
+            # Git cleanup also supplies a Popen it created with start_new_session.
+            state = self._terminations.setdefault(process, _Termination())
+        with state.lock:
+            if state.confirmed:
+                return state.result
+            if state.error is not None:
+                raise state.error
+            try:
+                state.result = self._stop_owned_group(process, state)
+                state.confirmed = True
+                return state.result
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                state.error = ProcessTerminationError(
+                    f"Termination unconfirmed for owned pid/pgid={process.pid}; "
+                    f"leader_returncode={process.returncode}; "
+                    f"{type(exc).__name__}: {exc}; " + "; ".join(state.observations)
+                )
+                raise state.error from exc
+            finally:
+                if state.confirmed or state.error is not None:
+                    with self._active_lock:
+                        self._termination_evidence.append(
+                            {
+                                "pid": process.pid,
+                                "pgid": process.pid if os.name == "posix" else None,
+                                "new_session": os.name == "posix",
+                                "leader_returncode": process.returncode,
+                                "confirmed": state.confirmed,
+                                "result": state.result,
+                                "error": str(state.error) if state.error else None,
+                                "observations": list(state.observations),
+                            }
+                        )
+
+    def _stop_owned_group(
+        self, process: subprocess.Popen[bytes], state: _Termination
+    ) -> str | None:
         if os.name != "posix":
             if process.poll() is not None:
                 return None
@@ -214,31 +308,60 @@ class ProcessRunner:
                 return "terminated"
             except subprocess.TimeoutExpired:
                 process.kill()
-                process.wait(timeout=self.termination_grace_seconds)
+                process.wait(timeout=max(1, self.termination_grace_seconds))
                 return "killed"
 
-        # Popen created a new session, so this group belongs to this invocation.
-        # Its lifetime is independent of its leader: do not gate killpg on poll().
-        try:
-            os.killpg(process.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            process.wait(timeout=max(1, self.termination_grace_seconds))
-            return None
-        deadline = time.monotonic() + self.termination_grace_seconds
-        while time.monotonic() < deadline:
+        def observe(message: str) -> None:
+            if not state.observations or state.observations[-1] != message:
+                state.observations.append(message)
+
+        def gone() -> bool:
+            # Reap our child first. Darwin may return EPERM for an exiting group
+            # with no signalable members; EPERM alone never proves disappearance.
             process.poll()
             try:
                 os.killpg(process.pid, 0)
             except ProcessLookupError:
+                observe("group probe: ESRCH")
                 process.wait(timeout=max(1, self.termination_grace_seconds))
-                return "terminated"
-            except PermissionError:
-                # macOS can transiently report EPERM for a group whose last
-                # member is exiting. Treat this probe as inconclusive and keep
-                # waiting; actual termination failures must still propagate.
-                pass
-            time.sleep(min(0.05, max(0, deadline - time.monotonic())))
-        with suppress(ProcessLookupError):
-            os.killpg(process.pid, signal.SIGKILL)
-        process.wait(timeout=max(1, self.termination_grace_seconds))
-        return "killed"
+                return True
+            except PermissionError as exc:
+                observe(f"group probe: {exc}")
+            return False
+
+        def wait_gone(seconds: float) -> bool:
+            deadline = time.monotonic() + seconds
+            while True:
+                if gone():
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                time.sleep(min(0.01, remaining))
+
+        # Popen created this session. Leader exit alone says nothing about its
+        # descendants, including children that closed stdout/stderr.
+        if gone():
+            return None
+        result = None
+        denied: PermissionError | None = None
+        for sig, label, grace in (
+            (signal.SIGTERM, "terminated", self.termination_grace_seconds),
+            (signal.SIGKILL, "killed", max(1, self.termination_grace_seconds)),
+        ):
+            try:
+                os.killpg(process.pid, sig)
+                observe(f"{sig.name}: sent")
+                result = label
+            except ProcessLookupError:
+                observe(f"{sig.name}: ESRCH")
+                process.wait(timeout=max(1, self.termination_grace_seconds))
+                return result
+            except PermissionError as exc:
+                observe(f"{sig.name}: {exc}")
+                denied = exc
+            if wait_gone(grace):
+                return result
+        if denied is not None:
+            raise denied
+        raise TimeoutError("process group still exists after SIGKILL confirmation deadline")
