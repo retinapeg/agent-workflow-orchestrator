@@ -69,6 +69,21 @@ directory; the second scheduler refuses the lock and exits.
 5. Controls: Pause/Resume queue, project priority, Stop task, Stop all workers, Retry,
    queue an instruction for a running build, answer a director question, Unpair device.
 
+## Starting a brand-new project from the phone
+
+In "Tell me what to build" switch to **New project**, describe the product, tap **Propose
+project**. Arena derives a name and slug, checks `~/Projects/<slug>` and
+`github.com/<you>/<slug>` for collisions (adding a suffix if needed) and shows the exact
+local path and private GitHub repository it would create. Nothing exists until you tap
+**Approve & create**. It then, on the Mac: creates the local repository on `main` with a
+README, creates the private GitHub repository through the signed-in `gh` CLI and pushes,
+verifies the remote exposes `main`, enrols the project (conventional writable tree,
+automatic local-main integration, pushes `main` to GitHub after each integration), and
+files your description as the first director request. Each step is shown as it runs; on
+failure the reason is shown and nothing is overwritten. Links to the local path and the
+GitHub repository appear when done. Requires `gh auth login` on the Mac (token scope
+`repo`); the credential never reaches the browser or worker transcripts.
+
 ## Enrolling one of your own repositories
 
 Projects are enrolled on the Mac, never from the phone. The source must be a clean, committed

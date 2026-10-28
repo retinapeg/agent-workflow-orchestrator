@@ -347,12 +347,22 @@ class Engine:
         self.integrator.shutdown(wait=False, cancel_futures=True)
 
     def loop(self):
+        failures = 0
         while not self.halt.is_set():
             try:
                 self.tick()
+                failures = 0
             except Exception as exc:
-                with self.store.transaction() as db:
-                    self.store.event(db, "scheduler.error", reason=str(exc)[:1000])
+                # The scheduler must outlive a transient store failure (e.g. a momentary
+                # file-descriptor shortage): never let the error report itself kill it.
+                failures += 1
+                try:
+                    with self.store.transaction() as db:
+                        self.store.event(db, "scheduler.error", reason=str(exc)[:1000])
+                except Exception:
+                    pass
+                self.halt.wait(min(30, 0.6 * 2**failures))
+                continue
             self.halt.wait(0.6)
 
     def tick(self):

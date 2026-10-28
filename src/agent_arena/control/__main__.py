@@ -507,6 +507,7 @@ def main(argv=None):
             "RunAtLoad": True,
             "KeepAlive": True,
             "ThrottleInterval": 10,
+            "SoftResourceLimits": {"NumberOfFiles": 4096},
             "WorkingDirectory": str(Path(__file__).resolve().parents[3]),
             "StandardOutPath": str(store.home / "service.log"),
             "StandardErrorPath": str(store.home / "service.log"),

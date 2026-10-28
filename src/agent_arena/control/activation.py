@@ -192,6 +192,7 @@ def write_plist(home, repo, release, port, origin, label, python) -> Path:
         "RunAtLoad": True,
         "KeepAlive": True,
         "ThrottleInterval": 10,
+        "SoftResourceLimits": {"NumberOfFiles": 4096},
         "WorkingDirectory": str(release),
         "StandardOutPath": str(home / "service.log"),
         "StandardErrorPath": str(home / "service.log"),

@@ -118,3 +118,24 @@ def test_instructions_clear_director_question_and_refuse_cancelled_tasks(setup):
         headers={**headers, "Idempotency-Key": "steer-2"},
     )
     assert response.status_code == 409
+
+
+def test_scheduler_loop_survives_a_store_failure(setup, monkeypatch):
+    import threading
+
+    store, engine, project, source = setup
+    calls = {"n": 0}
+
+    def flaky_tick():
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise RuntimeError("unable to open database file")
+
+    monkeypatch.setattr(engine, "tick", flaky_tick)
+    monkeypatch.setattr(engine.halt, "wait", lambda seconds: time.sleep(0.01) or False)
+    thread = threading.Thread(target=engine.loop, daemon=True)
+    thread.start()
+    time.sleep(0.5)
+    assert thread.is_alive() and calls["n"] > 2  # kept ticking after the failures
+    engine.halt.set()
+    thread.join(timeout=2)
