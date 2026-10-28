@@ -111,3 +111,20 @@ def test_director_model_is_not_silently_substituted(tmp_path):
     assert route["model"] == "gpt-6-astra" and route["effort"] == "max"
     (Path(a["config_home"]) / "models_cache.json").unlink()
     assert select_route(task(director=True, phase="plan"), [a], []) is None
+
+
+def test_validated_fable_slot_stands_in_as_director_only_without_codex(tmp_path):
+    codex, claude = account(tmp_path), account(tmp_path, "claude")
+    director = task(phase="plan", director=True)
+    assert select_route(director, [claude], []) is None  # No validated capability: no guess.
+    claude["model_capabilities"] = {"claude-fable-5-1": ["max"]}
+    chosen, route = select_route(director, [codex, claude], [])
+    assert chosen is codex and (route["model"], route["effort"]) == ("gpt-6-astra", "max")
+    chosen, route = select_route(director, [claude], [])
+    assert chosen is claude and (route["model"], route["effort"]) == ("claude-fable-5-1", "max")
+    assert route["capability_source"] == "validated_probe"
+    argv = invocation({**claude, **route}, Path(tmp_path), "plan")
+    assert argv[argv.index("--model") + 1] == "claude-fable-5-1"
+    assert argv[argv.index("--effort") + 1] == "max"
+    _, build = select_route(task(), [claude], [])
+    assert (build["model"], build["effort"]) == ("sonnet", None)

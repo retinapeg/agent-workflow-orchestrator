@@ -478,7 +478,11 @@ class Engine:
                     a
                     for a in accounts
                     if role in a.get("roles", ["build", "review"])
-                    and (not director_phase or a["provider"] == "codex")
+                    and (
+                        not director_phase
+                        or a["provider"] == "codex"
+                        or "max" in a.get("model_capabilities", {}).get("claude-fable-5-1", [])
+                    )
                     and (task["phase"] != "review" or a["id"] != task.get("author_account"))
                 ]
                 if not eligible:

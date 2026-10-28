@@ -1,0 +1,21 @@
+{
+  "passed": false,
+  "url": "http://127.0.0.1:8791",
+  "project": "project_2abd352bbe96321f",
+  "instructions": "Make this app easier to recognise on my phone. Keep everything else working.",
+  "integrate": true,
+  "timeline": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/docs/build-evidence/first-build/timeline.log",
+  "goal_id": "goal_9a15ad82579a0ada",
+  "request_task": "task_5111eb3752d9f213",
+  "acknowledged_ms": 140,
+  "reconnected_state": [
+    {
+      "id": "task_5111eb3752d9f213",
+      "phase": "plan",
+      "state": "running"
+    }
+  ],
+  "error": "Error: Needs a human: Add descriptive metadata to the phone app manifest: blocked (Independent review rejected: [\"The diff matches the requested metadata insertion, but required validation evidence is missing: the inline comparison against frozen commit 23e52da86110a14a4fb0d6a301fa2798a5304f8d, both manifest hashes, preservation and newline results, frozen-base changed-path list, and confirmation that no untracked files were added. The acceptance/proof.py PASS summary does not establish these additional checks.\"])",
+  "browser_errors": [],
+  "ended": "2026-10-28T05:10:50.111Z"
+}

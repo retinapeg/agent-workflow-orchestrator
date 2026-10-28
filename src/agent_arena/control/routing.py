@@ -68,9 +68,17 @@ def select_route(task, accounts, attempts):
     for account in accounts:
         available = capabilities(account)
         if director:
-            if "max" not in available.get("gpt-6-astra", []):
+            # Astra at max is the requested director. A Claude slot whose Fable 5.1 max
+            # support was validated by a probe stands in only when no Codex slot can
+            # take the phase now; the attempt records whichever model actually ran.
+            if account["provider"] == "codex":
+                if "max" not in available.get("gpt-6-astra", []):
+                    continue
+                models = ["gpt-6-astra"]
+            elif "max" in available.get("claude-fable-5-1", []):
+                models = ["claude-fable-5-1"]
+            else:
                 continue
-            models = ["gpt-6-astra"]
         elif available and account["provider"] == "codex":
             suitable = (
                 FAMILIES
@@ -136,6 +144,7 @@ def select_route(task, accounts, attempts):
                 account["provider"] == task.get("author_provider")
                 if task["phase"] == "review"
                 else False,
+                account["provider"] != "codex" if director else False,
                 same_failed_provider if repair >= 2 else False,
                 failure_rate >= 0.5 if len(history) >= 2 else False,
                 not available if risk == "high" else False,
@@ -160,6 +169,8 @@ def select_route(task, accounts, attempts):
             reason = (
                 "Your director is diagnosing the failed approach before another build"
                 if action == "director_diagnosis"
+                else "Your director (Fable 5.1, max effort) is standing in for Astra"
+                if director and model == "claude-fable-5-1"
                 else "Your director is assessing the product outcome"
                 if director
                 else "Trying a different worker using the failure evidence"
@@ -187,6 +198,8 @@ def select_route(task, accounts, attempts):
                         "successful_samples": len(successes),
                         "median_seconds": duration,
                         "capability_source": "advertised_cli_catalog"
+                        if available and account["provider"] == "codex"
+                        else "validated_probe"
                         if available
                         else "enrolled_model_provider_defaults",
                         "failure_attempt": failure["id"] if failure else None,

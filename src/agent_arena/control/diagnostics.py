@@ -1,5 +1,6 @@
 """Report host restrictions before spending a provider invocation."""
 
+import json
 import os
 import subprocess
 import sys
@@ -43,3 +44,48 @@ def doctor(store):
         "checks": checks,
         "remote": remote_status(),
     }
+
+
+def probe_claude_capabilities(account, env, models=(("claude-fable-5-1", "max"),)):
+    """One tiny tool-free invocation per model/effort; records only what the CLI confirms."""
+    validated = {}
+    for model, effort in models:
+        argv = [
+            account["executable"],
+            "-p",
+            "--model",
+            model,
+            "--effort",
+            effort,
+            "--max-turns",
+            "1",
+            "--tools",
+            "",
+            "--no-session-persistence",
+            "--output-format",
+            "json",
+            "--permission-mode",
+            "dontAsk",
+            "--strict-mcp-config",
+            "--mcp-config",
+            '{"mcpServers":{}}',
+            "--setting-sources",
+            "",
+            "--settings",
+            '{"disableAllHooks":true}',
+            "--disable-slash-commands",
+            "Reply with exactly the word OK.",
+        ]
+        try:
+            result = subprocess.run(argv, env=env, text=True, capture_output=True, timeout=120)
+            data = json.loads(result.stdout)
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            continue
+        if (
+            result.returncode == 0
+            and not data.get("is_error")
+            and isinstance(data.get("modelUsage"), dict)
+            and model in data["modelUsage"]
+        ):
+            validated.setdefault(model, []).append(effort)
+    return validated

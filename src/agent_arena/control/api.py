@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import os
 import secrets
 import time
 from contextlib import asynccontextmanager
@@ -195,6 +196,11 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                 {**dict(r), "data": json.loads(r["data"])}
                 for r in db.execute("SELECT * FROM events ORDER BY id DESC LIMIT 30")
             ]
+            dependencies = {}
+            for task_id, dependency_id in db.execute(
+                "SELECT task_id, dependency_id FROM task_dependencies"
+            ):
+                dependencies.setdefault(task_id, []).append(dependency_id)
             meta = {
                 r["key"]: json.loads(r["value"])
                 for r in db.execute(
@@ -207,6 +213,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                 a.pop(key, None)
         for a in attempts:
             a.pop("identity", None)
+        for t in tasks:
+            t["dependencies"] = dependencies.get(t["id"], [])
         return {
             "projects": projects,
             "tasks": tasks,
@@ -609,7 +617,10 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
     register_routes(app, store, command, revision, Change)
 
-    static = Path(__file__).resolve().parents[3] / "web" / "dist"
+    # ARENA_STATIC_DIR lets the UI fixture serve a preview build; the service uses web/dist.
+    static = Path(
+        os.environ.get("ARENA_STATIC_DIR") or Path(__file__).resolve().parents[3] / "web" / "dist"
+    )
     if (static / "assets").exists():
         app.mount("/assets", StaticFiles(directory=static / "assets"), name="assets")
 

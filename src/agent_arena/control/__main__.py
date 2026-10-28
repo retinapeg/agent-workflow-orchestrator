@@ -91,7 +91,8 @@ def main(argv=None):
     sub.add_parser("status")
     sub.add_parser("pair")
     sub.add_parser("revoke-sessions")
-    sub.add_parser("check-accounts")
+    p = sub.add_parser("check-accounts")
+    p.add_argument("--probe", action="store_true", help="validate Fable 5.1 max on Claude slots")
     sub.add_parser("doctor")
     sub.add_parser("remote-status")
     p = sub.add_parser("configure-remote")
@@ -295,11 +296,16 @@ def main(argv=None):
         print(encode(add_account(store, args.name, args.provider, args.config_home, args.model)))
     elif args.command == "check-accounts":
         for account in store.rows("accounts"):
-            ok, _ = auth_status(account)
+            ok, env = auth_status(account)
             account.update(
                 health="ready" if ok else "needs_auth", enabled=ok, last_health=time.time()
             )
             account["roles"] = ["build", "review", "plan"]
+            if ok and args.probe and account["provider"] == "claude":
+                from .diagnostics import probe_claude_capabilities
+
+                account["model_capabilities"] = probe_claude_capabilities(account, env)
+                account["capabilities_checked"] = time.time()
             with store.transaction() as db:
                 db.execute(
                     "UPDATE accounts SET rev=rev+1,data=? WHERE id=?",
