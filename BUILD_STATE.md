@@ -1,3 +1,32 @@
+# Session close — 28 October 2026
+
+Working baseline: release **6267043b** (git tag `arena-baseline-20261028`), live from
+`.arena-releases/6267043b8919`, health-verified; previous release `82ad08e4` retained;
+`releases.json` marks the baseline as not to be pruned. No build is running; the last
+self-build task was cancelled cleanly. Canonical checkout: branch `main` at `b1e8a80`
+(clean). Nothing was pushed to GitHub.
+
+## Gate checklist reconciled with evidence
+
+| Gate | Status | Evidence |
+|---|---|---|
+| 1 Real phone control (private HTTPS, pair once, submit, close/reopen) | **Verified** | Tailscale Serve origin, Android paired 06:43, `session-persistence/` (browser close, controller restart, Tailscale reconnect), `zero-tap-build/` and `final-unattended-build/` ran with the browser closed |
+| 2 Real engineering director | **Verified** | `gpt-6-astra` / `gpt-6.1-sol` invocations recorded per attempt with routing reasons; specifications persisted and shown (Build screen) |
+| 3 Real autonomous multi-agent building | **Verified** | `parallel-build/`: Codex + Claude concurrent, cross-provider reviews, Fable 5.1 stand-in director; three worker slots enrolled |
+| 4 Verified implementation and integration | **Verified** | Integrated commits `fa1024a`, `7821b1f`, `2296939`, `5507b7c`, `2ab37fa` in test projects; integrated code behaviour executed (`validate_origin` rejects malformed input) |
+| 5 Unattended operation and recovery | **Verified** | launchd login service with keep-awake, `restart-recovery/` (controller restart mid-build, no duplicates), activator rollback exercised live, cancellation confirmed (Stop control used to end the last build) |
+| 6 Production-usable interface | **Verified** | Redesigned UI on real data at 390/1440 px, Tell-me-what-to-build entry, auto-resolution, stepper, device management; browser acceptance passing |
+| 7 Safety and release quality | **Verified with one open item** | Lint clean; full regression 277 passed after session hardening (`release-checks/`); 91-agent and 29-agent adversarial reviews with confirmed defects fixed; three low-severity review items documented, unfixed |
+| Test A (build in one of the owner's own repositories) | **Not run** | `enroll-repo` must be executed by the owner (permission); the generic repository check passed 70/71 of continuum-agent's tests offline, the one failure needs `--pytest-ignore tests_lab/test_web.py` |
+| Test B (Arena improves itself and activates) | **Unverified** | Mechanism proven in parts (self-enrolment, self-check in sandbox, three real activations, one real rollback); no self-build reached integration; four attempts' evidence preserved |
+
+## Operate / recover
+See the top of `docs/MOBILE_BUILD_CONTROL.md`. Roll back the release if ever needed:
+`.venv/bin/python -m agent_arena.control.activation --home "$PWD/.arena-control" rollback --port 8791`.
+Activate a specific commit: `... activate <sha> --port 8791` (health-checked, auto-rollback).
+
+---
+
 # Build state — 28 October 2026 (current)
 
 ## Autobuild alpha: what works, with evidence
@@ -37,7 +66,7 @@ passes. The previously failing host cancellation test passes on the normal host 
 - Three enrolled proof projects are disposable snapshots of this repository
   (`.arena-control/proof-source*`); the stale 8790 runtime was stopped and preserved.
 
-## Self-improvement (Test B) — status at 08:40 UTC, 28 October 2026
+## Self-improvement (Test B) — UNVERIFIED, session closed 28 October 2026
 
 Stopped on the owner's instruction after four attempts; no further attempt will be launched
 without being asked. The live release is `6267043b` (health-verified; previous `82ad08e4`
@@ -60,8 +89,9 @@ Remaining gap: no self-build has yet reached integration. In attempt 4 the candi
 (`candidate-6ea548b.patch`, Devices.tsx + style.css) passed the self-check and was rejected
 by the independent reviewer for a stale-async edge case (copy feedback could label a
 replacement code as copied); the director's bounded replan was running when stopped.
-That is the pipeline working as designed, not a controller fault. Impact: Test B
-(self-improvement integrated and activated autonomously) is unproven; everything else
+That is the pipeline working as designed, not a controller fault. Status: Test B is
+**unverified** (not failed): no self-build reached integration before the session closed;
+everything else
 (builds for other projects, phone access, pairing, routing, activation/rollback) is
 operational and unaffected.
 
