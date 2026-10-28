@@ -406,7 +406,7 @@ export function DialogBody() {
               Enroll a named subscription account on the Mac using <code>enroll-account</code>. Codex accepts a separate, already authenticated <code>CODEX_HOME</code>.
             </p>
             <p className="note">
-              A second Claude slot remains disabled until independent authentication isolation is proven. Configuration directories alone do not establish separate accounts. Never paste account tokens here.
+              A second Claude account needs its own config directory signed in on the Mac (CLAUDE_CONFIG_DIR=~/.claude-second claude auth login --email …), then enroll-account --config-home for that directory; enrolment refuses a directory that holds the same account as an existing slot. Never paste account tokens here.
             </p>
           </>
         )}

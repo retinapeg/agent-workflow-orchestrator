@@ -22,6 +22,30 @@ from .worker import auth_status
 DEFAULT_HOME = Path.home() / ".local/share/agent-arena/build-control"
 
 
+def claude_identity(config_home):
+    """Email of the Claude account signed in under a config directory, or None."""
+    from .worker import clean_environment
+
+    env = clean_environment()
+    default_home = str(Path.home() / ".claude")
+    if str(config_home) != default_home:
+        env["CLAUDE_CONFIG_DIR"] = str(config_home)
+    try:
+        result = subprocess.run(
+            [shutil.which("claude"), "auth", "status"],
+            env=env,
+            text=True,
+            capture_output=True,
+            timeout=20,
+        )
+        data = json.loads(result.stdout)
+    except (OSError, ValueError, subprocess.TimeoutExpired, TypeError):
+        return None
+    if result.returncode != 0 or not data.get("loggedIn") or data.get("authMethod") != "claude.ai":
+        return None
+    return data.get("email") or data.get("organization") or "unknown"
+
+
 def add_account(store, name, provider, config_home=None, model=None):
     executable = shutil.which(provider)
     if not executable:
@@ -41,10 +65,29 @@ def add_account(store, name, provider, config_home=None, model=None):
     if any(a["provider"] == provider and a["config_home"] == config for a in existing):
         raise ValueError("This account/config home already owns a slot")
     if provider == "claude" and any(a["provider"] == "claude" for a in existing):
-        raise ValueError(
-            "A second Claude slot is disabled until independent macOS "
-            "keychain isolation is demonstrated"
-        )
+        # A second Claude slot needs its own CLAUDE_CONFIG_DIR holding a different signed-in
+        # account, and enrolling it must leave the existing slot's login intact.
+        new_identity = claude_identity(config)
+        if not new_identity:
+            raise ValueError(
+                "Sign in first: CLAUDE_CONFIG_DIR="
+                + config
+                + " claude auth login --email <address>"
+            )
+        for other in existing:
+            if other["provider"] != "claude":
+                continue
+            other_identity = claude_identity(other["config_home"])
+            if not other_identity:
+                raise ValueError(
+                    f"Existing slot {other['name']} is no longer signed in; isolation not proven"
+                )
+            if other_identity == new_identity:
+                raise ValueError(
+                    "That config home holds the same Claude account as "
+                    + other["name"]
+                    + "; sign in a different account there"
+                )
     version = subprocess.check_output([executable, "--version"], text=True, timeout=10).strip()
     data = dict(
         name=name,

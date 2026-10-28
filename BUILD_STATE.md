@@ -42,7 +42,7 @@ passes. The previously failing host cancellation test passes on the normal host 
 - Private phone access is configured: Tailscale Serve (tailnet-only, Funnel off) at
   `https://leonards-macbook-air-1.tail11ad03.ts.net`, TLS verified, unpaired requests denied
   (401); the service runs with that origin. Owner's cellular verification pending.
-- Second Claude account (third slot): enrol after the owner signs it in (`enroll-account`).
+- Third slot enrolled 28 Oct 2026: `Claude 2 (retinapeg)` in its own `~/.claude-second` config directory, probe-validated for Fable 5.1 max; primary Claude login unaffected.
 - Remaining low-severity review items (global pairing rate limiter, ignored-file overwrite on
   fast-forward, per-branch enrolment) are documented in `docs/build-evidence/safety-review/summary.md`.
 

@@ -200,7 +200,11 @@ Enroll an already authenticated subscription account on the host:
 .venv/bin/python -m agent_arena.control check-accounts
 ```
 
-Existing accounts need not be enrolled again. No API key fallback is used. Codex
+Existing accounts need not be enrolled again. No API key fallback is used. A second Claude
+account uses its own config directory: `CLAUDE_CONFIG_DIR=$HOME/.claude-second claude auth login
+--email <address>` in Terminal, then `enroll-account 'Claude 2' --provider claude --config-home
+~/.claude-second` and `check-accounts --probe`; enrolment refuses a directory that holds the same
+account as an existing slot. Codex
 builds in isolated workspaces. The verified running configuration uses Claude for tool-free independent review;
 **Claude code writing has not been verified**. Concurrent source edits are adding a
 structured build path and source integration; those are outside this verification snapshot. The third slot needs
