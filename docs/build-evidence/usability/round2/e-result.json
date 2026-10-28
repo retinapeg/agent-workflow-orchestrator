@@ -1,0 +1,42 @@
+{
+  "state": "/tmp/arena-real-B7eqEY",
+  "viewport": 390,
+  "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  "dispatch": false,
+  "created": {
+    "old": [
+      "attempt_014e80a9a7197932",
+      "attempt_02e0e9762c75e20c",
+      "attempt_04ef5d9c43b8f3ef"
+    ],
+    "recent": [
+      "attempt_04f063ad99681ca4",
+      "attempt_0709601ef8b90698",
+      "attempt_108ecf5df0a1e0d4"
+    ]
+  },
+  "system": {
+    "count": 6,
+    "bytes": 22069248,
+    "prunable_count": 3,
+    "prunable_bytes": 6316032,
+    "oldest": 1792365751,
+    "days": 7,
+    "measured": 1793229752.2282677
+  },
+  "dryRun": {
+    "count": 6,
+    "bytes": 22069248,
+    "prunable_count": 3,
+    "prunable_bytes": 6316032,
+    "would_remove": [
+      "attempt_014e80a9a7197932",
+      "attempt_02e0e9762c75e20c",
+      "attempt_04ef5d9c43b8f3ef"
+    ]
+  },
+  "dryRunText": "6 workspaces in <copy>/workspaces using 21.0 MB.\nWould remove 3 (finished builds idle for at least 7 days), 6.0 MB:\n  attempt_014e80a9a7197932     1.0 MB  completed  idle 10.0 days  delete\n  attempt_02e0e9762c75e20c     2.0 MB  completed  idle 10.0 days  delete\n  attempt_04ef5d9c43b8f3ef     3.0 MB  completed  idle 10.0 days  delete\nKeeping 3 idle for less than 7 days.\nDry run: nothing was removed. Add --apply to remove them.\n",
+  "line": "6 workspaces · 21.0 MB · 3 prunable (older than 7 days)",
+  "hint": "Measured just now. To free 6.0 MB, run on the Mac: python -m agent_arena.control --home .arena-control prune-workspaces --apply",
+  "passed": true
+}

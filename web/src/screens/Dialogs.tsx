@@ -43,7 +43,7 @@ function TranscriptView({attempt, agent, onClose}: {attempt: RecordData; agent: 
     </div>
   );
 }
-import {Devices} from './Devices';
+import {DeviceFacts, Devices} from './Devices';
 import {ProposalCard, ProvisionCard, type Proposal} from './Provision';
 
 function lineClass(line: string) {
@@ -665,7 +665,8 @@ export function DialogBody() {
         )}
         {modal?.kind === 'device' && (
           <>
-            <Facts
+            <DeviceFacts
+              now={now}
               rows={[
                 ['Link', link === 'live' ? `Live · last snapshot ${lastSeen}` : link === 'polling' ? `Polling every 5s · ${lastSeen}` : `Reconnecting · last seen ${lastSeen}`],
                 ['Scheduler', heartbeatAge === null ? 'Not running' : heartbeatAge > 30 ? `Stale · last heartbeat ${when(data.heartbeat)}` : `Healthy · heartbeat ${Math.round(heartbeatAge)}s ago`],
