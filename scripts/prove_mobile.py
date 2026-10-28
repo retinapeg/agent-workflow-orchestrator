@@ -48,7 +48,11 @@ def prepare(home, label=""):
     git(source, "branch", "-M", "main")
     # Snapshot current work without stashing, resetting, or modifying the source checkout.
     paths = git(ROOT, "ls-files", "-c", "-o", "--exclude-standard").splitlines()
+    # Workers refuse projects carrying agent startup configuration; keep it out of the snapshot.
+    agent_config = ("AGENTS.md", "CLAUDE.md")
     for relative in set(paths):
+        if relative in agent_config or relative.startswith((".claude/", ".codex/")):
+            continue
         original = ROOT / relative
         destination = source / relative
         if original.is_symlink():
