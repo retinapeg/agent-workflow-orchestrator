@@ -1,5 +1,5 @@
 import React, {createContext, useContext, useEffect, useRef, useState} from 'react';
-import {ACTIVE_ATTEMPT, ACTIVE_TASK, TABS, needsYou, shortSha, type RecordData, type Snapshot, type Tab} from './types';
+import {ACTIVE_ATTEMPT, ACTIVE_TASK, TABS, needsYouRows, shortSha, type NeedRow, type RecordData, type Snapshot, type Tab} from './types';
 import {Icon, LiveDot, Mark, Wordmark} from './ui';
 import {Chat} from './screens/Chat';
 import {Overview} from './screens/Overview';
@@ -111,6 +111,7 @@ export function App() {
   const csrfRef = useRef('');
   csrfRef.current = csrf;
   const received = useRef({server: 0, at: 0});
+  const refreshes = useRef({last: 0, timer: 0});
   const toastTimer = useRef(0);
 
   const notify = (s: string) => {
@@ -125,12 +126,18 @@ export function App() {
       setPaired(false);
       throw Error('Device pairing required');
     }
-    const j = await r.json();
-    if (!r.ok) throw Error(j.detail || 'Request failed');
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const error = Error(typeof j.detail === 'string' ? j.detail : `Request failed (HTTP ${r.status})`) as PostError;
+      error.status = r.status;
+      error.body = j;
+      throw error;
+    }
     return j;
   }
 
   async function refresh() {
+    refreshes.current.last = Date.now();
     try {
       const d = await get('overview');
       received.current = {server: d.server_time, at: Date.now()};
@@ -140,6 +147,18 @@ export function App() {
     } catch {
       setOnline(false);
     }
+  }
+
+  // Snapshot refreshes are coalesced: a burst of SSE events (one build emits several per
+  // second) produces at most one fetch per 750 ms, trailing, so the last event always wins.
+  function scheduleRefresh() {
+    const s = refreshes.current;
+    if (s.timer) return;
+    const wait = Math.max(0, 750 - (Date.now() - s.last));
+    s.timer = window.setTimeout(() => {
+      s.timer = 0;
+      refresh();
+    }, wait);
   }
 
   const [bootError, setBootError] = useState('');
@@ -187,7 +206,7 @@ export function App() {
     refresh();
     const ev = new EventSource('/api/v1/events');
     const onUpdate = (e: MessageEvent) => {
-      refresh();
+      scheduleRefresh();
       try {
         const row = JSON.parse(e.data);
         if (typeof row?.kind === 'string' && row.kind.startsWith('conversation.')) {
@@ -199,21 +218,28 @@ export function App() {
       }
     };
     ev.addEventListener('update', onUpdate);
-    ev.addEventListener('snapshot', refresh);
+    ev.addEventListener('snapshot', scheduleRefresh);
     ev.onerror = () => {
       setSse(false);
       setOnline(false);
     };
     ev.onopen = () => {
       setSse(true);
-      refresh();
+      scheduleRefresh();
     };
-    const timer = setInterval(refresh, 5000);
+    const timer = setInterval(scheduleRefresh, 5000);
     return () => {
       ev.close();
       clearInterval(timer);
+      window.clearTimeout(refreshes.current.timer);
+      refreshes.current.timer = 0;
     };
   }, [paired]);
+
+  // A spec shared into Arena opens the request form with the text already in place.
+  useEffect(() => {
+    if (data && handoff) setModal({kind: 'goal'});
+  }, [!!data, handoff]);
 
   useEffect(() => {
     if (modal && !dialog.current?.open) dialog.current?.showModal();
@@ -318,6 +344,20 @@ export function App() {
   const openGoal = (id: string) => {
     setGoal(id);
     setTab('build');
+    // The Builds screen renders on the next frame; land on its head, not wherever Home was.
+    window.requestAnimationFrame(() => window.scrollTo({top: 0, behavior: 'auto'}));
+  };
+  // The global "Needs you" line: one item opens itself, several open the Review list.
+  const openNeed = (rows: NeedRow[]) => {
+    const r = rows[0];
+    if (!r) return;
+    if (rows.length > 1) {
+      setTab('review');
+      return;
+    }
+    if (r.kind === 'review') setModal({kind: 'review', id: r.id});
+    else if (r.goalId) openGoal(r.goalId);
+    else setModal({kind: 'task', id: r.id});
   };
 
   if (paired === null)
@@ -401,7 +441,8 @@ export function App() {
   const link: Link = !online ? 'reconnecting' : sse ? 'live' : 'polling';
   const disabled = busy || !online;
   const running = data.tasks.filter(t => ACTIVE_TASK.includes(t.state) || t.state === 'integrating').length;
-  const attention = needsYou(data).count;
+  const needRows = needsYouRows(data);
+  const attention = needRows.length;
   const counts: Partial<Record<Tab, number>> = {build: running, review: attention};
   const heartbeatAge = data.heartbeat ? data.server_time - data.heartbeat : null;
   const scheduler =
@@ -540,6 +581,20 @@ export function App() {
               <LiveDot tone="warn" />
               Dispatch is paused · running work continues, nothing new starts
             </div>
+          )}
+          {attention > 0 && (
+            <button type="button" className="instrument needs-band" onClick={() => openNeed(needRows)} aria-label={`Needs you: ${attention} item${attention === 1 ? '' : 's'}. ${needRows[0].label}: ${needRows[0].title}`}>
+              <LiveDot tone="warn" />
+              <span className="needs-band-text">
+                <b>Needs you</b>
+                <span className="clamp1">
+                  {needRows[0].label} · {needRows[0].title}
+                  {needRows[0].project ? ` · ${needRows[0].project}` : ''}
+                </span>
+              </span>
+              {attention > 1 && <b className="count num">+{attention - 1}</b>}
+              <Icon name="arrow" size={16} />
+            </button>
           )}
 
           {tab === 'chat' && <Chat />}

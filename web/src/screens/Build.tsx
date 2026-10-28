@@ -1,19 +1,23 @@
-import React, {useState} from 'react';
-import {useArena} from '../App';
+import React, {useEffect, useRef, useState} from 'react';
+import {useArena, type PostError} from '../App';
+import {bytes, liveLineText, stamp, useLiveTail} from '../live';
 import {
   usageTotals,
   ACTIVE_ATTEMPT,
   ACTIVE_TASK,
+  QUEUED_TASK,
   STAGES,
   UNSTOPPABLE,
   ago,
   cap,
+  defaultGoal,
   duration,
   eventLine,
   family,
   goalClass,
   goalStatus,
   goalView,
+  liveAttemptOf,
   milestoneTree,
   providerGlyph,
   seconds,
@@ -21,6 +25,7 @@ import {
   stageIndex,
   stateLabel,
   when,
+  type GoalDetail,
   type GoalView,
   type MilestoneNode,
   type RecordData,
@@ -158,20 +163,22 @@ function TaskCard({task, all}: {task: RecordData; all: RecordData[]}) {
   );
 }
 
-function Director({view}: {view: GoalView}) {
-  const {data, now, disabled, action} = useArena();
-  const spec = view.goal.specification;
+// The director's specification is no longer in the snapshot (it is large); it arrives with
+// GET goals/{id} once Details is opened. Until then the card says so instead of "none".
+function Director({view, detail, loading}: {view: GoalView; detail: GoalDetail | null; loading: boolean}) {
+  const {data, now} = useArena();
+  const spec = detail?.goal?.specification ?? view.goal.specification;
   const plan = view.plan;
   const planAttempt = plan && data.attempts.find(a => a.task_id === plan.id && ACTIVE_ATTEMPT.includes(a.state));
-  const asking = view.tasks.find(t => t.state === 'awaiting_input' && t.question);
-  const [answer, setAnswer] = useState('');
   return (
     <article className="card director">
       <div className="row between wrap">
         <Eyebrow>Director's interpretation</Eyebrow>
         {spec ? <Chip tone="neutral">{cap(spec.strategy)} strategy</Chip> : plan ? <Chip tone={family(plan.state)}>{stateLabel(plan.state)}</Chip> : null}
       </div>
-      {spec ? (
+      {loading && !spec ? (
+        <p className="lede">Loading the director's plan…</p>
+      ) : spec ? (
         <>
           <h3>{spec.outcome}</h3>
           <p className="lede">{spec.summary}</p>
@@ -208,10 +215,32 @@ function Director({view}: {view: GoalView}) {
       ) : (
         <p className="lede">No director specification was recorded for this request.</p>
       )}
+    </article>
+  );
+}
+
+// What this build is waiting on the owner for, at the top of the screen: the director's
+// question with an answer box, a worker that needs sign-in or permission on the Mac with a
+// retry, or a verified candidate waiting for a decision.
+function NeedsCard({view}: {view: GoalView}) {
+  const {data, now, disabled, action, setModal} = useArena();
+  const [answer, setAnswer] = useState('');
+  const asking = view.tasks.find(t => t.state === 'awaiting_input');
+  const access = view.tasks.filter(t => t.state === 'needs_auth' || t.state === 'needs_permission');
+  const approvals = data.approvals.filter(a => a.state === 'pending' && view.tasks.some(t => t.id === a.task_id && t.state === 'ready_for_approval'));
+  if (!asking && !access.length && !approvals.length) return null;
+  return (
+    <section className="card needs-card accent-amber" aria-label="Needs you">
+      <div className="row between wrap">
+        <Eyebrow>Needs you</Eyebrow>
+        {asking && <Chip tone="decision">{stateLabel(asking.state)}</Chip>}
+      </div>
       {asking && (
         <div className="question">
-          <Eyebrow>Your preference</Eyebrow>
-          <p>{asking.question}</p>
+          <p>
+            <b>{asking.title}</b>
+          </p>
+          <p>{asking.question || asking.reason}</p>
           <label htmlFor="build-answer">Your answer</label>
           <textarea id="build-answer" rows={3} value={answer} onChange={e => setAnswer(e.target.value)} />
           <button className="btn primary" disabled={disabled || !answer.trim()} onClick={() => action(`tasks/${asking.id}/answer`, {revision: asking.rev, text: answer}, 'Your answer is with the director.')}>
@@ -219,10 +248,104 @@ function Director({view}: {view: GoalView}) {
           </button>
         </div>
       )}
-    </article>
+      {access.map(t => (
+        <div className="row between wrap" key={t.id}>
+          <span className="list-main">
+            <b>{t.title}</b>
+            <span className="small muted">
+              <span className="tone blocked">{stateLabel(t.state)}</span> · {ago(t.updated, now)} · {t.reason}
+            </span>
+          </span>
+          <button className="btn" disabled={disabled} onClick={() => action(`tasks/${t.id}/retry`, {revision: t.rev}, 'Bounded retry queued')}>
+            Retry
+          </button>
+        </div>
+      ))}
+      {approvals.map(a => {
+        const t = view.tasks.find(x => x.id === a.task_id);
+        return (
+          <div className="row between wrap" key={a.id}>
+            <span className="list-main">
+              <b>{t?.title || 'Verified change'}</b>
+              <span className="small muted">
+                <span className="tone decision">Ready for approval</span> · candidate <Sha value={a.candidate} n={10} />
+              </span>
+            </span>
+            <button className="btn primary" disabled={disabled} onClick={() => setModal({kind: 'review', id: a.id})}>
+              Review and decide
+            </button>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
+// Events of one request from GET goals/{id}/events (last 40, oldest first), refreshed with
+// `after=<cursor>` whenever the snapshot reports a new event. An older host answers 404,
+// and the screen then shows whatever the snapshot's global event window still holds.
+function useGoalEvents(goalId: string, latestEventId: number | undefined, fallback: RecordData[]): {events: RecordData[]; recorded: boolean} {
+  const {get} = useArena();
+  const [state, setState] = useState<{id: string; events: RecordData[]; cursor: unknown; supported: boolean}>({id: '', events: [], cursor: null, supported: true});
+  const getRef = useRef(get);
+  getRef.current = get;
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  useEffect(() => {
+    if (!goalId) return;
+    let stopped = false;
+    const fresh = stateRef.current.id !== goalId;
+    if (!fresh && !stateRef.current.supported) return;
+    const cursor = fresh ? null : stateRef.current.cursor;
+    const query = cursor !== null && cursor !== undefined ? `?after=${encodeURIComponent(String(cursor))}` : '';
+    (async () => {
+      try {
+        const r = await getRef.current(`goals/${goalId}/events${query}`);
+        if (stopped || !r || !Array.isArray(r.events)) return;
+        setState(s => {
+          const base = s.id === goalId && query ? s.events : [];
+          const seen = new Set(base.map(e => e.id));
+          const merged = [...base, ...r.events.filter((e: RecordData) => !seen.has(e.id))].sort((a, b) => a.time - b.time || a.id - b.id);
+          return {id: goalId, events: merged.slice(-40), cursor: r.cursor ?? merged[merged.length - 1]?.id ?? cursor, supported: true};
+        });
+      } catch (e) {
+        if (stopped) return;
+        const status = (e as PostError)?.status;
+        if (status === 404 || status === 405) setState({id: goalId, events: [], cursor: null, supported: false});
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [goalId, latestEventId]);
+  if (state.id !== goalId || !state.supported) return {events: fallback, recorded: false};
+  return {events: state.events, recorded: true};
+}
+
+// Full records of one request, fetched only when Details is opened.
+function useGoalDetail(goalId: string, wanted: boolean): {detail: GoalDetail | null; loading: boolean} {
+  const {get} = useArena();
+  const [state, setState] = useState<{id: string; detail: GoalDetail | null; loading: boolean}>({id: '', detail: null, loading: false});
+  const getRef = useRef(get);
+  getRef.current = get;
+  useEffect(() => {
+    if (!wanted || (state.id === goalId && (state.detail || state.loading))) return;
+    let stopped = false;
+    setState({id: goalId, detail: null, loading: true});
+    (async () => {
+      try {
+        const r = (await getRef.current(`goals/${goalId}`)) as GoalDetail;
+        if (!stopped) setState({id: goalId, detail: r && r.goal ? r : null, loading: false});
+      } catch {
+        if (!stopped) setState({id: goalId, detail: null, loading: false});
+      }
+    })();
+    return () => {
+      stopped = true;
+    };
+  }, [goalId, wanted]);
+  return state.id === goalId ? {detail: state.detail, loading: state.loading} : {detail: null, loading: false};
+}
 
 // Milestone tree. Each node is a native <details> (keyboard operable: Tab to the summary,
 // Enter or Space toggles). The summary shows the recorded state, the accounts that ran the
@@ -233,14 +356,7 @@ function Milestone({node, all, depth = 0}: {node: MilestoneNode; all: RecordData
   const ev = node.evidence;
   const active = node.owners.filter(o => o.active);
   const names = node.owners.map(o => o.name).join(', ');
-  const summary = [
-    `${node.code} ${node.title}`,
-    node.status,
-    names ? `owner ${names}` : '',
-    node.waitsOn.length ? `waits on ${node.waitsOn.join(', ')}` : '',
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  const summary = [`${node.code} ${node.title}`, node.status, names ? `owner ${names}` : '', node.waitsOn.length ? `waits on ${node.waitsOn.join(', ')}` : ''].filter(Boolean).join(' · ');
   return (
     <details className={`milestone ${node.kind} ${node.tone}` + (depth ? ' nested' : '')} open={live || undefined}>
       <summary aria-label={summary}>
@@ -297,9 +413,7 @@ function Milestone({node, all, depth = 0}: {node: MilestoneNode; all: RecordData
           <TaskCard key={t.id} task={t} all={all} />
         ))}
         {node.kind !== 'milestone' && !node.tasks.length && (
-          <p className="small muted ms-note">
-            {node.kind === 'review' ? 'Independent review attempts are recorded on each task; open a task for its findings.' : 'Integration is recorded per task once a verified candidate is accepted.'}
-          </p>
+          <p className="small muted ms-note">{node.kind === 'review' ? 'Independent review attempts are recorded on each task; open a task for its findings.' : 'Integration is recorded per task once a verified candidate is accepted.'}</p>
         )}
         {node.kind === 'milestone' && !node.all.length && <p className="small muted ms-note">No tasks recorded under this milestone.</p>}
       </div>
@@ -330,9 +444,41 @@ export function Build() {
   const {data, now, goal, setGoal, setModal, disabled, action} = useArena();
   const [message, setMessage] = useState('');
   const [composing, setComposing] = useState(false);
-  const [wide] = useState(() => typeof window !== 'undefined' && window.matchMedia('(min-width: 1181px)').matches);
+  const [showArchived, setShowArchived] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const views = (data.goals || []).map(g => goalView(g, data)).sort((a, b) => b.goal.created - a.goal.created);
-  const selected = views.find(v => v.goal.id === goal) || views.find(v => goalClass(v) === 'active') || views.find(v => goalClass(v) === 'needs') || views.find(v => goalClass(v) === 'done') || views[0];
+  const selected = views.find(v => v.goal.id === goal) || defaultGoal(views, data);
+  const selectedId = selected?.goal.id || '';
+  const archivedCount = views.filter(v => v.archived).length;
+  const listed = views.filter(v => showArchived || !v.archived || v.goal.id === selectedId);
+  const liveAttempt = selected ? liveAttemptOf(selected, data) : undefined;
+  const ids = new Set(selected ? selected.tasks.map(t => t.id) : []);
+  const mine = data.attempts.filter(a => ids.has(a.task_id));
+  const attemptIds = new Set(mine.map(a => a.id));
+  const snapshotEvents = selected
+    ? data.events
+        .filter((e: RecordData) => {
+          const d = e.data || {};
+          return (d.task_id && ids.has(d.task_id)) || (d.attempt_id && attemptIds.has(d.attempt_id)) || d.goal_id === selectedId;
+        })
+        .slice(0, 40)
+        .reverse()
+    : [];
+  // Hooks run on every render, so they come before the empty-state return below.
+  const {events: output, recorded} = useGoalEvents(selectedId, data.events[0]?.id, snapshotEvents);
+  const tail = useLiveTail(liveAttempt?.id);
+  const {detail, loading} = useGoalDetail(selectedId, detailsOpen && !!selected);
+  useEffect(() => {
+    setComposing(false);
+    setDetailsOpen(false);
+  }, [selectedId]);
+  // The terminal keeps its newest line in view, like a real console.
+  const terminal = useRef<HTMLPreElement>(null);
+  const lineCount = output.length + (tail?.lines.length || 0);
+  useEffect(() => {
+    const el = terminal.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [selectedId, lineCount]);
   if (!selected)
     return (
       <>
@@ -354,35 +500,32 @@ export function Build() {
   const cls = goalClass(selected);
   const status = goalStatus(selected);
   const groups: [string, GoalView[]][] = [
-    ['Active', views.filter(v => goalClass(v) === 'active')],
-    ['Needs you', views.filter(v => goalClass(v) === 'needs')],
-    ['Completed', views.filter(v => goalClass(v) === 'done')],
-    ['History', views.filter(v => goalClass(v) === 'history')],
+    ['Active', listed.filter(v => goalClass(v) === 'active')],
+    ['Needs you', listed.filter(v => goalClass(v) === 'needs')],
+    ['Completed', listed.filter(v => goalClass(v) === 'done')],
+    ['History', listed.filter(v => goalClass(v) === 'history')],
   ];
-  const ids = new Set(selected.tasks.map(t => t.id));
-  const liveAttempt = data.attempts.filter(a => ids.has(a.task_id) && ACTIVE_ATTEMPT.includes(a.state)).sort((a, b) => b.created - a.created)[0];
   const current =
-    (liveAttempt && selected.tasks.find(t => t.id === liveAttempt.task_id)) ||
-    selected.tasks.find(t => ACTIVE_TASK.includes(t.state)) ||
-    selected.children.find(t => !['completed', 'cancelled'].includes(t.state)) ||
-    selected.plan;
+    (liveAttempt && selected.tasks.find(t => t.id === liveAttempt.task_id)) || selected.tasks.find(t => ACTIVE_TASK.includes(t.state)) || selected.children.find(t => !['completed', 'cancelled'].includes(t.state)) || selected.plan;
   const currentAgent = liveAttempt && data.agents.find(a => a.id === liveAttempt.account_id);
-  const currentProvider = currentAgent?.provider || (current && data.attempts.filter(a => a.task_id === current.id).map(a => data.agents.find(x => x.id === a.account_id)?.provider).filter(Boolean).pop()) || '';
-  const stoppable = selected.tasks.filter(t => !UNSTOPPABLE.includes(t.state) && t.state !== 'cancelled' && (ACTIVE_TASK.includes(t.state) || t.state === 'awaiting_input' || ['ready', 'waiting_capacity', 'waiting_dependency', 'cooldown', 'repair_queued'].includes(t.state)));
+  const agentName = currentAgent?.name || (tail?.provider ? cap(tail.provider) : 'Agent');
+  const currentProvider =
+    currentAgent?.provider ||
+    (current &&
+      data.attempts
+        .filter(a => a.task_id === current.id)
+        .map(a => data.agents.find(x => x.id === a.account_id)?.provider)
+        .filter(Boolean)
+        .pop()) ||
+    '';
+  // Stop and Message agents act on work that can still be steered: a task that is running,
+  // queued or waiting on an answer. Finished builds get neither button.
+  const stoppable = selected.tasks.filter(t => !UNSTOPPABLE.includes(t.state) && t.state !== 'cancelled' && (ACTIVE_TASK.includes(t.state) || t.state === 'awaiting_input' || QUEUED_TASK.includes(t.state)));
   const stopTarget = (current && stoppable.find(t => t.id === current.id)) || stoppable[0];
-  const messageTarget = stopTarget || current;
+  const messageTarget = stopTarget;
   const completed = selected.children.filter(t => t.state === 'completed').length;
-  const mine = data.attempts.filter(a => ids.has(a.task_id));
   const usage = usageTotals(mine);
-  const attemptIds = new Set(mine.map(a => a.id));
-  const output = data.events
-    .filter((e: RecordData) => {
-      const d = e.data || {};
-      return (d.task_id && ids.has(d.task_id)) || (d.attempt_id && attemptIds.has(d.attempt_id)) || d.goal_id === selected.goal.id;
-    })
-    .slice(0, 14)
-    .reverse();
-  const stamp = (t: number) => new Date(t * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false});
+  const liveElapsed = tail?.elapsed ?? (liveAttempt ? now - liveAttempt.created : 0);
 
   // Agent stack rows: one per task that has work recorded, with the account that last ran it.
   const stack = (selected.children.length ? selected.children : selected.tasks)
@@ -402,8 +545,12 @@ export function Build() {
           <div className="row wrap">
             <h2 className="page-title">{TITLES[cls]}</h2>
             <Chip tone={status.tone}>{status.label}</Chip>
+            {selected.archived && <Chip tone="off">Archived project</Chip>}
           </div>
-          <p className="page-sub clamp2">{selected.goal.request}</p>
+          <p className="page-sub clamp2">
+            {selected.title}
+            {selected.project ? ` · ${selected.project.name}` : ''}
+          </p>
         </div>
         <div className="field inline">
           <label htmlFor="goal-pick">Request</label>
@@ -414,18 +561,26 @@ export function Build() {
                 <optgroup key={name} label={name}>
                   {list.map(v => (
                     <option key={v.goal.id} value={v.goal.id}>
-                      {goalStatus(v).label} · {v.project?.name || ''} · {v.goal.request.slice(0, 48)}
-                      {v.goal.request.length > 48 ? '…' : ''}
+                      {goalStatus(v).label} · {v.title} · {v.project?.name || ''}
+                      {v.archived ? ' (archived)' : ''}
                     </option>
                   ))}
                 </optgroup>
               ))}
           </select>
+          {archivedCount > 0 && (
+            <label className="check small muted">
+              <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} />
+              Show archived ({archivedCount})
+            </label>
+          )}
         </div>
       </div>
 
       <div className="build-grid">
         <div className="stack">
+          <NeedsCard view={selected} />
+
           <section className="card stepper-card">
             <BuildSteps view={selected} />
           </section>
@@ -440,12 +595,12 @@ export function Build() {
                 <Provider glyph={providerGlyph(currentProvider)} size="lg" on={!!liveAttempt} />
                 <span className="list-main">
                   <b>{current.title}</b>
-                  <span className="small muted clamp2">{liveAttempt ? `${currentAgent?.name || 'Worker'} · ${liveAttempt.model}${liveAttempt.effort ? ' · ' + liveAttempt.effort : ''} · ${cap(liveAttempt.phase)}` : current.reason}</span>
+                  <span className="small muted clamp2">{liveAttempt ? `${agentName} · ${liveAttempt.model}${liveAttempt.effort ? ' · ' + liveAttempt.effort : ''} · ${cap(tail?.phase || liveAttempt.phase)}` : current.reason}</span>
                   <StageBar stage={Math.max(0, stageIndex(current))} total={STAGES.length} tone={family(current.state)} label={`Stage ${Math.max(0, stageIndex(current)) + 1} of ${STAGES.length}`} />
                 </span>
                 <span className="current-side">
                   <Chip tone={family(current.state)}>{stateLabel(current.state)}</Chip>
-                  <span className="num small muted">{liveAttempt ? duration(now - liveAttempt.created) : ''}</span>
+                  <span className="num small muted">{liveAttempt ? duration(liveElapsed) : ''}</span>
                 </span>
               </button>
             ) : (
@@ -483,39 +638,54 @@ export function Build() {
           <section className="panel">
             <header className="panel-head">
               <h2>Live output</h2>
-              <Eyebrow>Recorded events</Eyebrow>
+              {liveAttempt && tail ? (
+                <span className="count num live-meta">
+                  <LiveDot tone="live" /> {duration(liveElapsed)} · {bytes(tail.bytes || 0)}
+                </span>
+              ) : (
+                <Eyebrow>{liveAttempt ? 'Live' : recorded ? 'Recorded events' : 'Recent events'}</Eyebrow>
+              )}
             </header>
-            <pre className="terminal" aria-live="polite">
+            <pre className="terminal" aria-live="polite" ref={terminal}>
               {output.map((e: RecordData) => (
                 <span key={e.id} className={'t-' + (e.kind.split('.')[0] || 'event')}>
                   <span className="t-time">[{stamp(e.time)}]</span> {eventLine(e, data)}
                   {'\n'}
                 </span>
               ))}
+              {liveAttempt && tail && tail.lines.length > 0 && (
+                <span className="t-tail">
+                  {output.length > 0 && '\n'}
+                  {tail.lines.map((l, i) => (
+                    <span key={i} className={'t-' + l.kind}>
+                      <span className="t-time">[{stamp(l.t ?? liveAttempt.created + (tail.elapsed || 0))}]</span> {liveLineText(l, agentName)}
+                      {'\n'}
+                    </span>
+                  ))}
+                </span>
+              )}
               {liveAttempt && (
                 <span className="t-live">
-                  <span className="t-time">[{stamp(now)}]</span> {currentAgent?.name || 'Worker'} · {cap(liveAttempt.phase)} · {liveAttempt.state} · {duration(now - liveAttempt.created)}
+                  <span className="t-time">[{stamp(now)}]</span> {agentName} · {cap(tail?.phase || liveAttempt.phase)} · {tail?.done ? 'finishing' : liveAttempt.state} · {duration(liveElapsed)}
                   {'\n'}
                 </span>
               )}
-              {!output.length && !liveAttempt && 'No events recorded for this request yet.\n'}
+              {!output.length && !liveAttempt && (selected.tasks.length ? 'Events for this request are older than the current window; open Details for its recorded attempts and evidence.\n' : 'Nothing has happened on this request yet.\n')}
             </pre>
           </section>
 
-          <div className="build-actions">
-            <button className="btn" disabled={disabled || !messageTarget || UNSTOPPABLE.includes(messageTarget.state)} onClick={() => setComposing(c => !c)} aria-expanded={composing}>
-              <Icon name="chat" size={16} />
-              Message agents
-            </button>
-            <button
-              className="btn danger"
-              disabled={disabled || !stopTarget}
-              onClick={() => stopTarget && action(`tasks/${stopTarget.id}/cancel`, {revision: stopTarget.rev}, 'Cancellation requested; owned worker will stop')}
-            >
-              <Icon name="stop" size={16} />
-              Stop
-            </button>
-          </div>
+          {stopTarget && (
+            <div className="build-actions">
+              <button className="btn" disabled={disabled || !messageTarget} onClick={() => setComposing(c => !c)} aria-expanded={composing}>
+                <Icon name="chat" size={16} />
+                Message agents
+              </button>
+              <button className="btn danger" disabled={disabled} onClick={() => action(`tasks/${stopTarget.id}/cancel`, {revision: stopTarget.rev}, 'Cancellation requested; owned worker will stop')}>
+                <Icon name="stop" size={16} />
+                Stop
+              </button>
+            </div>
+          )}
           {composing && messageTarget && (
             <div className="card compose">
               <label htmlFor="agent-message">Instruction for “{messageTarget.title}” · applied at the next safe boundary</label>
@@ -542,7 +712,7 @@ export function Build() {
         </div>
 
         <div className="stack">
-          <details className="disclosure" open={wide || cls !== 'active'}>
+          <details className="disclosure" open={detailsOpen} onToggle={e => setDetailsOpen((e.currentTarget as HTMLDetailsElement).open)}>
             <summary>
               Details <span className="muted small">director's plan, tasks, evidence and usage</span>
             </summary>
@@ -553,17 +723,17 @@ export function Build() {
                     Objective · {selected.project?.name || 'Project'} · {when(selected.goal.created)}
                   </Eyebrow>
                 </div>
-                <blockquote>{selected.goal.request}</blockquote>
+                <blockquote>{detail?.goal?.request || selected.goal.request}</blockquote>
                 <Facts
                   rows={[
                     ['Tasks', `${completed}/${selected.children.length} completed`],
-                    ['Scope authority', selected.project?.scope.join(', ') || ''],
+                    ['Scope authority', selected.project?.scope?.join(', ') || ''],
                     selected.project?.integrated_head ? ['Main', <Sha value={selected.project.integrated_head} />] : null,
                     ['Tokens this build (subscription, no API charges)', usage ? `${usage.calls} calls · ${usage.fields.map(([k, v]) => `${k} ${v.toLocaleString()}`).join(' · ')}` : 'Not reported yet'],
                   ]}
                 />
               </article>
-              <Director view={selected} />
+              <Director view={selected} detail={detail} loading={loading} />
               <MilestoneTree view={selected} />
             </div>
           </details>

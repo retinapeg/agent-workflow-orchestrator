@@ -1,7 +1,7 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {useArena} from '../App';
 import {useSpeech} from '../speech';
-import {ago, buildPhrase, clock, planTasks, seconds, type ChatMessage, type Conversation, type ConversationDetail, type PlanMilestone, type Spec} from '../types';
+import {ago, buildPhrase, clock, duration, pickableProjects, planTasks, seconds, type ChatMessage, type Conversation, type ConversationDetail, type PlanMilestone, type Spec} from '../types';
 import {Chip, Eyebrow, Icon, LiveDot, Mark} from '../ui';
 
 // Talk to the director like a colleague. Sending never starts a build: a build begins only
@@ -242,11 +242,11 @@ function Bubble({m, spec, onSend, busy}: {m: ChatMessage; spec: Spec; onSend: (t
             <LiveDot tone="live" />
             <b>Build started on {m.project || 'your project'}</b>
           </div>
-          <p className="small muted">Your director is inspecting the project and planning the work. Progress is on the Build tab.</p>
+          <p className="small muted">Your director is inspecting the project and planning the work. You can leave this running and come back.</p>
           {m.goal_id && (
-            <button type="button" className="btn" onClick={() => openGoal(m.goal_id!)}>
-              Open build
-              <Icon name="arrow" size={16} />
+            <button type="button" className="btn primary" onClick={() => openGoal(m.goal_id!)}>
+              <Icon name="build" size={16} />
+              Watch the build
             </button>
           )}
         </div>
@@ -275,7 +275,7 @@ export function Chat() {
   const conversations: Conversation[] = data.conversations || [];
   const listed = id ? conversations.find(c => c.id === id) : undefined;
   const thinking = detail?.status === 'thinking' || (!!listed && listed.status === 'thinking');
-  const projects = data.projects.filter(p => p.enabled !== false);
+  const projects = pickableProjects(data).filter(p => p.enabled !== false);
   const projectId = detail?.project_id ?? listed?.project_id ?? null;
   const project = detail?.project || (projectId ? data.projects.find(p => p.id === projectId) : null);
   const spec: Spec = detail?.spec ?? listed?.spec ?? null;
@@ -404,6 +404,28 @@ export function Chat() {
     }
   };
 
+  // While the director answers: how long it has been and what it is doing. A director turn
+  // reads the repository first, which is why it can take a minute; the line says so rather
+  // than spinning silently. The clock is the host's, ticked locally once a second.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!thinking) return;
+    const t = window.setInterval(() => setTick(n => n + 1), 1000);
+    return () => window.clearInterval(t);
+  }, [thinking]);
+  const skew = Date.now() / 1000 - now;
+  const lastUser = [...messages].reverse().find(m => m.role === 'user');
+  const thinkingFor = thinking && lastUser ? Math.max(0, Date.now() / 1000 - skew - lastUser.time) : null;
+  const thinkingLine = !thinking
+    ? ''
+    : project
+      ? thinkingFor !== null && thinkingFor > 20
+        ? `Still working in ${project.name} · a director turn reads the repository first`
+        : `Reading ${project.name}…`
+      : thinkingFor !== null && thinkingFor > 20
+        ? 'Still thinking · the director checks Arena before answering'
+        : 'Thinking…';
+
   const coarse = typeof window !== 'undefined' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   const canSend = !!draft.trim() && online;
   const title = detail?.title || listed?.title || (id ? 'Conversation' : 'New conversation');
@@ -487,7 +509,10 @@ export function Chat() {
           <div className="msg arena thinking" role="status">
             <div className="bubble">
               <LiveDot tone="live" />
-              Arena is looking…
+              <span>
+                {thinkingLine}
+                {thinkingFor !== null && <span className="num muted"> · {duration(thinkingFor)}</span>}
+              </span>
             </div>
           </div>
         )}

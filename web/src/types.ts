@@ -21,7 +21,55 @@ export type Snapshot = {
   version: string;
 };
 
+// Snapshot rows carry whatever the host records; these name the fields the UI relies on
+// from the usability contract. Every one is optional so an older host still renders.
+export type Goal = RecordData & {id: string; project_id: string; request: string; title?: string; created: number; display_title?: string};
+export type Project = RecordData & {id: string; name: string; archived?: boolean; enabled?: boolean};
+
+// GET /api/v1/goals/{id}: the full records behind one request, fetched on demand.
+export type GoalDetail = {goal: Goal; tasks: RecordData[]; attempts: RecordData[]; events: RecordData[]};
+
+// GET /api/v1/attempts/{id}/live: the tail of the agent's transcript while (and after) it runs.
+export type LiveKind = 'assistant' | 'tool' | 'command' | 'file' | 'test' | 'error' | 'system';
+export type LiveLine = {t: number | null; kind: LiveKind; text: string};
+export type LiveTail = {
+  state: string;
+  phase: string;
+  model: string;
+  provider: string;
+  started: number | null;
+  elapsed: number;
+  bytes: number;
+  done: boolean;
+  lines: LiveLine[];
+};
+
 export type Tab = 'chat' | 'overview' | 'projects' | 'build' | 'agents' | 'review';
+
+// A request's short name. The host supplies `display_title`; an older host does not, so the
+// same rule runs here: drop a leading OUTCOME:/Outcome:/Request: label and markdown, keep the
+// first sentence, cap at 72 characters with an ellipsis.
+export function deriveTitle(text: string | null | undefined, max = 72): string {
+  let s = String(text || '')
+    .replace(/\r\n/g, '\n')
+    .trim()
+    .replace(/^(?:\*\*)?(?:outcome|request)(?:\*\*)?\s*:\s*/i, '')
+    .replace(/^#+\s*/, '')
+    .replace(/[*_`]/g, '')
+    .trim();
+  const nl = s.indexOf('\n');
+  if (nl > 0) s = s.slice(0, nl).trim();
+  const m = /^(.+?[.!?])(?:\s|$)/.exec(s);
+  if (m && m[1].length >= 12) s = m[1];
+  s = s.replace(/[.\s]+$/, '').trim();
+  if (s.length > max) s = s.slice(0, max - 1).replace(/\s+\S*$/, '').trim() + '…';
+  return s;
+}
+export const displayTitle = (goal: RecordData | null | undefined): string => (goal?.display_title as string) || deriveTitle(goal?.request || goal?.title);
+
+export const isArchived = (project: RecordData | null | undefined): boolean => project?.archived ?? false;
+// Projects a request can be sent to: enrolled, not archived. Pickers never list archived ones.
+export const pickableProjects = (snap: Snapshot): RecordData[] => snap.projects.filter(p => !isArchived(p));
 
 export const TABS: {key: Tab; label: string}[] = [
   {key: 'chat', label: 'Chat'},
@@ -179,6 +227,8 @@ export type GoalView = {
   tone: Family;
   status: string;
   active: boolean;
+  title: string;
+  archived: boolean;
 };
 
 export function goalView(goal: RecordData, snap: Snapshot): GoalView {
@@ -213,7 +263,26 @@ export function goalView(goal: RecordData, snap: Snapshot): GoalView {
     status = 'Cancelled';
   }
   const active = tone !== 'done' && tone !== 'off';
-  return {goal, project, plan, children, tasks, tone, status, active};
+  return {goal, project, plan, children, tasks, tone, status, active, title: displayTitle(goal), archived: isArchived(project)};
+}
+
+// The live attempt of a request (newest first), if any task of it is being worked on now.
+export function liveAttemptOf(view: GoalView, snap: Snapshot): RecordData | undefined {
+  const ids = new Set(view.tasks.map(t => t.id));
+  return snap.attempts.filter(a => ids.has(a.task_id) && ACTIVE_ATTEMPT.includes(a.state)).sort((a, b) => b.created - a.created)[0];
+}
+
+// Which request the Builds tab should open on when none is chosen: the live one, else the
+// one waiting on the owner, else the newest. Archived projects' requests only when live.
+export function defaultGoal(views: GoalView[], snap: Snapshot): GoalView | undefined {
+  const byTime = [...views].sort((a, b) => b.goal.created - a.goal.created);
+  return (
+    byTime.find(v => !!liveAttemptOf(v, snap)) ||
+    byTime.find(v => goalClass(v) === 'active' && !v.archived) ||
+    byTime.find(v => goalClass(v) === 'needs' && !v.archived) ||
+    byTime.find(v => !v.archived) ||
+    byTime[0]
+  );
 }
 
 export type Usage = {calls: number; fields: [string, number][]};
@@ -319,6 +388,25 @@ export function needsYou(snap: Snapshot): NeedsYou {
   const manual = new Set(snap.projects.filter(p => p.integration_policy !== 'auto_local_main').map(p => p.id));
   const approvals = snap.approvals.filter(a => a.state === 'pending' && manual.has(snap.tasks.find(t => t.id === a.task_id)?.project_id));
   return {answers, access, approvals, count: answers.length + access.length + approvals.length};
+}
+
+// The same items as rows the owner can tap, newest first. `kind` says where a tap lands:
+// an approval opens the review dialog, a task opens its build (which shows the question or
+// the access problem at the top).
+export type NeedRow = {id: string; at: number; tone: 'decision' | 'blocked'; label: string; title: string; sub: string; kind: 'review' | 'task'; taskId?: string; goalId?: string; project: string};
+export function needsYouRows(snap: Snapshot): NeedRow[] {
+  const needs = needsYou(snap);
+  const task = (id: string) => snap.tasks.find(t => t.id === id);
+  const projectName = (id?: string) => snap.projects.find(p => p.id === id)?.name || '';
+  const rows: NeedRow[] = [
+    ...needs.approvals.map(a => {
+      const t = task(a.task_id);
+      return {id: a.id, at: a.created as number, tone: 'decision' as const, label: 'Approve', title: t?.title || 'Verified change', sub: `Verified candidate ${shortSha(a.candidate, 10)} awaits your decision`, kind: 'review' as const, taskId: t?.id, goalId: t?.goal_id, project: projectName(t?.project_id)};
+    }),
+    ...needs.answers.map(t => ({id: t.id, at: t.updated as number, tone: 'decision' as const, label: 'Answer', title: t.title as string, sub: (t.question || t.reason || '') as string, kind: 'task' as const, taskId: t.id as string, goalId: t.goal_id as string, project: projectName(t.project_id)})),
+    ...needs.access.map(t => ({id: t.id, at: t.updated as number, tone: 'blocked' as const, label: stateLabel(t.state), title: t.title as string, sub: (t.reason || '') as string, kind: 'task' as const, taskId: t.id as string, goalId: t.goal_id as string, project: projectName(t.project_id)})),
+  ];
+  return rows.sort((a, b) => b.at - a.at);
 }
 
 // Front-page class of a request. "active" has live or queued work; "needs" is waiting on the

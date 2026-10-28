@@ -698,7 +698,10 @@ details.disclosure > summary .muted {
 }
 .facts dt {
   color: var(--muted);
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 62%;
+  overflow-wrap: anywhere;
 }
 .facts dd {
   text-align: right;
@@ -1000,6 +1003,46 @@ main {
   color: var(--amber);
   font-size: 13px;
   font-weight: 600;
+}
+/* Global "Needs you" line: one tappable row under the top bar whenever the owner can act. */
+.needs-band {
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 48px;
+  box-shadow: inset 0 1px 0 rgba(255, 220, 150, 0.2), 0 0 18px -6px rgba(255, 191, 77, 0.35);
+}
+.needs-band:hover {
+  background: rgba(255, 191, 77, 0.16);
+}
+.needs-band-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.needs-band-text b {
+  flex: none;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.needs-band-text .clamp1 {
+  color: var(--ink);
+  font-weight: 500;
+  min-width: 0;
+}
+.needs-band .count {
+  flex: none;
+  color: var(--amber);
+}
+.needs-band svg {
+  flex: none;
+  color: var(--amber);
 }
 
 /* Page heads & tiles ------------------------------------------------------ */
@@ -1447,6 +1490,18 @@ main {
 .list-row.recent .list-main b {
   font-size: 14px;
 }
+.build-agent {
+  color: var(--ink-2);
+}
+.build-last {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--electric-2);
+}
+.home-main > .new-request {
+  min-height: 52px;
+  font-size: 15px;
+}
 
 /* Stepper: connected circles ------------------------------------------ */
 .stepper-card {
@@ -1620,6 +1675,66 @@ main {
 .terminal .t-live {
   color: #fff;
 }
+.terminal .t-assistant {
+  color: #e6f1ff;
+}
+.terminal .t-tool,
+.terminal .t-command {
+  color: #8ccaff;
+}
+.terminal .t-file {
+  color: #c3e8d4;
+}
+.terminal .t-test {
+  color: #ffd98a;
+}
+.terminal .t-error {
+  color: #ff9b8a;
+}
+.terminal .t-system {
+  color: var(--muted);
+}
+.live-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--electric-2);
+}
+.needs-card {
+  border-color: rgba(255, 191, 77, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 220, 150, 0.2), 0 0 18px -6px rgba(255, 191, 77, 0.35);
+}
+.needs-card .eyebrow {
+  color: var(--amber);
+}
+.needs-card .row .list-main {
+  flex: 1;
+  min-width: 0;
+}
+.needs-card .row .btn {
+  flex: none;
+}
+.field.inline .check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  cursor: pointer;
+}
+.field.inline .check {
+  margin-bottom: 0;
+}
+.field.inline .check input {
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border-radius: 4px;
+  box-shadow: none;
+  flex: none;
+  accent-color: var(--electric);
+}
 .build-actions {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -1660,6 +1775,7 @@ main {
 .director h3 {
   font-size: 16px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
 }
 .lede {
   font-size: 14px;
@@ -1674,6 +1790,7 @@ main {
 .spec-grid ul,
 .findings,
 .spec ul {
+  overflow-wrap: anywhere;
   padding-left: 18px;
   font-size: 13.5px;
   color: var(--ink-2);
@@ -2106,6 +2223,21 @@ a.btn {
 }
 .project-row.open {
   background: rgba(43, 123, 255, 0.05);
+}
+.project-row.archived .project-main {
+  opacity: 0.72;
+}
+.archived-projects {
+  margin-top: 18px;
+}
+.archived-projects > summary .muted {
+  font-weight: 500;
+}
+.archived-projects > .project-list {
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: none;
 }
 .project-line {
   display: flex;
@@ -2939,7 +3071,7 @@ pre.code .d-file {
   .home,
   .build-grid,
   .cards.two {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
   .home-side,
   .home-main {
@@ -3100,6 +3232,17 @@ pre.code .d-file {
   .build-head .field.inline {
     min-width: 0;
     max-width: none;
+  }
+  .needs-band {
+    margin-bottom: 14px;
+  }
+  .needs-band-text {
+    flex-direction: column;
+    gap: 2px;
+  }
+  .needs-card .row.between:has(.list-main) {
+    flex-direction: column;
+    align-items: stretch;
   }
   .build-side .providers {
     display: none;

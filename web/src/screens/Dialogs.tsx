@@ -1,9 +1,10 @@
-import React, {useState} from 'react';
+import React, {useEffect, useState} from 'react';
 import {useArena, type PostError} from '../App';
 import {useSpeech} from '../speech';
-import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, attemptTone, cap, clock, duration, family, human, seconds, stateLabel, when, type RecordData} from '../types';
+import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, attemptTone, cap, clock, duration, family, human, pickableProjects, seconds, stateLabel, when, type RecordData} from '../types';
 import {Chip, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
 import {Devices} from './Devices';
+import {ProposalCard, ProvisionCard, type Proposal} from './Provision';
 
 function lineClass(line: string) {
   if (line.startsWith('+++') || line.startsWith('---')) return 'd-file';
@@ -73,26 +74,58 @@ export function ProjectAsk({asked, busy, onPick, onCancel}: {asked: Asked; busy:
   );
 }
 
+// The last project a request went to is remembered on this device so the next request
+// defaults to it; "Let Arena decide" is the default until then.
+const LAST_PROJECT = 'arena.lastProject';
+const lastProject = (): string => {
+  try {
+    return localStorage.getItem(LAST_PROJECT) || AUTO;
+  } catch {
+    return AUTO;
+  }
+};
+const rememberProject = (id: string) => {
+  try {
+    localStorage.setItem(LAST_PROJECT, id);
+  } catch {
+    /* private mode: the default simply stays "Let Arena decide" */
+  }
+};
+
+// The one request form. A spec shared into Arena (Share → Arena, or a ?text= link) lands
+// in the textarea through the handoff read on load.
 function NewRequest() {
-  const {data, post, notify, setModal, disabled} = useArena();
-  const [draft, setDraft] = useState('');
-  const [project, setProject] = useState(AUTO);
+  const {data, post, notify, setModal, disabled, handoff, clearHandoff, openGoal} = useArena();
+  const [draft, setDraft] = useState(handoff);
+  const [project, setProject] = useState(() => {
+    const last = lastProject();
+    return last !== AUTO && !pickableProjects(data).some(p => p.id === last) ? AUTO : last;
+  });
   const [asked, setAsked] = useState<Asked | null>(null);
   const [sending, setSending] = useState(false);
   const speech = useSpeech(text => setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + ' ' : '') + text));
+  const projects = pickableProjects(data);
+  useEffect(() => {
+    if (handoff) clearHandoff();
+  }, [handoff]);
   const submit = async (target: string) => {
     const text = draft.trim();
     if (!text || sending) return;
     setSending(true);
     try {
-      if (target === AUTO) await post('requests', {instructions: text});
+      let r: RecordData;
+      if (target === AUTO) r = await post('requests', {instructions: text});
       else {
-        const p = data.projects.find(p => p.id === target);
+        const p = projects.find(p => p.id === target);
         if (!p) throw Error('Choose a project');
-        await post(`projects/${p.id}/requests`, {revision: p.rev, instructions: text});
+        r = await post(`projects/${p.id}/requests`, {revision: p.rev, instructions: text});
       }
-      notify('Your director is inspecting the project and preparing the work.');
+      const chosen = (r?.project_id as string) || (target !== AUTO ? target : '');
+      if (chosen) rememberProject(chosen);
+      const name = data.projects.find(p => p.id === chosen)?.name || 'your project';
+      notify(`Sent to ${name}. Your director is inspecting the project and preparing the work.`);
       setModal(null);
+      if (typeof r?.goal_id === 'string') openGoal(r.goal_id);
     } catch (e) {
       const which = askedFrom(e);
       if (which) setAsked(which);
@@ -120,9 +153,10 @@ function NewRequest() {
           }}
         >
           <option value={AUTO}>Let Arena decide</option>
-          {data.projects.map(p => (
+          {projects.map(p => (
             <option key={p.id} value={p.id}>
               {p.name}
+              {p.self ? ' (this app)' : ''}
             </option>
           ))}
         </select>
@@ -137,7 +171,7 @@ function NewRequest() {
             </button>
           )}
         </div>
-        <textarea id="instructions" name="instructions" required rows={6} value={draft} onChange={e => setDraft(e.target.value)} placeholder="Make my application tracker easier to use." />
+        <textarea id="instructions" name="instructions" required rows={6} value={draft} onChange={e => setDraft(e.target.value)} autoFocus={!!handoff} placeholder="Describe the feature, the bug, or paste the spec you finished elsewhere." />
         {speech.listening && (
           <p className="listening" aria-live="polite">
             <LiveDot tone="live" />
@@ -148,13 +182,84 @@ function NewRequest() {
       </div>
       <p className="field-help">
         Describe the result in your own words. Type here{speech.supported ? ', tap Dictate,' : ''} or use your phone keyboard's microphone. Your director inspects the project, plans the work and coordinates the agents.
+        {!projects.length ? ' Enrol a project on the Mac first.' : ''}
       </p>
       {asked && <ProjectAsk asked={asked} busy={disabled || sending} onPick={submit} onCancel={() => setAsked(null)} />}
       <div className="dialog-actions">
-        <button className="btn primary" disabled={disabled || sending}>
+        <button className="btn primary" disabled={disabled || sending || !projects.length}>
+          <Icon name="bolt" size={16} />
           Build this for me
         </button>
       </div>
+    </form>
+  );
+}
+
+// New project: Arena proposes a name, a folder on the Mac and a private GitHub repository;
+// nothing is created until the owner approves. Lives in Projects → Add.
+function NewProject() {
+  const {data, post, notify, disabled} = useArena();
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [started, setStarted] = useState<RecordData | null>(null);
+  const propose = async (description: string) => {
+    const text = description.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      setProposal((await post('projects/proposals', {description: text})) as Proposal);
+      setStarted(null);
+    } catch (e) {
+      notify(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+  const approve = async () => {
+    if (!proposal || sending) return;
+    setSending(true);
+    try {
+      const r = await post('projects/provision', {proposal_id: proposal.id, revision: 0});
+      setStarted(r);
+      setProposal(null);
+      setDraft('');
+      notify(`Creating ${proposal.name} on the Mac and on GitHub.`);
+    } catch (e) {
+      notify(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+  const retry = (p: RecordData) => {
+    setStarted(null);
+    setProposal(null);
+    setDraft(p.description || '');
+    propose(p.description || '');
+  };
+  const provision = started ? (data.provisions || []).find(p => p.id === started.id) || started : null;
+  const busy = disabled || sending;
+  return (
+    <form
+      className="stack"
+      onSubmit={e => {
+        e.preventDefault();
+        propose(draft);
+      }}
+    >
+      <div className="field">
+        <label htmlFor="new-project-text">Describe the product you want</label>
+        <textarea id="new-project-text" rows={4} value={draft} onChange={e => setDraft(e.target.value)} placeholder="A command-line pomodoro timer in Python with a README and tests." />
+      </div>
+      <div className="dialog-actions">
+        <button className="btn primary" disabled={busy || !draft.trim()}>
+          <Icon name="plus" size={16} />
+          Propose project
+        </button>
+      </div>
+      {proposal && <ProposalCard proposal={proposal} busy={busy} onApprove={approve} onChange={() => setProposal(null)} />}
+      {provision && <ProvisionCard provision={provision} onRetry={retry} />}
+      <p className="field-help">Arena proposes a name, a folder on the Mac and a private GitHub repository. Nothing is created until you approve.</p>
     </form>
   );
 }
@@ -451,7 +556,7 @@ export function DialogBody() {
   const task = modal?.kind === 'task' ? data.tasks.find(t => t.id === modal.id) : null;
   const review = modal?.kind === 'review' ? data.approvals.find(a => a.id === modal.id) : null;
   const reviewedTask = review ? data.tasks.find(t => t.id === review.task_id) : null;
-  const title = modal?.kind === 'goal' ? 'What would you like to improve?' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : task?.title || reviewedTask?.title || 'Build control';
+  const title = modal?.kind === 'goal' ? 'New request' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : task?.title || reviewedTask?.title || 'Build control';
   const heartbeatAge = data.heartbeat ? now - data.heartbeat : null;
   return (
     <>
@@ -477,7 +582,9 @@ export function DialogBody() {
         )}
         {modal?.kind === 'enrol' && (
           <>
-            <p>Projects are enrolled on the Mac, never from the browser, so a reviewed manifest decides what the agents may touch.</p>
+            <NewProject />
+            <h3 className="section-title">Enrol an existing repository</h3>
+            <p>Existing repositories are enrolled on the Mac, never from the browser, so a reviewed manifest decides what the agents may touch.</p>
             <p className="note">
               On the host run <code>python -m agent_arena.control enroll</code> with the repository path, the scope the agents may edit, the frozen acceptance checks and the protected paths. Enrolling Arena itself needs <code>self_target</code>; builds then run in isolated workspaces and activate through a release worktree. The new project appears here as soon as the host records it.
             </p>
