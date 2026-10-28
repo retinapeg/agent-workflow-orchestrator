@@ -1,0 +1,68 @@
+........................................................................ [ 22%]
+...................................F.................................... [ 45%]
+........................................................................ [ 68%]
+........................................................................ [ 90%]
+.............................                                            [100%]
+=================================== FAILURES ===================================
+____ test_real_state_overview_under_200kb_and_proof_projects_archived_once _____
+
+tmp_path = PosixPath('/private/var/folders/yq/_hrwmxwx6q904tfp_11yjxcw0000gn/T/pytest-of-leonardaarons-ditson/pytest-1691/test_real_state_overview_under0')
+
+    def test_real_state_overview_under_200kb_and_proof_projects_archived_once(tmp_path):
+        home = real_state_home(tmp_path)
+        store = Store(home)  # opening the store runs the one-time migration
+        projects = {p["name"]: p for p in store.rows("projects")}
+        proof = [n for n in projects if n.startswith("Orchestrator live proof")]
+        assert len(proof) == 4 and all(projects[n]["archived"] for n in proof)
+        assert not projects["Arena"].get("archived")
+        assert not projects["Arena Smoke 20261028"].get("archived")
+        marker = store.setting(ARCHIVE_PROOF_MIGRATION)
+        assert sorted(marker["archived"]) == sorted(projects[n]["id"] for n in proof)
+        # Idempotent: an owner's unarchive survives every later store open.
+        client, headers = paired_client(store)
+        victim = projects[proof[0]]
+        r = client.post(
+            f"/api/v1/projects/{victim['id']}/unarchive",
+            json={"revision": victim["rev"]},
+            headers=headers,
+        )
+        assert r.status_code == 200 and r.json()["archived"] is False
+        assert archive_proof_projects(Store(home)) == []
+        assert Store(home).get("projects", victim["id"])["archived"] is False
+        assert len([e for e in store.rows("projects") if e.get("archived")]) == 3
+        # The slim overview of the real state is phone-sized.
+        r = client.get("/api/v1/overview")
+        assert r.status_code == 200
+        assert len(r.content) < 200_000, len(r.content)
+        data = r.json()
+        assert len(data["attempts"]) == 76 and len(data["tasks"]) == 28 and len(data["goals"]) == 13
+        assert sum(1 for p in data["projects"] if p["archived"]) == 3
+        assert all(g["display_title"] and len(g["display_title"]) <= 72 for g in data["goals"])
+        assert all("plan" not in (a.get("result") or {}) for a in data["attempts"])
+        # Goal detail and its event history work on real records.
+        g = data["goals"][-1]["id"]
+        detail = client.get(f"/api/v1/goals/{g}").json()
+        assert detail["goal"]["id"] == g and detail["tasks"] and detail["attempts"]
+        kinds = {e["kind"] for e in detail["events"]}
+        assert "goal.created" in kinds and "task.changed" in kinds
+        assert [e["id"] for e in detail["events"]] == sorted(e["id"] for e in detail["events"])
+        # A finished real attempt answers the live endpoint without its artifact directory.
+        a = detail["attempts"][0]["id"]
+        # The fixture records absolute paths from the owner's Mac, where the directory exists.
+        with store.transaction() as db:
+>           db.execute(
+                "UPDATE attempts SET artifact_dir=? WHERE id=?", (str(tmp_path / "gone"), a)
+            )
+E           sqlite3.OperationalError: no such column: artifact_dir
+
+tests/control/test_usability_api.py:323: OperationalError
+=============================== warnings summary ===============================
+.venv/lib/python3.11/site-packages/fastapi/testclient.py:1
+  /Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/lib/python3.11/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/control/test_usability_api.py::test_real_state_overview_under_200kb_and_proof_projects_archived_once
+1 failed, 316 passed, 1 warning in 155.02s (0:02:35)
+PYTEST_EXIT=1

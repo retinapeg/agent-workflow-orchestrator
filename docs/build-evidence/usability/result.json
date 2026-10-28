@@ -1,0 +1,59 @@
+{
+  "state": "/var/folders/yq/_hrwmxwx6q904tfp_11yjxcw0000gn/T/arena-real-TJ8BWf",
+  "viewport": 390,
+  "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  "dispatch": false,
+  "checks": {
+    "overviewBytes": 194622,
+    "proofProjects": [
+      {
+        "name": "Orchestrator live proof",
+        "archived": true
+      },
+      {
+        "name": "Orchestrator live proof parallel",
+        "archived": true
+      },
+      {
+        "name": "Orchestrator live proof parallel2",
+        "archived": true
+      },
+      {
+        "name": "Orchestrator live proof final",
+        "archived": true
+      }
+    ],
+    "requestPicker": [
+      "Let Arena decide",
+      "Arena (this app)",
+      "Arena Smoke 20261028"
+    ],
+    "chatPicker": [
+      "Arena (this app)",
+      "Arena Smoke 20261028",
+      "None"
+    ],
+    "buildsDefault": {
+      "expected": "goal_815db45a71e3a62d",
+      "selected": "goal_815db45a71e3a62d",
+      "rule": "newest",
+      "title": "Add to an existing project: What repo are we in?"
+    },
+    "liveOutput": {
+      "goal": "goal_a6faaa785f084d70",
+      "title": "Add optional silent completion, a Pomodoro: countdown prefix and a…",
+      "lines": 41,
+      "first": "[10:56:17] Document bell control, prefixed output and quiet mode · Running · Bounded worker started"
+    },
+    "overflow": {
+      "Chat": false,
+      "Overview": false,
+      "Projects": false,
+      "Build": false,
+      "Agents": false,
+      "Review": false
+    }
+  },
+  "passed": true,
+  "errors": []
+}

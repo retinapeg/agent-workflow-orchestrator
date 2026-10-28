@@ -1,0 +1,117 @@
+// Usability acceptance on a COPY of the real control state (tests/control/real_state_server.py).
+// Dispatch is disabled; the live database and the service on 8791 are never touched.
+import {chromium} from '@playwright/test';
+import {spawn} from 'node:child_process';
+import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-real-'),port='8794',base='http://127.0.0.1:'+port;
+const output=root+'/docs/build-evidence/usability';mkdirSync(output,{recursive:true});
+const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+const PROOF=/^Orchestrator live proof/;
+const ACTIVE_ATTEMPT=['leased','running','verifying'],ACTIVE_TASK=['leased','running','verifying','reviewing','recovering','integrating','ready','waiting_capacity','waiting_dependency','cooldown','repair_queued'];
+const NEEDS_TASK=['awaiting_input','needs_auth','needs_permission','ready_for_approval'];
+const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.real_state_server:create_app','--factory','--host','127.0.0.1','--port',port],{cwd:root,env:{...process.env,ARENA_UI_STATE:state,ARENA_UI_PORT:port},stdio:'pipe'});
+let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
+let browser;const result={state,viewport:390,userAgent:ANDROID,dispatch:false,checks:{}};
+const nav=page=>page.getByRole('navigation',{name:'Primary'});
+const overflow=page=>page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
+try{
+ for(let n=0;n<80;n++){try{if((await fetch(base)).ok)break}catch{}await new Promise(r=>setTimeout(r,250));}
+ browser=await chromium.launch();
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:ANDROID,deviceScaleFactor:2});
+ const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.goto(base);
+ await page.getByLabel('One-time pairing code').fill('real-state-one-use-code');
+ await page.getByRole('button',{name:'Pair device',exact:true}).click();
+ await nav(page).waitFor();
+
+ // 1. Slim overview on the real state.
+ const {bytes,snap}=await page.evaluate(async()=>{const r=await fetch('/api/v1/overview');const b=await r.arrayBuffer();return{bytes:b.byteLength,snap:JSON.parse(new TextDecoder().decode(b))}});
+ result.checks.overviewBytes=bytes;
+ if(bytes>=200_000)throw Error('Overview is '+bytes+' bytes (limit 200,000)');
+
+ // 2. The four proof projects are archived.
+ const proofs=snap.projects.filter(p=>PROOF.test(p.name));
+ result.checks.proofProjects=proofs.map(p=>({name:p.name,archived:!!p.archived}));
+ if(proofs.length!==4||proofs.some(p=>!p.archived))throw Error('Proof projects not all archived: '+JSON.stringify(result.checks.proofProjects));
+ const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
+
+ // 3. Home lists no archived project.
+ await nav(page).getByRole('button',{name:'Overview',exact:true}).click();
+ await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ const homeText=await page.locator('main').innerText();
+ if(PROOF.test(homeText)||/Orchestrator live proof/.test(homeText))throw Error('Archived proof project visible on Home');
+ // ...and neither does the request dialog's project picker.
+ await page.getByRole('button',{name:'New request',exact:true}).first().click();
+ await page.getByRole('dialog').waitFor();
+ const requestOptions=await page.locator('#project option').allInnerTexts();
+ result.checks.requestPicker=requestOptions;
+ if(requestOptions.some(o=>PROOF.test(o.trim())))throw Error('Archived project in request picker');
+ await page.screenshot({path:output+'/request-dialog-390.png'});
+ await page.getByRole('button',{name:'Close dialog'}).click();
+ await page.getByRole('dialog').waitFor({state:'hidden'});
+
+ // ...nor the chat project picker.
+ await nav(page).getByRole('button',{name:'Chat',exact:true}).click();
+ await page.locator('.chat-project').click();
+ const chatPicker=page.getByRole('dialog',{name:'Choose a project'});await chatPicker.waitFor();
+ const chatOptions=await chatPicker.locator('.list-row').allInnerTexts();
+ result.checks.chatPicker=chatOptions.map(s=>s.split('\n')[0]);
+ if(chatOptions.some(o=>/Orchestrator live proof/.test(o)))throw Error('Archived project in chat picker');
+ await chatPicker.getByRole('button',{name:'Close dialog'}).click();
+
+ // 4. Builds opens on the live / needs-you / newest request.
+ const goalTasks=g=>snap.tasks.filter(t=>t.goal_id===g.id);
+ const goals=[...snap.goals].sort((a,b)=>b.created-a.created);
+ const isLive=g=>{const ids=new Set(goalTasks(g).map(t=>t.id));return snap.attempts.some(a=>ids.has(a.task_id)&&ACTIVE_ATTEMPT.includes(a.state))};
+ const open=g=>!archivedIds.has(g.project_id);
+ const has=(g,states)=>goalTasks(g).some(t=>states.includes(t.state));
+ const expected=goals.find(isLive)||goals.find(g=>open(g)&&has(g,ACTIVE_TASK))||goals.find(g=>open(g)&&has(g,NEEDS_TASK))||goals.find(open)||goals[0];
+ const why=goals.find(isLive)?'live':goals.find(g=>open(g)&&has(g,ACTIVE_TASK))?'active':goals.find(g=>open(g)&&has(g,NEEDS_TASK))?'needs-you':'newest';
+ await nav(page).getByRole('button',{name:'Build',exact:true}).click();
+ await page.locator('#goal-pick').waitFor();
+ const selected=await page.locator('#goal-pick').inputValue();
+ result.checks.buildsDefault={expected:expected.id,selected,rule:why,title:expected.display_title};
+ if(selected!==expected.id)throw Error(`Builds opened on ${selected}, expected ${why} request ${expected.id}`);
+ const buildOptions=await page.locator('#goal-pick option').allInnerTexts();
+ if(buildOptions.some(o=>/\(archived\)/.test(o)&&!o.includes(expected.display_title||'\u0000')))throw Error('Archived requests listed without Show archived');
+ if(buildOptions.some(o=>/OUTCOME:/i.test(o)))throw Error('Picker shows raw spec text');
+ await page.screenshot({path:output+'/builds-default-390.png',fullPage:true});
+
+ // 5. Live output is non-empty for an integrated build (newest one on a visible project).
+ const integrated=goals.find(g=>open(g)&&goalTasks(g).some(t=>t.integrated_commit));
+ if(!integrated)throw Error('No integrated build on a non-archived project in the real state');
+ await page.locator('#goal-pick').selectOption(integrated.id);
+ const terminal=page.locator('pre.terminal');
+ await page.waitForFunction(()=>{const t=document.querySelector('pre.terminal');return t&&/\[\d\d:\d\d(:\d\d)?\]/.test(t.textContent||'')},null,{timeout:15000});
+ const liveText=(await terminal.innerText()).trim();
+ result.checks.liveOutput={goal:integrated.id,title:integrated.display_title,lines:liveText.split('\n').length,first:liveText.split('\n')[0]};
+ if(!liveText||/No events recorded|older than the current window|Nothing has happened/.test(liveText))throw Error('Live output empty for integrated build: '+liveText.slice(0,200));
+ await terminal.scrollIntoViewIfNeeded();
+ await page.screenshot({path:output+'/builds-integrated-live-output-390.png'});
+
+ // 6. No horizontal overflow on any tab at 390 px.
+ result.checks.overflow={};
+ for(const tab of ['Chat','Overview','Projects','Build','Agents','Review']){
+  await nav(page).getByRole('button',{name:tab,exact:true}).click();
+  await page.waitForTimeout(400);
+  const over=await overflow(page);result.checks.overflow[tab]=over;
+  await page.screenshot({path:output+'/'+tab.toLowerCase()+'-390.png',fullPage:true});
+  if(over)throw Error('Horizontal overflow on '+tab);
+ }
+ // Archived section on Projects, expanded, also fits.
+ await nav(page).getByRole('button',{name:'Projects',exact:true}).click();
+ await page.locator('summary',{hasText:'Archived'}).click();
+ await page.waitForTimeout(300);
+ if(await overflow(page))throw Error('Horizontal overflow on Projects → Archived');
+ await page.screenshot({path:output+'/projects-archived-390.png',fullPage:true});
+
+ const after=await page.evaluate(async()=>await(await fetch('/api/v1/overview')).json());
+ if(after.attempts.length!==snap.attempts.length)throw Error('Fixture dispatched an attempt');
+ if(errors.length)throw Error(errors.join('\n'));
+ result.passed=true;result.errors=errors;
+ writeFileSync(output+'/result.json',JSON.stringify(result,null,2));
+ console.log(JSON.stringify(result.checks,null,1));
+ console.log('USABILITY_ACCEPTANCE_PASSED');
+}catch(error){result.passed=false;result.failure=String(error);writeFileSync(output+'/result.json',JSON.stringify(result,null,2));writeFileSync(output+'/failure.txt',String(error));throw error}
+finally{if(browser)await browser.close();server.kill('SIGTERM');writeFileSync(output+'/server.txt',serverLog)}

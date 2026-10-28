@@ -1,0 +1,23 @@
+INFO:     Started server process [18264]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8794 (Press CTRL+C to quit)
+INFO:     127.0.0.1:51078 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51079 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51079 - "GET /assets/index-BG8rFnJC.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51080 - "GET /assets/index-CdzGs_yz.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51079 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51079 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51080 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:51081 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51079 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/goals/goal_815db45a71e3a62d/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51081 - "GET /api/v1/overview HTTP/1.1" 200 OK

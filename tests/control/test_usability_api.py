@@ -318,6 +318,12 @@ def test_real_state_overview_under_200kb_and_proof_projects_archived_once(tmp_pa
     assert [e["id"] for e in detail["events"]] == sorted(e["id"] for e in detail["events"])
     # A finished real attempt answers the live endpoint without its artifact directory.
     a = detail["attempts"][0]["id"]
+    # The fixture records absolute paths from the owner's Mac, where the directory exists.
+    with store.transaction() as db:
+        db.execute(
+            "UPDATE attempts SET data=json_set(data,'$.artifact_dir',?) WHERE id=?",
+            (str(tmp_path / "gone"), a),
+        )
     live = client.get(f"/api/v1/attempts/{a}/live").json()
     assert live["done"] is True and live["bytes"] == 0 and live["lines"] == []
     assert live["provider"] in {"codex", "claude"} and live["elapsed"] is not None
