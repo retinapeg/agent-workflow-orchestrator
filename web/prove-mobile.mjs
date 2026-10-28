@@ -40,7 +40,8 @@ try{
    restartAttempts=builds.map(a=>a.id);
    control('stop');
    for(let n=0;n<80;n++){try{await fetch(url)}catch{break}await new Promise(r=>setTimeout(r,250));}
-   control('start','--port',new URL(url).port);
+   // The old process finishes its scheduler shutdown after the listener closes; retry until start accepts.
+   for(let n=0;;n++){try{control('start','--port',new URL(url).port);break}catch(e){if(n>=240||!String(e.stderr||e).includes('already running'))throw e;await new Promise(r=>setTimeout(r,500));}}
    restarted=true;console.log('Restarted HTTP scheduler while independent guardians worked');
   }
   const children=tasks.filter(t=>t.phase!=='plan');

@@ -1,0 +1,1038 @@
+{
+  "what": "Controller (HTTP scheduler) was stopped by the proof driver while two provider builds (Codex gpt-6-luna and Claude sonnet) were executing concurrently; the driver's restart failed on a race ('Service already running' during the old process's shutdown), so the controller stayed down until the operator restarted it. Guardians kept running; the restarted scheduler reconciled their results. No build was duplicated or repaired.",
+  "previous_server": {
+    "pid": 82333,
+    "started": "2026-10-28T05:11Z (manual start)"
+  },
+  "restart_requested_utc": "2026-10-28T05:21:34Z",
+  "new_server": {
+    "pid": 85445,
+    "created": "2026-10-28T05:21:34Z",
+    "port": 8791
+  },
+  "project": "project_152b31b123b79723",
+  "tasks": [
+    {
+      "id": "task_4087ab3670330e2e",
+      "title": "Make this app easier to recognise on my phone, and stop malformed server\naddresses getting through. ",
+      "state": "completed",
+      "phase": "plan",
+      "attempts": [
+        {
+          "id": "attempt_5175519fa4720daa",
+          "phase": "plan",
+          "state": "passed",
+          "model": "gpt-6-astra",
+          "effort": "max",
+          "claimed": "2026-10-28T05:18:19Z",
+          "provider_started": "2026-10-28T05:18:20Z",
+          "provider_ended": "2026-10-28T05:20:40Z",
+          "seconds": 140.323,
+          "ended": "2026-10-28T05:20:41Z",
+          "reason": "Bounded plan schema, authority and dependency graph validated"
+        }
+      ],
+      "build_attempts": 0
+    },
+    {
+      "id": "task_d805fdd988adff61",
+      "title": "Reject malformed server addresses before URL parsing",
+      "state": "running",
+      "phase": "direct",
+      "attempts": [
+        {
+          "id": "attempt_b2d8314d2da6fc18",
+          "phase": "build",
+          "state": "passed",
+          "model": "gpt-6-luna",
+          "effort": "low",
+          "claimed": "2026-10-28T05:20:41Z",
+          "provider_started": "2026-10-28T05:20:43Z",
+          "provider_ended": "2026-10-28T05:20:56Z",
+          "seconds": 15.021,
+          "ended": "2026-10-28T05:21:34Z",
+          "reason": "CLI completed and frozen acceptance checks passed"
+        },
+        {
+          "id": "attempt_e168f1a12a3971e9",
+          "phase": "review",
+          "state": "passed",
+          "model": "sonnet",
+          "effort": null,
+          "claimed": "2026-10-28T05:21:34Z",
+          "provider_started": "2026-10-28T05:21:36Z",
+          "provider_ended": "2026-10-28T05:21:40Z",
+          "seconds": 5.345,
+          "ended": "2026-10-28T05:21:40Z",
+          "reason": "Independent review passed"
+        },
+        {
+          "id": "attempt_0709601ef8b90698",
+          "phase": "direct",
+          "state": "running",
+          "model": "claude-fable-5-1",
+          "effort": "max",
+          "claimed": "2026-10-28T05:21:40Z",
+          "provider_started": null,
+          "provider_ended": null,
+          "seconds": null,
+          "ended": null,
+          "reason": null
+        }
+      ],
+      "build_attempts": 1
+    },
+    {
+      "id": "task_8898660876ac38bc",
+      "title": "Describe Arena clearly in phone installation metadata",
+      "state": "ready_for_approval",
+      "phase": "direct",
+      "attempts": [
+        {
+          "id": "attempt_a5a92ffadcfdd969",
+          "phase": "build",
+          "state": "passed",
+          "model": "sonnet",
+          "effort": null,
+          "claimed": "2026-10-28T05:20:42Z",
+          "provider_started": "2026-10-28T05:20:45Z",
+          "provider_ended": "2026-10-28T05:20:52Z",
+          "seconds": 9.96,
+          "ended": "2026-10-28T05:21:34Z",
+          "reason": "CLI completed and frozen acceptance checks passed"
+        },
+        {
+          "id": "attempt_5e6166d09732ecd3",
+          "phase": "review",
+          "state": "passed",
+          "model": "gpt-6-luna",
+          "effort": "low",
+          "claimed": "2026-10-28T05:21:35Z",
+          "provider_started": "2026-10-28T05:21:36Z",
+          "provider_ended": "2026-10-28T05:21:41Z",
+          "seconds": 6.029,
+          "ended": "2026-10-28T05:21:42Z",
+          "reason": "Independent review passed"
+        },
+        {
+          "id": "attempt_108ecf5df0a1e0d4",
+          "phase": "direct",
+          "state": "passed",
+          "model": "gpt-6-astra",
+          "effort": "max",
+          "claimed": "2026-10-28T05:21:42Z",
+          "provider_started": "2026-10-28T05:21:45Z",
+          "provider_ended": "2026-10-28T05:21:58Z",
+          "seconds": 16.363,
+          "ended": "2026-10-28T05:21:59Z",
+          "reason": "Independent review passed"
+        }
+      ],
+      "build_attempts": 1
+    }
+  ],
+  "recent_events": [
+    {
+      "time": "2026-10-28T05:15:05Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_04f063ad99681ca4",
+        "schema": 1,
+        "task_id": "task_8a5e53c475bdb5a7",
+        "token": 2
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:05Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_04f063ad99681ca4",
+        "capability_source": "validated_probe",
+        "complexity": "simple",
+        "effort": null,
+        "failure_attempt": null,
+        "history_samples": 1,
+        "median_seconds": null,
+        "model": "sonnet",
+        "provider": "claude",
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 1,
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:05Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "reviewing",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:11Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Independent checks and review passed; director is checking the outcome",
+        "schema": 1,
+        "state": "ready",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:11Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_04f063ad99681ca4",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:11Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Your director is assessing the product outcome",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:11Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_dd773f1f2157dc87",
+        "schema": 1,
+        "task_id": "task_8a5e53c475bdb5a7",
+        "token": 3
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:11Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_dd773f1f2157dc87",
+        "capability_source": "advertised_cli_catalog",
+        "complexity": "simple",
+        "effort": "max",
+        "failure_attempt": null,
+        "history_samples": 1,
+        "median_seconds": null,
+        "model": "gpt-6-astra",
+        "provider": "codex",
+        "reason": "Your director is assessing the product outcome",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 0,
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:11Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:43Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "The manifest adds exactly the requested description and language fields immediately after short_name. Only the authorized file changed; all existing values, icons, single-line formatting and the final newline are preserved. The frozen check and independent review passed. Main integration still requires explicit M5 approval.",
+        "schema": 1,
+        "state": "integrating",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:43Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_dd773f1f2157dc87",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:43Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Composition checks running",
+        "schema": 1,
+        "state": "integrating",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:43Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Combined checks passed; exact staging commit awaits acceptance",
+        "schema": 1,
+        "state": "ready_for_approval",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:45Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Staged change accepted locally; nothing published",
+        "schema": 1,
+        "state": "completed",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:45Z",
+      "kind": "approval.decided",
+      "data": {
+        "approval_id": "approval_24f5da2ccdab42f6",
+        "candidate": "fa1024aa0830700904ff619b9928ad92e1b99f06",
+        "decision": "accept",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:45Z",
+      "kind": "integration.authorized",
+      "data": {
+        "approval_id": "approval_24f5da2ccdab42f6",
+        "branch": "main",
+        "candidate": "fa1024aa0830700904ff619b9928ad92e1b99f06",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:46Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Verified candidate integrated into local main",
+        "schema": 1,
+        "state": "completed",
+        "task_id": "task_8a5e53c475bdb5a7"
+      }
+    },
+    {
+      "time": "2026-10-28T05:15:46Z",
+      "kind": "integration.integrated",
+      "data": {
+        "approval_id": "approval_24f5da2ccdab42f6",
+        "branch": "main",
+        "candidate": "fa1024aa0830700904ff619b9928ad92e1b99f06",
+        "reason": "Verified candidate integrated into local main",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:47Z",
+      "kind": "project.enrolled",
+      "data": {
+        "name": "Orchestrator live proof parallel",
+        "project_id": "project_64b60393405519bb",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:56Z",
+      "kind": "device.paired",
+      "data": {
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:57Z",
+      "kind": "goal.created",
+      "data": {
+        "goal_id": "goal_afe738b6acc16dde",
+        "project_id": "project_64b60393405519bb",
+        "schema": 1,
+        "task_id": "task_c02d722c4c529898",
+        "title": "Make this app easier to recognise on my phone, and stop malformed server\naddresses getting through. "
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:58Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Your director is assessing the product outcome",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_c02d722c4c529898"
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:58Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_f352c4cadb220798",
+        "schema": 1,
+        "task_id": "task_c02d722c4c529898",
+        "token": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:58Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_f352c4cadb220798",
+        "capability_source": "advertised_cli_catalog",
+        "complexity": "moderate",
+        "effort": "max",
+        "failure_attempt": null,
+        "history_samples": 2,
+        "median_seconds": null,
+        "model": "gpt-6-astra",
+        "provider": "codex",
+        "reason": "Your director is assessing the product outcome",
+        "repair_number": 0,
+        "risk": "medium",
+        "schema": 1,
+        "successful_samples": 2,
+        "task_id": "task_c02d722c4c529898"
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:58Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_c02d722c4c529898"
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:59Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Project has agent startup instructions/configuration; explicit audited isolation required",
+        "schema": 1,
+        "state": "needs_permission",
+        "task_id": "task_c02d722c4c529898"
+      }
+    },
+    {
+      "time": "2026-10-28T05:16:59Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_f352c4cadb220798",
+        "schema": 1,
+        "status": "needs_permission"
+      }
+    },
+    {
+      "time": "2026-10-28T05:17:50Z",
+      "kind": "account.health",
+      "data": {
+        "account_id": "account_8dc5a4ccb7bbb646",
+        "health": "ready",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:17:51Z",
+      "kind": "account.health",
+      "data": {
+        "account_id": "account_bed50ebc21cd3a6a",
+        "health": "ready",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:04Z",
+      "kind": "project.removed",
+      "data": {
+        "schema": 1,
+        "project_id": "project_64b60393405519bb",
+        "reason": "disposable snapshot carried agent config; recreated"
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:05Z",
+      "kind": "project.enrolled",
+      "data": {
+        "name": "Orchestrator live proof parallel",
+        "project_id": "project_152b31b123b79723",
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:18Z",
+      "kind": "device.paired",
+      "data": {
+        "schema": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:19Z",
+      "kind": "goal.created",
+      "data": {
+        "goal_id": "goal_bb04ff462afaa38e",
+        "project_id": "project_152b31b123b79723",
+        "schema": 1,
+        "task_id": "task_4087ab3670330e2e",
+        "title": "Make this app easier to recognise on my phone, and stop malformed server\naddresses getting through. "
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:19Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Your director is assessing the product outcome",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_4087ab3670330e2e"
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:19Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_5175519fa4720daa",
+        "schema": 1,
+        "task_id": "task_4087ab3670330e2e",
+        "token": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:19Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_5175519fa4720daa",
+        "capability_source": "advertised_cli_catalog",
+        "complexity": "moderate",
+        "effort": "max",
+        "failure_attempt": null,
+        "history_samples": 2,
+        "median_seconds": null,
+        "model": "gpt-6-astra",
+        "provider": "codex",
+        "reason": "Your director is assessing the product outcome",
+        "repair_number": 0,
+        "risk": "medium",
+        "schema": 1,
+        "successful_samples": 2,
+        "task_id": "task_4087ab3670330e2e"
+      }
+    },
+    {
+      "time": "2026-10-28T05:18:19Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_4087ab3670330e2e"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:41Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Add a clear description of what Arena does on your phone, and reject malformed server addresses before they reach connection setup. Keep the existing app name, icon and valid connection behavior.",
+        "schema": 1,
+        "state": "completed",
+        "task_id": "task_4087ab3670330e2e"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:41Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_5175519fa4720daa",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:41Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:41Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_b2d8314d2da6fc18",
+        "schema": 1,
+        "task_id": "task_d805fdd988adff61",
+        "token": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:41Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_b2d8314d2da6fc18",
+        "capability_source": "advertised_cli_catalog",
+        "complexity": "simple",
+        "effort": "low",
+        "failure_attempt": null,
+        "history_samples": 2,
+        "median_seconds": null,
+        "model": "gpt-6-luna",
+        "provider": "codex",
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 2,
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:41Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:42Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:42Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_a5a92ffadcfdd969",
+        "schema": 1,
+        "task_id": "task_8898660876ac38bc",
+        "token": 1
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:42Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_a5a92ffadcfdd969",
+        "capability_source": "validated_probe",
+        "complexity": "simple",
+        "effort": null,
+        "failure_attempt": null,
+        "history_samples": 1,
+        "median_seconds": null,
+        "model": "sonnet",
+        "provider": "claude",
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 1,
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:42Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:52Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Controller runs frozen acceptance commands",
+        "schema": 1,
+        "state": "verifying",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:20:56Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Controller runs frozen acceptance commands",
+        "schema": 1,
+        "state": "verifying",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Checks passed; independent review queued",
+        "schema": 1,
+        "state": "ready",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_b2d8314d2da6fc18",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Checks passed; independent review queued",
+        "schema": 1,
+        "state": "ready",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_a5a92ffadcfdd969",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_e168f1a12a3971e9",
+        "schema": 1,
+        "task_id": "task_d805fdd988adff61",
+        "token": 2
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_e168f1a12a3971e9",
+        "capability_source": "validated_probe",
+        "complexity": "simple",
+        "effort": null,
+        "failure_attempt": null,
+        "history_samples": 2,
+        "median_seconds": null,
+        "model": "sonnet",
+        "provider": "claude",
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 2,
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:34Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "reviewing",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:35Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:35Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_5e6166d09732ecd3",
+        "schema": 1,
+        "task_id": "task_8898660876ac38bc",
+        "token": 2
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:35Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_5e6166d09732ecd3",
+        "capability_source": "advertised_cli_catalog",
+        "complexity": "simple",
+        "effort": "low",
+        "failure_attempt": null,
+        "history_samples": 0,
+        "median_seconds": null,
+        "model": "gpt-6-luna",
+        "provider": "codex",
+        "reason": "Using a lightweight worker for this small, low-risk change",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 0,
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:35Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "reviewing",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:40Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Host denied process inspection; lease retained until ownership is known",
+        "schema": 1,
+        "state": "recovering",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:40Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Independent checks and review passed; director is checking the outcome",
+        "schema": 1,
+        "state": "ready",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:40Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_e168f1a12a3971e9",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:40Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Your director (Fable 5.1, max effort) is standing in for Astra",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:41Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_0709601ef8b90698",
+        "schema": 1,
+        "task_id": "task_d805fdd988adff61",
+        "token": 3
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:41Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_0709601ef8b90698",
+        "capability_source": "validated_probe",
+        "complexity": "simple",
+        "effort": "max",
+        "failure_attempt": null,
+        "history_samples": 0,
+        "median_seconds": null,
+        "model": "claude-fable-5-1",
+        "provider": "claude",
+        "reason": "Your director (Fable 5.1, max effort) is standing in for Astra",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 0,
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:41Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_d805fdd988adff61"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:42Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Independent checks and review passed; director is checking the outcome",
+        "schema": 1,
+        "state": "ready",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:42Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_5e6166d09732ecd3",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:42Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Your director is assessing the product outcome",
+        "schema": 1,
+        "state": "leased",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:42Z",
+      "kind": "attempt.claimed",
+      "data": {
+        "attempt_id": "attempt_108ecf5df0a1e0d4",
+        "schema": 1,
+        "task_id": "task_8898660876ac38bc",
+        "token": 3
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:42Z",
+      "kind": "routing.selected",
+      "data": {
+        "action": "initial",
+        "attempt_id": "attempt_108ecf5df0a1e0d4",
+        "capability_source": "advertised_cli_catalog",
+        "complexity": "simple",
+        "effort": "max",
+        "failure_attempt": null,
+        "history_samples": 2,
+        "median_seconds": null,
+        "model": "gpt-6-astra",
+        "provider": "codex",
+        "reason": "Your director is assessing the product outcome",
+        "repair_number": 0,
+        "risk": "low",
+        "schema": 1,
+        "successful_samples": 1,
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:42Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Bounded worker started",
+        "schema": 1,
+        "state": "running",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:59Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "The manifest adds the exact required description and lang value while preserving valid JSON and every existing field. The frozen check and independent review passed. This manifest task meets all acceptance criteria; server-address validation remains a separate task.",
+        "schema": 1,
+        "state": "integrating",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:59Z",
+      "kind": "attempt.finished",
+      "data": {
+        "attempt_id": "attempt_108ecf5df0a1e0d4",
+        "schema": 1,
+        "status": "passed"
+      }
+    },
+    {
+      "time": "2026-10-28T05:21:59Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Composition checks running",
+        "schema": 1,
+        "state": "integrating",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:22:01Z",
+      "kind": "task.changed",
+      "data": {
+        "reason": "Combined checks passed; exact staging commit awaits acceptance",
+        "schema": 1,
+        "state": "ready_for_approval",
+        "task_id": "task_8898660876ac38bc"
+      }
+    },
+    {
+      "time": "2026-10-28T05:22:12Z",
+      "kind": "project.changed",
+      "data": {
+        "schema": 1,
+        "project_id": "project_152b31b123b79723",
+        "reason": "paused by operator after restart-recovery evidence"
+      }
+    },
+    {
+      "time": "2026-10-28T05:22:14Z",
+      "kind": "project.enrolled",
+      "data": {
+        "name": "Orchestrator live proof parallel2",
+        "project_id": "project_cb6872eb2f747c6d",
+        "schema": 1
+      }
+    }
+  ],
+  "note": "Exactly one build attempt per task before and after the restart; both reviews were performed by the other provider; the direct phase for task adff61 ran on claude-fable-5-1 at max because the Codex slot was busy (validated stand-in)."
+}
