@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import fcntl
 import json
 import os
@@ -20,7 +21,7 @@ SUCCESS = {"ready_for_approval", "completed"}
 FORBIDDEN = {".git", ".claude", ".codex", ".env", ".github", "AGENTS.md", "CLAUDE.md"}
 
 
-def git(repo, *args, input=None):
+def git(repo, *args, input=None, strip=True):
     env = {k: os.environ[k] for k in ("PATH", "HOME", "LANG") if k in os.environ}
     env.update(
         GIT_TERMINAL_PROMPT="0",
@@ -50,7 +51,8 @@ def git(repo, *args, input=None):
     )
     if p.returncode:
         raise ValueError(p.stderr[-2000:] or p.stdout[-2000:])
-    return p.stdout.strip()
+    # Patches must keep their trailing context lines; strip only for plain values.
+    return p.stdout.strip() if strip else p.stdout
 
 
 def safe_scope(paths):
@@ -157,6 +159,10 @@ class Engine:
                 "Enroll a clean committed source; uncommitted work must be preserved first"
             )
         head = git(repo, "rev-parse", "HEAD")
+        if git(repo, "symbolic-ref", "--short", "HEAD") != "main":
+            raise ValueError(
+                "Enroll a source with branch main checked out; integration targets main"
+            )
         project_id = uid("project")
         root = self.store.home / "projects" / project_id
         root.mkdir(parents=True, mode=0o700)
@@ -385,7 +391,14 @@ class Engine:
         if pending is not None:
             if not pending.done():
                 return
-            pending.result()
+            try:
+                pending.result()
+            except Exception as exc:
+                # A failed integration/publication is recorded; it must never stall dispatch.
+                with self.store.transaction() as db:
+                    self.store.event(
+                        db, "integration.error", project_id=project_id, reason=str(exc)[:1000]
+                    )
         self.integrations[project_id] = self.integrator.submit(callback, *args)
 
     def claim(self):
@@ -515,7 +528,12 @@ class Engine:
                         db,
                         task,
                         "blocked",
-                        "No supported model route remains; failed approaches are preserved",
+                        "No director model is available: the Codex model catalog "
+                        "(~/.codex/models_cache.json) is missing or older than 7 days and no "
+                        "validated Fable 5.1 slot is enrolled. Run `codex` once on the Mac or "
+                        "`check-accounts --probe`, then Retry."
+                        if director_phase
+                        else "No supported model route remains; failed approaches are preserved",
                     )
                     continue
                 account, routing = selected
@@ -600,7 +618,16 @@ class Engine:
                     attempt["id"],
                 ),
             )
-            if task.get("cancel_requested") or result["status"] == "cancelled":
+            if result.get("termination_unconfirmed"):
+                # Never report a stop as safe while the CLI group may still be running.
+                self.store.update_task(
+                    db,
+                    task,
+                    "interrupted",
+                    "Stop requested but the worker could not confirm its process group "
+                    "ended; inspect the host before retrying: " + str(result["reason"])[:600],
+                )
+            elif task.get("cancel_requested") or result["status"] == "cancelled":
                 self.store.update_task(
                     db, task, "cancelled", "Owned execution stopped; evidence preserved"
                 )
@@ -715,6 +742,17 @@ class Engine:
                             specification=specification,
                             complexity=item.get("complexity", "moderate"),
                             risk=item.get("risk", "medium"),
+                            # Children start with fresh budgets; the parent's repair history
+                            # belongs to the planning stage, not to each build.
+                            repairs=0,
+                            retries=0,
+                            recoveries=0,
+                            clarifications=0,
+                            repair_evidence=None,
+                            repair_workspace=None,
+                            cancel_requested=False,
+                            question="",
+                            instructions_pending=[],
                         )
                         db.execute(
                             "INSERT INTO tasks(id,project_id,goal_id,state,data) VALUES(?,?,?,?,?)",
@@ -791,7 +829,10 @@ class Engine:
                         account["id"],
                     ),
                 )
-            elif result["status"] in {"rate_limited", "transient"} and task["retries"] < 2:
+            elif (
+                result["status"] in {"rate_limited", "transient", "model_unavailable"}
+                and task["retries"] < 2
+            ):
                 delay = min(300, 30 * 2 ** task["retries"])
                 self.store.update_task(
                     db,
@@ -885,9 +926,10 @@ class Engine:
                         "--binary",
                         task["candidate_base"],
                         task["candidate"],
+                        strip=False,
                     )
-                    if diff:
-                        git(work, "apply", "--3way", "-", input=diff + "\n")
+                    if diff.strip():
+                        git(work, "apply", "--3way", "-", input=diff)
                     fingerprint = candidate_fingerprint(work)
                     check_results = checks_run(project, work, receipt.parent, "integration")
                     if candidate_fingerprint(work) != fingerprint:
@@ -906,6 +948,8 @@ class Engine:
                     )
                     atomic_json(intent, result)
                     git(root, "merge", "--ff-only", sha)
+                    with contextlib.suppress(ValueError):  # Disk hygiene; commit is recorded.
+                        git(root, "worktree", "remove", "--force", str(work))
                 atomic_json(receipt, result)
                 with self.store.transaction() as db:
                     live = self.store.get("tasks", task["id"], db)
@@ -998,11 +1042,18 @@ class Engine:
             except Exception as exc:
                 with self.store.transaction() as db:
                     live = self.store.get("tasks", task["id"], db)
+                    # Retry must rebuild from the current base rather than replay the same
+                    # candidate against a staging branch that has moved.
                     self.store.update_task(
                         db,
                         live,
                         "blocked",
                         "Integration preserved for inspection: " + str(exc)[-2000:],
+                        phase="replan" if live.get("director") else "build",
+                        repair_evidence={
+                            "integration_failure": str(exc)[-2000:],
+                            "candidate": live.get("candidate"),
+                        },
                     )
 
     def cancel(self, task_id):

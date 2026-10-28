@@ -17,7 +17,7 @@ from pathlib import Path
 
 import psutil
 
-from agent_arena.process import ProcessRunner, sanitized_environment
+from agent_arena.process import ProcessRunner, ProcessTerminationError, sanitized_environment
 from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 
 from .engine import atomic_json, git, identity, within
@@ -91,6 +91,8 @@ def checks_run(project, workspace, artifact, prefix="checks", runner=None):
             )
             output = result.stdout + result.stderr
             code = result.exit_code
+        except InterruptedError:
+            raise  # A cancelled check is a cancellation, not a verification verdict.
         except (OSError, ValueError) as exc:
             status, output, code = "UNKNOWN", str(exc), None
         log = artifact / f"{prefix}-{i}.txt"
@@ -222,6 +224,17 @@ def main(home, attempt_id):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         return 0
+    runner = ProcessRunner()
+    cancelled = threading.Event()
+
+    def stop(*_):
+        cancelled.set()
+        threading.Thread(target=runner.cancel_all, daemon=True).start()
+
+    # Handlers are live before the guardian publishes its identity, so a stop that
+    # arrives during registration is honoured instead of killing the guardian outright.
+    signal.signal(signal.SIGTERM, stop)
+    signal.signal(signal.SIGINT, stop)
     with store.transaction() as db:
         attempt = store.get("attempts", attempt_id, db)
         task = store.get("tasks", attempt["task_id"], db)
@@ -263,15 +276,6 @@ def main(home, attempt_id):
     project = store.get("projects", task["project_id"])
     account = store.get("accounts", attempt["account_id"])
     account = {**account, "model": attempt["model"], "effort": attempt.get("effort", "medium")}
-    runner = ProcessRunner()
-    cancelled = threading.Event()
-
-    def stop(*_):
-        cancelled.set()
-        threading.Thread(target=runner.cancel_all, daemon=True).start()
-
-    signal.signal(signal.SIGTERM, stop)
-    signal.signal(signal.SIGINT, stop)
     result = dict(
         attempt_id=attempt_id,
         token=attempt["token"],
@@ -505,7 +509,12 @@ def main(home, attempt_id):
             or not parsed["terminal_event"]
             or parsed["summary"]["is_error"]
         ):
-            diagnostic = (process.stdout + process.stderr).lower()
+            # Classify from the CLI's own error channel, never from transcript content that
+            # may quote repository text containing words like "unauthorized".
+            diagnostic = (
+                process.stderr
+                + (parsed["summary"]["final_text"] or "" if parsed["summary"]["is_error"] else "")
+            ).lower()
             status = (
                 "rate_limited"
                 if any(s in diagnostic for s in ["rate limit", "usage limit", "quota exceeded"])
@@ -584,6 +593,11 @@ def main(home, attempt_id):
             )
         with store.transaction() as db:
             live = store.get("tasks", task["id"], db)
+            if (
+                live["token"] != attempt["token"]
+                or store.get("attempts", attempt_id, db)["state"] != "running"
+            ):
+                raise ValueError("Lease superseded before verification; result discarded")
             store.update_task(db, live, "verifying", "Controller runs frozen acceptance commands")
             db.execute("UPDATE attempts SET state='verifying' WHERE id=?", (attempt_id,))
         if git(workspace, "rev-parse", "HEAD") != attempt["base"]:
@@ -621,7 +635,7 @@ def main(home, attempt_id):
         if not all(c["status"] == "PASS" for c in result["checks"]):
             result.update(reason="Frozen acceptance checks did not all pass")
             return 1
-        git(workspace, "add", "--", *task["scope"])
+        git(workspace, "add", "-A", "--", *sorted(changed))
         git(workspace, "commit", "--allow-empty", "-m", "Arena candidate: " + task["title"])
         result["candidate"] = git(workspace, "rev-parse", "HEAD")
         patch = git(workspace, "diff", "--binary", attempt["base"], result["candidate"])
@@ -633,9 +647,13 @@ def main(home, attempt_id):
         )
         return 0
     except BaseException as exc:
+        unconfirmed = isinstance(exc, ProcessTerminationError)
         result.update(
-            status="cancelled" if cancelled.is_set() else "failed", reason=redact(str(exc))[-2000:]
+            status="failed" if unconfirmed or not cancelled.is_set() else "cancelled",
+            reason=redact(str(exc))[-2000:],
         )
+        if unconfirmed:
+            result["termination_unconfirmed"] = True
         return 1
     finally:
         result["seconds"] = round(time.monotonic() - started, 3)

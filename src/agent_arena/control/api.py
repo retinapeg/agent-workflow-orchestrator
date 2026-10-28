@@ -122,7 +122,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                         {"detail": "Pair this device on the host first"}, status_code=401
                     )
                 if request.method not in {"GET", "HEAD"} and not secrets.compare_digest(
-                    request.headers.get("x-csrf-token", ""), auth["csrf"]
+                    request.headers.get("x-csrf-token", "").encode("utf-8", "replace"),
+                    auth["csrf"].encode(),
                 ):
                     return JSONResponse({"detail": "CSRF token rejected"}, status_code=403)
         response = await call_next(request)
@@ -403,9 +404,15 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
         result = command(request, body.model_dump(), update)
         if action == "stop-all":
+            unconfirmed = []
             for t in store.rows("tasks"):
                 if t.get("cancel_requested"):
-                    engine.cancel(t["id"])
+                    try:
+                        engine.cancel(t["id"])
+                    except Exception as exc:  # Keep signalling the rest; report the gap.
+                        unconfirmed.append({"task_id": t["id"], "reason": str(exc)[:500]})
+            if unconfirmed:
+                result = {**result, "unconfirmed": unconfirmed}
         return result
 
     @app.post("/api/v1/tasks/{ident}/{action}")
@@ -416,8 +423,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
         def update(db):
             t = store.get("tasks", ident, db)
             revision(t, body.revision)
-            if t["state"] in {"integrating", "completed", "ready_for_approval"}:
-                raise Conflict("This task is staged or complete; create a follow-up goal")
+            if t["state"] in {"integrating", "completed", "ready_for_approval", "cancelled"}:
+                raise Conflict("This task is staged, complete or cancelled; create a new request")
             if action == "answer":
                 if t["state"] != "awaiting_input" or not body.text.strip():
                     raise Conflict("This request is not waiting for a behavior answer")
@@ -444,6 +451,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                     phase=("plan" if t["phase"] == "plan" else "replan")
                     if t.get("director") and t["state"] not in ACTIVE
                     else t["phase"],
+                    question="",
                 )
             elif action == "cancel":
                 store.update_task(

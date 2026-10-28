@@ -338,7 +338,7 @@ def main(argv=None):
             '"Hello, Leo!"\nassert greet("") == "Hello, friend!"\nprint("3 '
             'greeting acceptance cases passed")\n'
         )
-        git(root, "init", "-q")
+        git(root, "init", "-q", "-b", "main")
         git(root, "add", "src", "acceptance")
         git(root, "commit", "-qm", "Disposable acceptance fixture")
         print(

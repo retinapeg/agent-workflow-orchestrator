@@ -30,7 +30,7 @@ def setup(tmp_path):
         "\n assert p.read_text().strip() in {'initial','verified'}\n"
         "print('frozen checks passed')\n"
     )
-    git(source, "init", "-q")
+    git(source, "init", "-q", "-b", "main")
     git(source, "add", ".")
     git(source, "commit", "-qm", "fixture")
     engine = Engine(store)
@@ -515,7 +515,8 @@ def test_combined_approval_diff_and_decision_cover_all_changes(setup, monkeypatc
         workspace = Path(attempt["workspace"])
         workspace.parent.mkdir(exist_ok=True)
         git(workspace.parent, "clone", "--no-hardlinks", project["staging"], str(workspace))
-        (workspace / f"src/{name}.txt").write_text("verified\n")
+        # Trailing blank lines make the patch end in blank context; integration must keep them.
+        (workspace / f"src/{name}.txt").write_text("verified\n\n" if name == "b" else "verified\n")
         git(workspace, "add", ".")
         git(workspace, "commit", "-qm", name)
         candidate = git(workspace, "rev-parse", "HEAD")

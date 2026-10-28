@@ -14,8 +14,10 @@ from .engine import atomic_json
 def orphan_stopped(attempt):
     path = Path(attempt["artifact_dir"]) / "child.json"
     if not path.exists():
-        # A crash after spawn but before child registration is ambiguous.
-        return not attempt.get("identity")
+        # The guardian is already known to be dead. A CLI child registers itself within
+        # seconds of spawning, so after a generous grace period with no registration there
+        # is no owned child to stop; before that the window stays ambiguous.
+        return not attempt.get("identity") or time.time() - attempt["created"] > 120
     try:
         child = json.loads(path.read_text())
         if child["attempt_id"] != attempt["id"] or child["token"] != attempt["token"]:
