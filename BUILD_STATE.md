@@ -37,6 +37,34 @@ passes. The previously failing host cancellation test passes on the normal host 
 - Three enrolled proof projects are disposable snapshots of this repository
   (`.arena-control/proof-source*`); the stale 8790 runtime was stopped and preserved.
 
+## Self-improvement (Test B) — status at 08:40 UTC, 28 October 2026
+
+Stopped on the owner's instruction after four attempts; no further attempt will be launched
+without being asked. The live release is `6267043b` (health-verified; previous `82ad08e4`
+retained for rollback). Evidence: `docs/build-evidence/self-improvement-attempt{1,2,3,4}`.
+
+What works and was proven live: Arena enrols itself (`enroll-self`), "Let Arena decide"
+resolves "Arena: …" requests to the Arena project, the director plans at economical tiers,
+Codex/Claude build the change in an isolated workspace, the frozen self-check (lint, format,
+imports, controller tests, TypeScript, UI build) runs in the macOS sandbox and PASSED on
+every build of attempts 3 and 4, the release activator swaps the login service to a
+worktree and rolls back on failure (one real rollback, three real activations).
+
+Defects found and fixed along the way (each was the sole blocker of its attempt):
+1. a test derived the controller path from the test file (differs in a workspace);
+2. the sandbox sets HOME to the workspace, so an enrolment guard misfired;
+3. the self-check left a `node_modules` link in the candidate tree (rejected as a
+   non-regular untracked path); 4. npm wrote cache logs into the workspace.
+
+Remaining gap: no self-build has yet reached integration. In attempt 4 the candidate
+(`candidate-6ea548b.patch`, Devices.tsx + style.css) passed the self-check and was rejected
+by the independent reviewer for a stale-async edge case (copy feedback could label a
+replacement code as copied); the director's bounded replan was running when stopped.
+That is the pipeline working as designed, not a controller fault. Impact: Test B
+(self-improvement integrated and activated autonomously) is unproven; everything else
+(builds for other projects, phone access, pairing, routing, activation/rollback) is
+operational and unaffected.
+
 ## Not yet done
 
 - Private phone access is configured: Tailscale Serve (tailnet-only, Funnel off) at

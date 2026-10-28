@@ -1,0 +1,78 @@
+diff --git a/web/src/screens/Devices.tsx b/web/src/screens/Devices.tsx
+index 5176e72..4a58927 100644
+--- a/web/src/screens/Devices.tsx
++++ b/web/src/screens/Devices.tsx
+@@ -1,4 +1,4 @@
+-import React, {useEffect, useState} from 'react';
++import React, {useEffect, useRef, useState} from 'react';
+ import {when, type RecordData} from '../types';
+ import {Chip, Eyebrow} from '../ui';
+ 
+@@ -7,6 +7,9 @@ export function Devices({action, disabled, post}: {action: (path: string, body:
+   const [devices, setDevices] = useState<RecordData[] | null>(null);
+   const [error, setError] = useState('');
+   const [invite, setInvite] = useState<RecordData | null>(null);
++  const [copyFeedback, setCopyFeedback] = useState('');
++  const inviteRef = useRef<RecordData | null>(null);
++  const mounted = useRef(false);
+   const load = async () => {
+     try {
+       const r = await fetch('/api/v1/devices', {cache: 'no-store'});
+@@ -18,7 +21,9 @@ export function Devices({action, disabled, post}: {action: (path: string, body:
+     }
+   };
+   useEffect(() => {
++    mounted.current = true;
+     load();
++    return () => { mounted.current = false; };
+   }, []);
+   return (
+     <section className="sub">
+@@ -56,7 +61,10 @@ export function Devices({action, disabled, post}: {action: (path: string, body:
+           disabled={disabled}
+           onClick={async () => {
+             try {
+-              setInvite(await post('devices/invite', {revision: 0}));
++              setCopyFeedback('');
++              const nextInvite = await post('devices/invite', {revision: 0});
++              inviteRef.current = nextInvite;
++              setInvite(nextInvite);
+             } catch (e) {
+               setError(String(e));
+             }
+@@ -69,7 +77,25 @@ export function Devices({action, disabled, post}: {action: (path: string, body:
+         <div className="invite">
+           <Eyebrow>Enter this on the new device within 30 minutes</Eyebrow>
+           <p className="path">{invite.origin}</p>
+-          <p className="invite-code num">{invite.code}</p>
++          <div className="invite-code-row">
++            <p className="invite-code num">{invite.code}</p>
++            <button className="btn" type="button" onClick={async () => {
++              const currentInvite = invite;
++              const code = currentInvite.code;
++              setCopyFeedback('');
++              if (!navigator.clipboard?.writeText) {
++                if (mounted.current && inviteRef.current === currentInvite) setCopyFeedback('Could not copy. Select the code to copy it manually.');
++                return;
++              }
++              try {
++                await navigator.clipboard.writeText(code);
++                if (mounted.current && inviteRef.current === currentInvite) setCopyFeedback('Copied');
++              } catch {
++                if (mounted.current && inviteRef.current === currentInvite) setCopyFeedback('Could not copy. Select the code to copy it manually.');
++              }
++            }}>Copy</button>
++          </div>
++          <p className="small muted" aria-live="polite">{copyFeedback}</p>
+           <p className="small muted">One use. Issuing another code does not cancel this one. Expires {when(invite.expires)}.</p>
+         </div>
+       )}
+diff --git a/web/src/style.css b/web/src/style.css
+index 3d62a1d..2333bbb 100644
+--- a/web/src/style.css
++++ b/web/src/style.css
+@@ -1732,3 +1732,4 @@ pre.code .d-file {
+ }
+ 
+ .invite{margin:12px 0;padding:14px;border:1px solid var(--line, #24364d);border-radius:12px;background:rgba(8,14,24,.6)}.invite-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:22px;letter-spacing:1px;overflow-wrap:anywhere;margin:8px 0;user-select:all}
++.invite-code-row{display:flex;align-items:center;gap:10px}.invite-code-row .invite-code{min-width:0;flex:1}

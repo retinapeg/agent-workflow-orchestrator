@@ -1,0 +1,77 @@
+[
+ {
+  "attempt": "attempt_58bd8cd9111e60eb",
+  "state": "passed",
+  "phase": "build",
+  "model": "gpt-6-luna",
+  "effort": "low",
+  "seconds": 110.229,
+  "reason": "CLI completed and frozen acceptance checks passed",
+  "checks": [
+   {
+    "argv": [
+     "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+     "scripts/self_check.py",
+     "--node-modules",
+     "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/web/node_modules"
+    ],
+    "artifact": "checks-0.txt",
+    "exit_code": 0,
+    "name": "Arena self-check",
+    "seconds": 45.064,
+    "sha256": "9ffaa0aa4ed91c70cf39fd33a8c2c4a86b6cc887e4f7925b026075660fe957b1",
+    "status": "PASS"
+   }
+  ],
+  "review": null,
+  "changed": [
+   "web/src/screens/Devices.tsx",
+   "web/src/style.css"
+  ],
+  "candidate": "6ea548bed477abd1afa6b2d08843a16e9f6b5c5c"
+ },
+ {
+  "attempt": "attempt_9f8e446cf0ff1f9d",
+  "state": "failed",
+  "phase": "review",
+  "model": "claude-haiku-5-5",
+  "effort": "low",
+  "seconds": 27.878,
+  "reason": "Independent review rejected: [\"web/src/screens/Devices.tsx: Copy feedback can label a replacement invitation as copied. Clicking Copy on invitation A and then requesting invitation B clears the feedback before the `post` resolves, but `inviteRef` still points to A during that window. If A's `writeText` resolves in that window, the guard passes and sets 'Copied' for A, which is still displayed. When B then replaces A via `setInvite(nextInvite)`, nothing clears `copyFeedback`, so 'Copied' stays visible for a code that was never copied. This violates the acceptance criterion that new invitations clear previous copy feedback and that stale async results cannot label a replacement code as copied. Clearing `copyFeedback` where the new invitation is set, or updating `inviteRef` and clearing feedback in the same step, would fix it.\"]",
+  "checks": [],
+  "review": {
+   "approved": false,
+   "findings": [
+    "web/src/screens/Devices.tsx: Copy feedback can label a replacement invitation as copied. Clicking Copy on invitation A and then requesting invitation B clears the feedback before the `post` resolves, but `inviteRef` still points to A during that window. If A's `writeText` resolves in that window, the guard passes and sets 'Copied' for A, which is still displayed. When B then replaces A via `setInvite(nextInvite)`, nothing clears `copyFeedback`, so 'Copied' stays visible for a code that was never copied. This violates the acceptance criterion that new invitations clear previous copy feedback and that stale async results cannot label a replacement code as copied. Clearing `copyFeedback` where the new invitation is set, or updating `inviteRef` and clearing feedback in the same step, would fix it."
+   ]
+  },
+  "changed": null,
+  "candidate": "6ea548bed477abd1afa6b2d08843a16e9f6b5c5c"
+ },
+ {
+  "attempt": "attempt_fb22a7dbb3fd116e",
+  "state": "passed",
+  "phase": "replan",
+  "model": "gpt-6-astra",
+  "effort": "xhigh",
+  "seconds": 185.049,
+  "reason": "Bounded plan schema, authority and dependency graph validated",
+  "checks": [],
+  "review": null,
+  "changed": null,
+  "candidate": null
+ },
+ {
+  "attempt": "attempt_ebe5a0877571ecac",
+  "state": "cancelled",
+  "phase": "build",
+  "model": "sonnet",
+  "effort": null,
+  "seconds": 7.014,
+  "reason": "",
+  "checks": [],
+  "review": null,
+  "changed": null,
+  "candidate": null
+ }
+]
