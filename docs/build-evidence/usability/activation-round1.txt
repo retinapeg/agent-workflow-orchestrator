@@ -1,0 +1,23 @@
+{
+  "sha": "af6e3298d1ae6a9c63f33c940d928cbc211f9703",
+  "result": "activated",
+  "rolled_back": false,
+  "current": "af6e3298d1ae6a9c63f33c940d928cbc211f9703",
+  "previous": "252c47f67a8d53fac2a5b0a871edd3d525ef3d11",
+  "release": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.arena-releases/af6e3298d1ae",
+  "health": {
+    "process": 38918,
+    "ui": true,
+    "scheduler": true,
+    "auth": true,
+    "history": {
+      "projects": 6,
+      "tasks": 28
+    },
+    "heartbeat": 1793214209.650597
+  },
+  "pruned": [
+    "6267043b8919"
+  ]
+}
+ACTIVATION_EXIT=0
