@@ -9,7 +9,7 @@ try{
  await page.goto(url);
  await page.getByLabel('One-time pairing code').fill(code);
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
  for(const tab of ['Overview','Build','Agents','Review','Projects']){
   await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:tab,exact:true}).click();
   await page.waitForTimeout(800);

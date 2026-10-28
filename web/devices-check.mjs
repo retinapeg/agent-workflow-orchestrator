@@ -9,7 +9,7 @@ try{
  await page.goto(url);
  await page.getByLabel('One-time pairing code').fill(code);
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
  const api=await page.evaluate(async()=>await(await fetch('/api/v1/devices')).json());
  console.log('API devices:',api.length, JSON.stringify(api.map(d=>({id:d.id,current:d.current,label:(d.label||'').slice(0,30)}))).slice(0,400));
  await page.getByRole('button',{name:'Device session'}).click();

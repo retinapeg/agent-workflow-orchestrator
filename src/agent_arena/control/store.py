@@ -22,6 +22,9 @@ class Conflict(ValueError):
     pass
 
 
+TABLES = {"projects", "accounts", "goals", "tasks", "attempts", "approvals", "conversations"}
+
+
 PAIRING_CODE_SECONDS = 30 * 60
 
 
@@ -109,6 +112,16 @@ class Store:
             CREATE TABLE IF NOT EXISTS sessions(hash TEXT PRIMARY KEY,
                 expires REAL NOT NULL,
                 csrf TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS conversations(id TEXT PRIMARY KEY,
+                rev INTEGER NOT NULL DEFAULT 0,
+                data TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY AUTOINCREMENT,
+                conversation_id TEXT NOT NULL REFERENCES conversations(id),
+                time REAL NOT NULL,
+                role TEXT NOT NULL,
+                text TEXT NOT NULL,
+                data TEXT NOT NULL);
+            CREATE INDEX IF NOT EXISTS messages_conversation ON messages(conversation_id,id);
             CREATE INDEX IF NOT EXISTS tasks_state ON tasks(state,project_id);
             CREATE INDEX IF NOT EXISTS attempts_state ON attempts(state,account_id);
             """)
@@ -154,7 +167,7 @@ class Store:
         return out
 
     def get(self, table, ident, db=None):
-        if table not in {"projects", "accounts", "goals", "tasks", "attempts", "approvals"}:
+        if table not in TABLES:
             raise ValueError("Invalid table")
         if db is not None:
             return self.unpack(db.execute(f"SELECT * FROM {table} WHERE id=?", (ident,)).fetchone())
@@ -162,7 +175,7 @@ class Store:
             return self.get(table, ident, conn)
 
     def rows(self, table, db=None):
-        if table not in {"projects", "accounts", "goals", "tasks", "attempts", "approvals"}:
+        if table not in TABLES:
             raise ValueError("Invalid table")
         if db is not None:
             return [self.unpack(r) for r in db.execute(f"SELECT * FROM {table}")]

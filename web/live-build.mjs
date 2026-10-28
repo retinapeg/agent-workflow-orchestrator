@@ -48,7 +48,7 @@ try {
   let {context, page} = await open(browser);
   await page.getByLabel('One-time pairing code').fill(code);
   await page.getByRole('button', {name: 'Pair device', exact: true}).click();
-  await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
+  await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
   log('Paired a phone-sized browser session');
   const before = await overview(page);
   let goalId = attachGoal, t0 = Date.now();
@@ -92,7 +92,7 @@ try {
   // 3. Reconnect in a fresh browser with the same paired device cookie.
   browser = await chromium.launch();
   ({context, page} = await open(browser, storageState));
-  await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
+  await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
   let snapshot = await overview(page);
   let tasks = mine(snapshot, goalId);
   if (!tasks.length) throw Error('Reconnected view does not show the submitted request');
@@ -217,7 +217,7 @@ try {
     await page.close();
     page = await context.newPage();
     await page.goto(url);
-    await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
+    await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
     await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Projects', exact: true}).click();
     await page.screenshot({path: evidence + '/06-integrated.png', fullPage: true});
   }

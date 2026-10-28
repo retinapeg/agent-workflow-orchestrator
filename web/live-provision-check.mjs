@@ -10,7 +10,7 @@ try{
  const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
  const page=await ctx.newPage(); const errors=[]; page.on('pageerror',e=>errors.push(e.message));
  await page.goto(url); await page.getByLabel('One-time pairing code').fill(code); await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
  await page.getByRole('button',{name:'New project',exact:true}).click();
  await page.getByLabel('What should Arena build?').fill('A tiny weather widget web page that shows the forecast for my city with a dark theme.');
  await page.getByRole('button',{name:'Propose project',exact:true}).click();

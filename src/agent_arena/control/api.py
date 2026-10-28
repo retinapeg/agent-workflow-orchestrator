@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import provisioning
+from . import conversation, provisioning
 from .engine import ACTIVE, Engine, git
 from .intent import resolve_project
 from .store import Conflict, Store, encode
@@ -60,6 +60,16 @@ class ProjectIdea(Model):
 
 class Provision(Model):
     proposal_id: str = Field(min_length=8, max_length=64)
+    revision: int = 0
+
+
+class ChatMessage(Model):
+    text: str = Field(min_length=1, max_length=20000)
+    revision: int = 0
+
+
+class ChatProject(Model):
+    project_id: str | None = None
     revision: int = 0
 
 
@@ -115,6 +125,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     )
     app.state.store = store
     app.state.engine = engine
+    director = conversation.Director(store, engine)
+    app.state.director = director
 
     @app.exception_handler(ValueError)
     async def value_error(request, exc):
@@ -357,6 +369,9 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             "api_fallback": False,
             "goals": store.rows("goals"),
             "provisions": provisioning.provisions(store),
+            "conversations": sorted(
+                store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True
+            )[:20],
         }
 
     @app.get("/api/v1/overview")
@@ -439,6 +454,60 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             planning=True,
             director=True,
         )
+
+    @app.get("/api/v1/conversations")
+    def conversations():
+        return sorted(store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True)
+
+    @app.post("/api/v1/conversations")
+    def new_conversation(body: Change, request: Request):
+        def create(db):
+            return conversation.new_conversation(
+                store, body.text.strip() or "New conversation", db
+            )
+
+        return command(request, body.model_dump(), create)
+
+    @app.get("/api/v1/conversations/{ident}")
+    def conversation_detail(ident: str):
+        conv = store.get("conversations", ident)
+        project = store.get("projects", conv["project_id"]) if conv.get("project_id") else None
+        return {
+            **conv,
+            "project": {"id": project["id"], "name": project["name"]} if project else None,
+            "messages": conversation.messages(store, ident),
+        }
+
+    @app.post("/api/v1/conversations/{ident}/messages")
+    def conversation_message(ident: str, body: ChatMessage, request: Request):
+        def send(db):
+            store.get("conversations", ident, db)
+            return {"ok": True, "queued": True}
+
+        result = command(request, body.model_dump(), send)
+        if result.get("queued") and not result.get("replayed"):
+            director.submit(ident, body.text)
+            with store.transaction() as db:
+                db.execute(
+                    "UPDATE commands SET response=? WHERE key=?",
+                    (
+                        encode({**result, "replayed": True}),
+                        request.headers.get("idempotency-key", ""),
+                    ),
+                )
+        return result
+
+    @app.post("/api/v1/conversations/{ident}/project")
+    def conversation_project(ident: str, body: ChatProject, request: Request):
+        def select(db):
+            conv = store.get("conversations", ident, db)
+            if body.project_id:
+                store.get("projects", body.project_id, db)
+            conv["project_id"] = body.project_id
+            conversation._save(store, db, conv)
+            return {"ok": True, "project_id": body.project_id}
+
+        return command(request, body.model_dump(), select)
 
     @app.post("/api/v1/projects/proposals")
     def project_proposal(body: ProjectIdea, request: Request):

@@ -42,7 +42,7 @@ try {
   await page.goto(url);
   await page.getByLabel('One-time pairing code').fill(code);
   await page.getByRole('button', {name: 'Pair device', exact: true}).click();
-  await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
+  await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
   const cookies = await context.cookies();
   const session = cookies.find((c) => c.name === 'arena_session');
   if (!session || !session.httpOnly || !session.secure || session.sameSite !== 'Strict') throw Error('cookie attributes wrong: ' + JSON.stringify(session));

@@ -13,7 +13,7 @@ try{
  await page.screenshot({path:`${out}/pair-390.png`,fullPage:false});
  await page.getByLabel('One-time pairing code').fill(code);
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
  await page.waitForTimeout(1500);
  const bundle=await page.evaluate(()=>[...document.scripts].map(s=>s.src).find(s=>s.includes('/assets/index-'))||'');
  report.checks.bundle=bundle.split('/').pop();

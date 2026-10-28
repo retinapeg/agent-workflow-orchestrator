@@ -16,7 +16,7 @@ try{
  await page.goto('http://127.0.0.1:8793');
  await page.getByLabel('One-time pairing code').fill('ui-fixture-one-use-code');
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
  await page.getByRole('button',{name:'New request',exact:true}).click();
  await page.getByLabel('What would you like to change?').fill('Queued UI test only; no worker is enrolled.');
  await page.getByRole('button',{name:'Build this for me',exact:true}).click();
@@ -24,7 +24,7 @@ try{
  const before=await page.evaluate(async()=>await(await fetch('/api/v1/overview')).json());
  if(before.tasks.length!==1||!before.paused)throw Error('Submission not persisted in paused fixture');
  await page.close();page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:8793');
- await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
  for(const tab of ['Overview','Projects','Agents','Review']){
   await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:tab,exact:true}).click();
   if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Overflow on '+tab);
