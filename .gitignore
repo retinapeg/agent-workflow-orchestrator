@@ -11,6 +11,7 @@ build/
 pricing.toml
 
 web/node_modules/
+web/node_modules
 web/dist/
 web/test-results/
 web/playwright-report/

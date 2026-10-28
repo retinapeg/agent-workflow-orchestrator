@@ -67,6 +67,7 @@ def main():
         timeout=540,
     )
     modules = WORKSPACE / "web/node_modules"
+    linked = False
     source_modules = (
         Path(sys.argv[sys.argv.index("--node-modules") + 1])
         if "--node-modules" in sys.argv
@@ -74,13 +75,19 @@ def main():
     )
     if not modules.exists() and source_modules.is_dir():
         modules.symlink_to(source_modules)
-    if modules.exists():
-        npx = Path(sys.executable).parent / "npx"
-        npx = "npx" if not npx.exists() else str(npx)
-        stage("typescript", [npx, "tsc", "--noEmit"], cwd=WORKSPACE / "web")
-        stage("ui build", [npx, "vite", "build"], cwd=WORKSPACE / "web")
-    else:
-        print("[self-check] web/node_modules unavailable; UI stages skipped", flush=True)
+        linked = True
+    try:
+        if modules.exists():
+            npx = Path(sys.executable).parent / "npx"
+            npx = "npx" if not npx.exists() else str(npx)
+            stage("typescript", [npx, "tsc", "--noEmit"], cwd=WORKSPACE / "web")
+            stage("ui build", [npx, "vite", "build"], cwd=WORKSPACE / "web")
+        else:
+            print("[self-check] web/node_modules unavailable; UI stages skipped", flush=True)
+    finally:
+        # Leave the candidate tree exactly as found: the link is not part of the change.
+        if linked:
+            modules.unlink()
     print("[self-check] all stages passed", flush=True)
 
 
