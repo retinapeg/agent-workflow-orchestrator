@@ -15,6 +15,7 @@ from pathlib import Path, PurePosixPath
 import psutil
 
 from .store import Conflict, Store, encode, uid
+from .titles import display_title
 
 ACTIVE = {"leased", "running", "verifying", "reviewing", "recovering"}
 SUCCESS = {"ready_for_approval", "completed"}
@@ -229,6 +230,8 @@ class Engine:
         director=False,
     ):
         project = self.store.get("projects", project_id, db)
+        if project.get("archived"):
+            raise Conflict("Project is archived")
         scope = safe_scope(scope)
         if not all(within(p, project["scope"]) for p in scope):
             raise ValueError("Task scope exceeds enrolled project authority")
@@ -257,6 +260,8 @@ class Engine:
                 raise ValueError("Dependencies must belong to the same project")
             if predecessor["phase"] == "plan":
                 raise ValueError("Depend on the planner's build tasks, not its planning completion")
+        # One readable line on the phone, whatever the request text looked like.
+        title = display_title(title) or display_title(instructions) or title.strip()[:100]
         goal_id, task_id = uid("goal"), uid("task")
         db.execute(
             "INSERT INTO goals VALUES(?,?,?)",
@@ -529,7 +534,11 @@ class Engine:
             )
             for task in candidates:
                 project = projects[task["project_id"]]
-                if not project["enabled"] or task.get("cooldown_until", 0) > time.time():
+                if (
+                    not project["enabled"]
+                    or project.get("archived")
+                    or task.get("cooldown_until", 0) > time.time()
+                ):
                     continue
                 deps = db.execute(
                     "SELECT t.state FROM task_dependencies d JOIN tasks t ON "

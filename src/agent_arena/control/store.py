@@ -136,6 +136,7 @@ class Store:
                 if column not in present:
                     db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")
         self.path.chmod(0o600)
+        archive_proof_projects(self)
 
     def connect(self):
         db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
@@ -227,3 +228,55 @@ class Store:
         with contextlib.closing(self.connect()) as src, sqlite3.connect(destination) as dst:
             src.backup(dst)
         os.chmod(destination, 0o600)
+
+
+ARCHIVE_PROOF_MIGRATION = "migration.archive_proof_projects"
+
+
+def is_proof_project(project: dict, home: Path) -> bool:
+    """Disposable proof snapshots live under the control home (``proof-source*``).
+
+    The basename rule also matches a state directory that moved since the snapshot was
+    enrolled (the recorded repo path then points at the old home).
+    """
+    repo = str(project.get("repo") or "")
+    if not repo:
+        return False
+    path = Path(repo)
+    if path.name.startswith("proof-source"):
+        return True
+    try:
+        return path.expanduser().resolve(strict=False).is_relative_to(home)
+    except (OSError, ValueError):
+        return False
+
+
+def archive_proof_projects(store: Store) -> list[str]:
+    """One-time migration (meta key ``migration.archive_proof_projects``): archive the proof
+    snapshots that were enrolled as ordinary projects. Returns the archived ids; a no-op
+    (empty list) once the meta key exists."""
+    with contextlib.closing(store.connect()) as db:
+        if db.execute("SELECT 1 FROM meta WHERE key=?", (ARCHIVE_PROOF_MIGRATION,)).fetchone():
+            return []
+    archived = []
+    with store.transaction() as db:
+        if db.execute("SELECT 1 FROM meta WHERE key=?", (ARCHIVE_PROOF_MIGRATION,)).fetchone():
+            return []
+        for project in store.rows("projects", db):
+            if project.get("archived") or not is_proof_project(project, store.home):
+                continue
+            project.update(archived=True, archived_at=time.time(), archived_by="migration")
+            db.execute(
+                "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+                (
+                    encode({k: v for k, v in project.items() if k not in {"id", "rev"}}),
+                    project["id"],
+                ),
+            )
+            store.event(db, "project.changed", project_id=project["id"], reason="archive")
+            archived.append(project["id"])
+        db.execute(
+            "INSERT INTO meta VALUES(?,?)",
+            (ARCHIVE_PROOF_MIGRATION, encode({"done": time.time(), "archived": archived})),
+        )
+    return archived

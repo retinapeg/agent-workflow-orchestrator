@@ -209,3 +209,95 @@ def test_catalog_lists_github_read_only_and_api_round_trip(tmp_path, monkeypatch
     detail = client.get(f"/api/v1/conversations/{cid}").json()
     assert detail["project"]["name"] == "Fixture" and detail["messages"] == []
     assert client.get("/api/v1/overview").json()["conversations"][0]["id"] == cid
+
+
+def test_director_context_carries_live_arena_status_without_a_selected_project(
+    tmp_path, monkeypatch
+):
+    from agent_arena.control.status import ago, arena_status
+    from tests.control.test_control import goal
+
+    store, engine, project, source = support.setup.__wrapped__(tmp_path)
+    ready_accounts(store)
+    running_task = goal(store, engine, project, path="src/run.txt", instructions="Add a runner")
+    waiting_task = goal(store, engine, project, path="src/ask.txt", instructions="Ask me")
+    done_task = goal(store, engine, project, path="src/done.txt", instructions="OUTCOME: Done one")
+    with store.transaction() as db:
+        store.update_task(db, store.get("tasks", running_task, db), "running", "Worker started")
+        store.update_task(
+            db,
+            store.get("tasks", waiting_task, db),
+            "awaiting_input",
+            "Needs an answer",
+            question="Hide archived items by default?",
+        )
+        store.update_task(db, store.get("tasks", done_task, db), "completed", "Integrated")
+        db.execute(
+            "INSERT INTO attempts VALUES(?,?,?,?,?,?)",
+            (
+                "attempt_live1",
+                running_task,
+                "slot0",
+                0,
+                "running",
+                encode(
+                    {
+                        "created": time.time() - 90,
+                        "phase": "build",
+                        "model": "test-only",
+                        "artifact_dir": str(store.home / "attempts" / "attempt_live1"),
+                    }
+                ),
+            ),
+        )
+        db.execute(
+            "INSERT INTO projects(id,data) VALUES(?,?)",
+            (
+                "project_old",
+                encode({**{k: v for k, v in project.items() if k != "id"}, "archived": True}),
+            ),
+        )
+    status = arena_status(store)
+    assert status["paused"] is False
+    assert status["running"] == [
+        {
+            "project": "Fixture",
+            "title": "src/run.txt",
+            "phase": "build",
+            "state": "running",
+            "agent": "Test slot 0",
+            "model": "test-only",
+            "elapsed_seconds": status["running"][0]["elapsed_seconds"],
+        }
+    ]
+    assert 89 <= status["running"][0]["elapsed_seconds"] <= 95
+    assert status["needs_you"] == [
+        {
+            "project": "Fixture",
+            "title": "src/ask.txt",
+            "why": "Waiting for your answer: Hide archived items by default?",
+        }
+    ]
+    assert status["recent"] == [
+        {"project": "Fixture", "title": "src/done.txt", "outcome": "completed", "when": "0s ago"}
+    ]
+    assert ago(59) == "59s ago" and ago(3600 * 5) == "5h ago" and ago(86400 * 3) == "3d ago"
+    # The director sees it on every turn, with no project selected, and never sees an
+    # archived project in its catalog.
+    monkeypatch.setattr(conversation, "auth_status", lambda account: (True, {}))
+    runner = FakeRunner(
+        [{"reply": "One build is running.", "project_hint": None, "action": "chat", "spec": None}]
+    )
+    director = conversation.Director(
+        store, engine, run=fake_gh_run, runner=runner, projects_dir=tmp_path / "none"
+    )
+    conv = conversation.new_conversation(store)
+    context, selected = director._context(conv, "what is running right now?")
+    assert selected is None and context["selected_project"] is None
+    assert context["arena_status"]["running"][0]["title"] == "src/run.txt"
+    assert [p["name"] for p in context["enrolled_projects"]] == ["Fixture"]
+    director.submit(conv["id"], "what is running right now?")
+    wait_idle(store, conv["id"])
+    prompt = runner.prompts[0]
+    assert '"arena_status"' in prompt and "Waiting for your answer" in prompt
+    assert "project_old" not in prompt

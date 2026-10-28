@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import conversation, provisioning
+from . import conversation, livetail, provisioning, views
 from .engine import ACTIVE, Engine, git
 from .intent import resolve_project
 from .store import Conflict, Store, encode
@@ -324,11 +324,13 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
         return response
 
     def snapshot():
+        """The polled overview: list-sized records only (see views.py); full records come
+        from the goal/task/attempt detail endpoints. Never reads attempt artifact files."""
         with contextlib.closing(store.connect()) as db:
             db.execute("BEGIN")
-            projects, tasks, attempts, accounts, approvals = [
+            projects, tasks, attempts, accounts, approvals, goals = [
                 store.rows(t, db)
-                for t in ["projects", "tasks", "attempts", "accounts", "approvals"]
+                for t in ["projects", "tasks", "attempts", "accounts", "approvals", "goals"]
             ]
             events = [
                 {**dict(r), "data": json.loads(r["data"])}
@@ -349,16 +351,16 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
         for a in accounts:
             for key in ("config_home", "executable"):
                 a.pop(key, None)
-        for a in attempts:
-            a.pop("identity", None)
+        for p in projects:
+            p["archived"] = bool(p.get("archived"))
         for t in tasks:
             t["dependencies"] = dependencies.get(t["id"], [])
         return {
             "projects": projects,
-            "tasks": tasks,
-            "attempts": attempts,
+            "tasks": [views.slim_task(t) for t in tasks],
+            "attempts": [views.slim_attempt(a) for a in attempts],
             "agents": accounts,
-            "approvals": approvals,
+            "approvals": [views.slim_approval(a) for a in approvals],
             "events": events,
             "paused": meta["paused"],
             "limit": meta["limit"],
@@ -367,7 +369,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             "version": "0.4.1-local",
             "server_time": time.time(),
             "api_fallback": False,
-            "goals": store.rows("goals"),
+            "goals": [views.slim_goal(g) for g in goals],
             "provisions": provisioning.provisions(store),
             "conversations": sorted(
                 store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True
@@ -377,6 +379,79 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     @app.get("/api/v1/overview")
     def overview():
         return snapshot()
+
+    def goal_graph(db, ident):
+        """One goal with its full tasks, attempts and approval ids (one read transaction)."""
+        goal = store.get("goals", ident, db)
+        tasks = [t for t in store.rows("tasks", db) if t.get("goal_id") == ident]
+        task_ids = {t["id"] for t in tasks}
+        for t in tasks:
+            t["dependencies"] = [
+                r[0]
+                for r in db.execute(
+                    "SELECT dependency_id FROM task_dependencies WHERE task_id=?", (t["id"],)
+                )
+            ]
+        attempts = []
+        for a in store.rows("attempts", db):
+            if a["task_id"] in task_ids:
+                a.pop("identity", None)
+                attempts.append(a)
+        approvals = [a["id"] for a in store.rows("approvals", db) if a["task_id"] in task_ids]
+        return goal, tasks, attempts, approvals
+
+    @app.get("/api/v1/goals/{ident}")
+    def goal_detail(ident: str):
+        with contextlib.closing(store.connect()) as db:
+            db.execute("BEGIN")
+            goal, tasks, attempts, approvals = goal_graph(db, ident)
+            events = views.goal_events(
+                db, ident, [t["id"] for t in tasks], [a["id"] for a in attempts], approvals
+            )
+            db.commit()
+        return {
+            "goal": views.with_title(goal),
+            "tasks": tasks,
+            "attempts": attempts,
+            "events": events,
+        }
+
+    @app.get("/api/v1/goals/{ident}/events")
+    def goal_event_feed(ident: str, after: int = 0):
+        with contextlib.closing(store.connect()) as db:
+            db.execute("BEGIN")
+            _, tasks, attempts, approvals = goal_graph(db, ident)
+            events = views.goal_events(
+                db,
+                ident,
+                [t["id"] for t in tasks],
+                [a["id"] for a in attempts],
+                approvals,
+                after=max(after, 0),
+            )
+            db.commit()
+        return {"events": events, "cursor": events[-1]["id"] if events else max(after, 0)}
+
+    @app.get("/api/v1/tasks/{ident}")
+    def task_detail(ident: str):
+        with contextlib.closing(store.connect()) as db:
+            task = store.get("tasks", ident, db)
+            task["dependencies"] = [
+                r[0]
+                for r in db.execute(
+                    "SELECT dependency_id FROM task_dependencies WHERE task_id=?", (ident,)
+                )
+            ]
+        return task
+
+    @app.get("/api/v1/attempts/{ident}/live")
+    def attempt_live(ident: str):
+        a = store.get("attempts", ident)
+        try:
+            provider = store.get("accounts", a["account_id"]).get("provider")
+        except KeyError:
+            provider = None
+        return livetail.tail(a, provider=provider, done=a["state"] not in ACTIVE)
 
     @app.get("/api/v1/health")
     def health():
@@ -441,6 +516,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     def request_goal(db, project_id, instructions, expected_revision=None):
         """Create a director-planned goal for a project (shared by both request routes)."""
         project = store.get("projects", project_id, db)
+        if project.get("archived"):
+            raise Conflict("Project is archived")
         if expected_revision is not None:
             revision(project, expected_revision)
         return engine.add_goal(
@@ -462,9 +539,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     @app.post("/api/v1/conversations")
     def new_conversation(body: Change, request: Request):
         def create(db):
-            return conversation.new_conversation(
-                store, body.text.strip() or "New conversation", db
-            )
+            return conversation.new_conversation(store, body.text.strip() or "New conversation", db)
 
         return command(request, body.model_dump(), create)
 
@@ -549,7 +624,9 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                 return {**result, "project_id": chosen, "resolved": False}
 
             return command(request, body.model_dump(), create)
-        enabled = [p for p in store.rows("projects") if p.get("enabled", True)]
+        enabled = [
+            p for p in store.rows("projects") if p.get("enabled", True) and not p.get("archived")
+        ]
         resolved = resolve_project(body.instructions, enabled)
         if not resolved["project"]:
             return JSONResponse(
@@ -593,7 +670,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
     @app.post("/api/v1/projects/{ident}/{action}")
     def project_action(ident: str, action: str, body: Change, request: Request):
-        if action not in {"pause", "resume", "policy"}:
+        if action not in {"pause", "resume", "policy", "archive", "unarchive"}:
             raise ValueError("Unsupported project action")
 
         def update(db):
@@ -601,6 +678,11 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             revision(p, body.revision)
             if action in {"pause", "resume"}:
                 p["enabled"] = action == "resume"
+            if action in {"archive", "unarchive"}:
+                # Archived projects keep their history but leave the pickers, the
+                # director's catalog and dispatch; new requests are refused (409).
+                p["archived"] = action == "archive"
+                p["archived_at"] = time.time() if action == "archive" else None
             if body.priority is not None:
                 p["priority"] = body.priority
             if body.integration_policy is not None:
@@ -609,8 +691,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                 "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
                 (encode({k: v for k, v in p.items() if k not in {"id", "rev"}}), ident),
             )
-            store.event(db, "project.changed", project_id=ident)
-            return {"ok": True}
+            store.event(db, "project.changed", project_id=ident, reason=action)
+            return {"ok": True, "archived": bool(p.get("archived"))}
 
         return command(request, body.model_dump(), update)
 

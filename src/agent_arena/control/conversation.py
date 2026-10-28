@@ -27,6 +27,7 @@ from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 
 from .engine import git
 from .intent import resolve_project
+from .status import arena_status
 from .store import encode
 from .worker import auth_status, invocation, redact
 
@@ -112,6 +113,7 @@ class Catalog:
                 "enabled": p.get("enabled", True),
             }
             for p in self.store.rows("projects")
+            if not p.get("archived")  # archived snapshots are history, not choices
         ]
 
     def local_repos(self):
@@ -312,6 +314,9 @@ class Director:
         context = {
             "selected_project": None,
             "enrolled_projects": self.catalog.enrolled(),
+            # Live facts: what runs, what needs the owner, what just finished — so "what is
+            # happening?" is answered from the store whether or not a project is selected.
+            "arena_status": arena_status(self.store),
             "local_repositories": self.catalog.local_repos(),
             "specification_so_far": conv.get("spec"),
         }
@@ -419,7 +424,11 @@ class Director:
                     live["spec"] = answer["spec"]
                 # Selection is deterministic: the director's hint, else the owner's own words
                 # — whichever names exactly one enrolled project.
-                enabled = [p for p in self.store.rows("projects", db) if p.get("enabled", True)]
+                enabled = [
+                    p
+                    for p in self.store.rows("projects", db)
+                    if p.get("enabled", True) and not p.get("archived")
+                ]
                 for candidate, strict in ((answer.get("project_hint"), False), (text, True)):
                     if not candidate:
                         continue
