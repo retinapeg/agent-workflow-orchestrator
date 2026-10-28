@@ -1,8 +1,9 @@
-import React from 'react';
+import React, {useEffect, useState} from 'react';
 import {useArena} from '../App';
 import {liveLineText, useLiveTail} from '../live';
 import {
   ACTIVE_TASK,
+  HISTORY_TASK,
   QUEUED_TASK,
   STAGES,
   STAGES_SHORT,
@@ -18,12 +19,14 @@ import {
   needsYouRows,
   providerGlyph,
   providersOf,
+  shortSha,
   stageIndex,
   stateLabel,
   when,
   type GoalView,
   type NeedRow,
   type RecordData,
+  type Snapshot,
 } from '../types';
 import {Chip, Empty, Glyph, Icon, Panel, Provider, StageBar} from '../ui';
 
@@ -203,10 +206,82 @@ function RecentRow({view}: {view: GoalView}) {
   );
 }
 
+// One row of the away summary: a request, what became of it, a tap into its build.
+type AwayRow = {key: string; tone: 'done' | 'decision' | 'blocked'; label: string; title: string; sub: string; open: () => void};
+
+// "Since you were away": what finished, what needs the owner and what failed since this
+// device was last seen by the host, each a tap into its build. Rendering it marks the
+// absence as seen on the host; the panel stays until the owner leaves Home or dismisses it.
+export function awayRows(data: Snapshot, since: number, now: number, openGoal: (id: string) => void, openNeed: (r: NeedRow) => void): AwayRow[] {
+  const views = (data.goals || []).map(g => goalView(g, data)).filter(v => !v.archived);
+  const byGoal = new Map(views.map(v => [v.goal.id, v]));
+  const rows: AwayRow[] = [];
+  const latest = (tasks: RecordData[]) => Math.max(...tasks.map(t => (t.updated as number) || 0));
+  const grouped = (keep: (t: RecordData) => boolean) => {
+    const out = new Map<string, RecordData[]>();
+    for (const t of data.tasks) {
+      if (!t.goal_id || !byGoal.has(t.goal_id) || (t.updated || 0) < since || !keep(t)) continue;
+      out.set(t.goal_id, [...(out.get(t.goal_id) || []), t]);
+    }
+    return out;
+  };
+  for (const [goalId, tasks] of grouped(t => t.state === 'completed')) {
+    const v = byGoal.get(goalId)!;
+    const sha = tasks.map(t => t.integrated_commit).find(Boolean) || v.tasks.map(t => t.integrated_commit).find(Boolean);
+    rows.push({key: 'done-' + goalId, tone: 'done', label: sha ? `Integrated · ${shortSha(sha, 7)}` : 'Completed', title: v.title, sub: `${ago(latest(tasks), now)}${v.project ? ' · ' + v.project.name : ''}`, open: () => openGoal(goalId)});
+  }
+  for (const r of needsYouRows(data).filter(r => r.at >= since)) {
+    rows.push({key: 'need-' + r.id, tone: r.tone, label: r.label, title: r.title, sub: `${ago(r.at, now)}${r.project ? ' · ' + r.project : ''} · ${r.sub}`, open: () => openNeed(r)});
+  }
+  for (const [goalId, tasks] of grouped(t => HISTORY_TASK.includes(t.state) && t.state !== 'cancelled')) {
+    const v = byGoal.get(goalId)!;
+    const last = [...tasks].sort((a, b) => b.updated - a.updated)[0];
+    rows.push({key: 'failed-' + goalId, tone: 'blocked', label: stateLabel(last.state), title: v.title, sub: `${ago(last.updated, now)}${v.project ? ' · ' + v.project.name : ''}${last.reason ? ' · ' + last.reason : ''}`, open: () => openGoal(goalId)});
+  }
+  return rows;
+}
+
+function AwayPanel({since, openNeed}: {since: number; openNeed: (r: NeedRow) => void}) {
+  const {data, now, openGoal, markSeen} = useArena();
+  const [dismissed, setDismissed] = useState(false);
+  const rows = awayRows(data, since, now, openGoal, openNeed);
+  useEffect(() => {
+    markSeen(); // viewed: the host forgets the absence, this panel stays until Home is left
+  }, []);
+  if (dismissed || !rows.length) return null;
+  return (
+    <Panel
+      title="Since you were away"
+      eyebrow={`Last here ${ago(since, now)}`}
+      className="away-panel accent-cobalt"
+      aside={
+        <button type="button" className="text-btn" onClick={() => setDismissed(true)}>
+          Got it
+        </button>
+      }
+    >
+      {rows.slice(0, 12).map(r => (
+        <button className="list-row press" key={r.key} onClick={r.open}>
+          <Glyph tone={r.tone} size={32} />
+          <span className="list-main">
+            <b className="clamp2">{r.title}</b>
+            <span className="small muted clamp2">
+              <span className={'tone ' + r.tone}>{r.label}</span> · {r.sub}
+            </span>
+          </span>
+          <Icon name="arrow" size={18} />
+        </button>
+      ))}
+    </Panel>
+  );
+}
+
 // Home: status first. What needs the owner, what is building, one button to ask for more,
 // then what finished. Requests on archived projects stay out of the way.
 export function Overview() {
-  const {data, now, disabled, setModal, openGoal, search} = useArena();
+  const {data, now, disabled, setModal, openGoal, search, awaySince} = useArena();
+  // Captured once per visit: marking the absence seen must not remove the panel mid-read.
+  const [away] = useState(awaySince);
   const q = search.trim().toLowerCase();
   const tasks = data.tasks;
   const working = tasks.filter(t => ACTIVE_TASK.includes(t.state) || t.state === 'integrating');
@@ -258,6 +333,8 @@ export function Overview() {
           <p className="page-sub">{summary}</p>
         </div>
       </div>
+
+      {away !== null && <AwayPanel since={away} openNeed={openNeed} />}
 
       {needRows.length > 0 && (
         <Panel title="Needs you" aside={<span className="count num">{needRows.length}</span>} className="accent-amber">

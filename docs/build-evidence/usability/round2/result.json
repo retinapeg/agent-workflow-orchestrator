@@ -1,0 +1,32 @@
+{
+  "state": "/var/folders/yq/_hrwmxwx6q904tfp_11yjxcw0000gn/T/arena-real-f7xTzI",
+  "viewport": 390,
+  "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  "dispatch": false,
+  "slices": {
+    "A": {
+      "awaySince": 1793171421,
+      "rows": 11,
+      "labels": [
+        "Completed",
+        "Completed",
+        "Completed",
+        "Completed",
+        "Integrated · 14b2aa7",
+        "Integrated · 993b9e2",
+        "Completed",
+        "Blocked",
+        "Blocked",
+        "Blocked",
+        "Blocked"
+      ],
+      "seenAfterView": null,
+      "opened": {
+        "row": "Arena: in the Device session dialog, add a Copy button next to the…",
+        "build": "Arena: in the Device session dialog, add a Copy button next to the… · Arena"
+      }
+    }
+  },
+  "passed": true,
+  "errors": []
+}

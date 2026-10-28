@@ -132,6 +132,7 @@ class Store:
                 ("label", "TEXT"),
                 ("created", "REAL"),
                 ("last_seen", "REAL"),
+                ("away_since", "REAL"),
             ):
                 if column not in present:
                     db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")

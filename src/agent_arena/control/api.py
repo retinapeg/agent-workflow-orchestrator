@@ -81,6 +81,9 @@ RENEW_AFTER_SECONDS = 7 * 86400
 # Renewal stops after this long since pairing: an always-open tab cannot keep a session
 # alive forever, so every device re-pairs at most twice a year.
 MAX_SESSION_SECONDS = 180 * 86400
+# A device not seen for this long was away: Home then summarises what finished, what needs
+# the owner and what failed since, until the owner has looked at it (POST session/seen).
+AWAY_SECONDS = 180
 
 
 class Intent(Model):
@@ -273,7 +276,34 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     @app.get("/api/v1/session")
     def get_session(request: Request):
         auth = session(request)
-        return {"csrf": auth["csrf"], "device_id": auth.get("id"), "expires": auth["expires"]}
+        now = time.time()
+        seen = auth.get("last_seen") or 0
+        away = auth.get("away_since")
+        if seen and now - seen >= AWAY_SECONDS:
+            # Keep the oldest unseen point: a second absence before the first was viewed
+            # must not hide what happened in between.
+            away = min(away, seen) if away else seen
+            try:
+                with store.transaction() as db:
+                    db.execute(
+                        "UPDATE sessions SET away_since=? WHERE hash=?", (away, auth["hash"])
+                    )
+            except Exception:
+                pass  # Bookkeeping only; a busy database must not fail the request.
+        return {
+            "csrf": auth["csrf"],
+            "device_id": auth.get("id"),
+            "expires": auth["expires"],
+            "away_since": away,
+        }
+
+    @app.post("/api/v1/session/seen")
+    def session_seen(body: Change, request: Request):
+        """The owner has looked at what happened while this device was away."""
+        auth = session(request)
+        with store.transaction() as db:
+            db.execute("UPDATE sessions SET away_since=NULL WHERE hash=?", (auth["hash"],))
+        return {"ok": True}
 
     @app.get("/api/v1/devices")
     def devices(request: Request):

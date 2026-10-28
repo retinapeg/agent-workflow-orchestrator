@@ -45,6 +45,9 @@ export type Ctx = {
   clearHandoff: () => void;
   search: string;
   setSearch: (s: string) => void;
+  // When this device was last seen by the host before the current visit (null: not away).
+  awaySince: number | null;
+  markSeen: () => Promise<void>;
 };
 
 const ArenaContext = createContext<Ctx>(null!);
@@ -106,6 +109,7 @@ export function App() {
   const [handoff, setHandoff] = useState(readHandoff);
   const [search, setSearch] = useState('');
   const [chatPing, setChatPing] = useState<ChatPing>({id: '', n: 0});
+  const [awaySince, setAwaySince] = useState<number | null>(null);
   const [, setTick] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const csrfRef = useRef('');
@@ -183,6 +187,7 @@ export function App() {
         if (!r.ok) throw Error(`Host answered ${r.status}`);
         const s = await r.json();
         setCsrf(s.csrf);
+        setAwaySince(typeof s.away_since === 'number' ? s.away_since : null);
         setBootError('');
         setPaired(true);
       } catch (e) {
@@ -234,6 +239,25 @@ export function App() {
       window.clearTimeout(refreshes.current.timer);
       refreshes.current.timer = 0;
     };
+  }, [paired]);
+
+  // Coming back to a backgrounded app: ask the host whether this device was away long
+  // enough for Home to summarise what happened meanwhile.
+  useEffect(() => {
+    if (!paired) return;
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const r = await fetch('/api/v1/session', {cache: 'no-store'});
+        if (!r.ok) return;
+        const s = await r.json();
+        if (typeof s.away_since === 'number') setAwaySince(s.away_since);
+      } catch {
+        /* the next snapshot poll reports the link state */
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
   }, [paired]);
 
   // A spec shared into Arena opens the request form with the text already in place.
@@ -335,6 +359,15 @@ export function App() {
     await post('logout', {});
     setPaired(false);
     setModal(null);
+  }
+
+  async function markSeen() {
+    setAwaySince(null);
+    try {
+      await post('session/seen', {revision: 0});
+    } catch {
+      /* bookkeeping only; the summary is shown regardless */
+    }
   }
 
   const setTab = (t: Tab) => {
@@ -480,6 +513,8 @@ export function App() {
     clearHandoff: () => setHandoff(''),
     search,
     setSearch,
+    awaySince,
+    markSeen,
   };
 
   return (
