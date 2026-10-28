@@ -172,7 +172,7 @@ def service_label(home: Path) -> str:
 
 def write_plist(home, repo, release, port, origin, label, python) -> Path:
     """Write <home>/control.plist.next running the controller from the release worktree."""
-    home = Path(home)
+    home = Path(home).expanduser().resolve()
     data = {
         "Label": label,
         "ProgramArguments": [
@@ -281,7 +281,7 @@ def health(
     Returns a dict of the checks that passed; raises ActivationError naming the check that
     did not pass within the timeout.
     """
-    home = Path(home)
+    home = Path(home).expanduser().resolve()
     origin = str(origin).rstrip("/")
     deadline = clock() + timeout
     passed = {}
@@ -567,7 +567,7 @@ def rollback(
     With record=True (a manual rollback after a successful activation) releases.json moves
     `previous` into `current`; activate() passes record=False because `current` never moved.
     """
-    home = Path(home)
+    home = Path(home).expanduser().resolve()
     previous = home / "control.plist.previous"
     if not previous.is_file():
         raise ActivationError(f"No previous service plist at {previous}; nothing to roll back to")
@@ -615,7 +615,9 @@ def activate(
     failed verification but the previous one was restored and verified. Raises ActivationError
     when the release could not be prepared or the rollback itself did not verify.
     """
-    home, repo = Path(home), Path(repo)
+    # Absolute paths: the release runs with its own working directory, so a relative state
+    # directory would silently point the new controller at an empty state next to it.
+    home, repo = Path(home).expanduser().resolve(), Path(repo).expanduser().resolve()
     sha = _check_sha(sha)
     origin = origin or default_origin(home, port)
     control = home / "control.plist"
@@ -720,7 +722,7 @@ def main(argv=None) -> int:
     p.add_argument("--timeout", type=float, default=90)
     sub.add_parser("status", help="print releases.json")
     args = parser.parse_args(argv)
-    home = args.home.expanduser()
+    home = args.home.expanduser().resolve()
     if args.command == "status":
         print(json.dumps(read_releases(home), indent=2))
         return 0
@@ -738,7 +740,7 @@ def main(argv=None) -> int:
                 parser.error("--repo is required to activate")
             result = activate(
                 home,
-                args.repo.expanduser(),
+                args.repo.expanduser().resolve(),
                 args.sha,
                 port=port,
                 origin=origin,

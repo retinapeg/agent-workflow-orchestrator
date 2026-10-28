@@ -413,3 +413,19 @@ def test_swap_waits_for_launchd_teardown_and_retries_bootstrap(tmp_path):
         "bootstrap",
         "bootstrap",
     ]
+
+
+def test_activation_plist_uses_absolute_state_directory(tmp_path, monkeypatch):
+    from agent_arena.control.activation import write_plist
+
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "home").mkdir()
+    release = tmp_path / "rel"
+    release.mkdir()
+    plist = write_plist(
+        Path("home"), tmp_path, release, 8791, "http://127.0.0.1:8791", "label.test", "/py"
+    )
+    data = plistlib.loads(plist.read_bytes())
+    home_arg = data["ProgramArguments"][data["ProgramArguments"].index("--home") + 1]
+    assert Path(home_arg).is_absolute() and Path(home_arg) == (tmp_path / "home").resolve()
+    assert data["StandardOutPath"].startswith(str(tmp_path.resolve()))
