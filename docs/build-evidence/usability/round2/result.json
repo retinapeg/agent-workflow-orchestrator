@@ -1,9 +1,9 @@
 {
-  "state": "/tmp/arena-real-5FaVPR",
+  "state": "/tmp/arena-real-fPoP5g",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
-  "ran": "C",
+  "ran": "D",
   "platform": "linux",
   "slices": {
     "A": {
@@ -65,6 +65,35 @@
         "text": "The director was interrupted (Arena restarted). Tap Retry.",
         "retry": 1,
         "thinking": 0
+      }
+    },
+    "D": {
+      "integrated": {
+        "goal": "goal_a6faaa785f084d70",
+        "sha": "f1707f8",
+        "card": "Arena Smoke 20261028 Add optional silent completion, a Pomodoro: countdown prefix and a… Integrated · f1707f8 9m 35s Open the build",
+        "review": 0,
+        "opened": "goal_a6faaa785f084d70"
+      },
+      "review": {
+        "goal": "goal_815db45a71e3a62d",
+        "task": "task_bd2af42e9557b61d",
+        "card": "Arena Add to an existing project: What repo are we in? Ready for approval 12h 18m Add a persistent eight-hour economical overnight queue mode Verified candidate staged for your decision Review Open the build",
+        "dialog": {
+          "title": "Add a persistent eight-hour economical overnight queue mode",
+          "accept": 1,
+          "candidate": 1
+        }
+      },
+      "live": {
+        "card": "Arena Add to an existing project: What repo are we in? Building 12h 18m Codex · gpt-6.1-sol · high · 1m 15s Codex · testing $ pytest -q tests/test_bell.py Watch the build",
+        "agent": "Codex",
+        "review": 0,
+        "after": "Arena Add to an existing project: What repo are we in? Integrated · c0ffee0 12h 18m Open the build"
+      },
+      "newChat": {
+        "expected": "Arena",
+        "project": "Arena"
       }
     }
   },

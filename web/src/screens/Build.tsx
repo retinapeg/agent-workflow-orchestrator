@@ -19,6 +19,7 @@ import {
   goalView,
   liveAttemptOf,
   milestoneTree,
+  pendingApprovals,
   providerGlyph,
   seconds,
   shortSha,
@@ -227,7 +228,7 @@ function NeedsCard({view}: {view: GoalView}) {
   const [answer, setAnswer] = useState('');
   const asking = view.tasks.find(t => t.state === 'awaiting_input');
   const access = view.tasks.filter(t => t.state === 'needs_auth' || t.state === 'needs_permission');
-  const approvals = data.approvals.filter(a => a.state === 'pending' && view.tasks.some(t => t.id === a.task_id && t.state === 'ready_for_approval'));
+  const approvals = pendingApprovals(view, data);
   if (!asking && !access.length && !approvals.length) return null;
   return (
     <section className="card needs-card accent-amber" aria-label="Needs you">

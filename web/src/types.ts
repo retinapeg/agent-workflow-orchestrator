@@ -285,6 +285,18 @@ export function liveAttemptOf(view: GoalView, snap: Snapshot): RecordData | unde
 // Task states in which the owner has to act for the request to move on.
 export const NEEDS_TASK = ['awaiting_input', 'needs_auth', 'needs_permission', 'ready_for_approval'];
 
+// The verified candidates a request waits on: pending approvals of its tasks that are ready
+// for approval (the Builds tab lists them; the chat build card opens the first).
+export function pendingApprovals(view: GoalView, snap: Snapshot): RecordData[] {
+  return snap.approvals.filter(a => a.state === 'pending' && view.tasks.some(t => t.id === a.task_id && t.state === 'ready_for_approval'));
+}
+
+// The commit a finished request left on main: the most recently integrated of its tasks.
+export function integratedCommit(view: GoalView): string {
+  const integrated = view.tasks.filter(t => t.integrated_commit).sort((a, b) => (b.updated || 0) - (a.updated || 0));
+  return (integrated[0]?.integrated_commit as string) || '';
+}
+
 // Which request the Builds tab should open on when none is chosen: the live one (an
 // attempt is running now), else one waiting on the owner, else the newest. A merely queued
 // request does not outrank one that needs an answer. Archived projects' requests only when

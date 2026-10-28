@@ -73,6 +73,15 @@ class ChatProject(Model):
     revision: int = 0
 
 
+class NewChat(Model):
+    """A new conversation; without project_id it starts on the owner's current project
+    (conversation.default_project), with an explicit null on none."""
+
+    text: str = Field(default="", max_length=4000)
+    project_id: str | None = None
+    revision: int = 0
+
+
 # A trusted device pairs once. Its session lasts SESSION_SECONDS and is renewed on use
 # once RENEW_AFTER_SECONDS have elapsed, so an active device never re-pairs; an unused
 # one expires. Logout and per-device revocation end a session immediately.
@@ -579,11 +588,18 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
         return [conversation.view(c) for c in rows]
 
     @app.post("/api/v1/conversations")
-    def new_conversation(body: Change, request: Request):
-        def create(db):
-            return conversation.new_conversation(store, body.text.strip() or "New conversation", db)
+    def new_conversation(body: NewChat, request: Request):
+        chosen = "project_id" in body.model_fields_set
 
-        return command(request, body.model_dump(), create)
+        def create(db):
+            project_id = body.project_id if chosen else conversation.default_project(store, db)
+            if chosen and project_id and store.get("projects", project_id, db).get("archived"):
+                raise Conflict("Project is archived")
+            return conversation.new_conversation(
+                store, body.text.strip() or "New conversation", db, project_id=project_id
+            )
+
+        return command(request, {**body.model_dump(), "chosen": chosen}, create)
 
     @app.get("/api/v1/conversations/{ident}")
     def conversation_detail(ident: str):

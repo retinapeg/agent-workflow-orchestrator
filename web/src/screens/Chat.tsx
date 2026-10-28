@@ -1,8 +1,9 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useArena} from '../App';
 import {useSpeech} from '../speech';
-import {ago, buildPhrase, clock, duration, pickableProjects, planTasks, seconds, type ChatMessage, type Conversation, type ConversationDetail, type PlanMilestone, type Spec} from '../types';
-import {Chip, Eyebrow, Icon, LiveDot, Mark} from '../ui';
+import {NEEDS_TASK, STAGES, ago, buildPhrase, clock, duration, goalClass, goalElapsed, goalView, integratedCommit, pendingApprovals, pickableProjects, planTasks, seconds, shortSha, type ChatMessage, type Conversation, type ConversationDetail, type GoalView, type PlanMilestone, type Spec} from '../types';
+import {Chip, Eyebrow, Glyph, Icon, LiveDot, Mark, StageBar} from '../ui';
+import {useBuildProgress} from './Overview';
 
 // Talk to the director like a colleague. Sending never starts a build: a build begins only
 // when the host reports one (the owner's own explicit words and the director's agreement).
@@ -208,9 +209,82 @@ function Meta({m}: {m: ChatMessage}) {
   );
 }
 
+// The reply that started a build becomes that build's card, updated in place from the
+// snapshot: stage bar, the agent and model on it and its last live line while it runs; then
+// the outcome: Review when it waits for approval, "Integrated · sha" once on main, or the
+// state it stopped in, each one tap from the build. Until the snapshot carries the new
+// request the card says the build started.
+function BuildCard({m}: {m: ChatMessage}) {
+  const {data, openGoal} = useArena();
+  const goal = m.goal_id ? (data.goals || []).find(g => g.id === m.goal_id) : undefined;
+  if (goal) return <LiveBuildCard view={goalView(goal, data)} />;
+  return (
+    <div className="build-card">
+      <div className="row">
+        <LiveDot tone="live" />
+        <b>Build started on {m.project || 'your project'}</b>
+      </div>
+      <p className="small muted">Your director is inspecting the project and planning the work. You can leave this running and come back.</p>
+      {m.goal_id && (
+        <button type="button" className="btn primary" onClick={() => openGoal(m.goal_id!)}>
+          <Icon name="build" size={16} />
+          Watch the build
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LiveBuildCard({view}: {view: GoalView}) {
+  const {data, now, openGoal, setModal} = useArena();
+  const {status, stage, liveAttempt, currentTask, lastLine, agentLine} = useBuildProgress(view);
+  const cls = goalClass(view);
+  const sha = cls === 'done' ? integratedCommit(view) : '';
+  const label = sha ? `Integrated · ${shortSha(sha, 7)}` : status.label;
+  const awaiting = view.tasks.some(t => t.state === 'ready_for_approval');
+  const approval = awaiting ? pendingApprovals(view, data)[0] : undefined;
+  // Running: the agent, model and elapsed, then its last live line. Queued: the task in front
+  // and its state. Waiting on the owner or stopped: that task and the reason it records.
+  const stopped = cls === 'history' || cls === 'needs';
+  const focus = view.tasks.find(t => NEEDS_TASK.includes(t.state)) || currentTask;
+  const what = liveAttempt || cls === 'active' ? agentLine : stopped ? focus?.title || '' : '';
+  const line = liveAttempt ? lastLine : stopped ? focus?.reason || '' : '';
+  return (
+    <div className="build-card chat-build" role="group" aria-label={`Build: ${view.title}`}>
+      <div className="row">
+        <Glyph tone={status.tone} size={24} />
+        <b className="clamp1">{view.project?.name || 'Project'}</b>
+      </div>
+      <span className="clamp2">{view.title}</span>
+      <StageBar stage={stage} total={STAGES.length} tone={status.tone} label={`Stage ${Math.min(stage + 1, STAGES.length)} of ${STAGES.length}: ${STAGES[Math.min(stage, STAGES.length - 1)]}`} />
+      <span className="build-meta small">
+        <Chip tone={status.tone}>{label}</Chip>
+        <span className="num">{duration(goalElapsed(view, now))}</span>
+      </span>
+      {what && <span className="small muted clamp2 build-agent">{what}</span>}
+      {line && (
+        <span className={'small clamp2 ' + (liveAttempt ? 'build-last' : 'muted')} aria-live={liveAttempt ? 'polite' : undefined}>
+          {line}
+        </span>
+      )}
+      <div className="msg-actions">
+        {awaiting && (
+          <button type="button" className="btn primary" onClick={() => (approval ? setModal({kind: 'review', id: approval.id}) : openGoal(view.goal.id))}>
+            <Icon name="review" size={16} />
+            Review
+          </button>
+        )}
+        <button type="button" className={'btn' + (cls === 'active' ? ' primary' : '')} onClick={() => openGoal(view.goal.id)}>
+          <Icon name="build" size={16} />
+          {cls === 'active' ? 'Watch the build' : 'Open the build'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // `last`: only the newest message offers Retry, so an old error never re-asks an old question.
 function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSend: (text: string) => void; busy: boolean; last: boolean}) {
-  const {openGoal} = useArena();
   if (m.role === 'user')
     return (
       <div className="msg user">
@@ -237,21 +311,7 @@ function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSe
           </button>
         </div>
       )}
-      {m.build_started && (
-        <div className="build-card">
-          <div className="row">
-            <LiveDot tone="live" />
-            <b>Build started on {m.project || 'your project'}</b>
-          </div>
-          <p className="small muted">Your director is inspecting the project and planning the work. You can leave this running and come back.</p>
-          {m.goal_id && (
-            <button type="button" className="btn primary" onClick={() => openGoal(m.goal_id!)}>
-              <Icon name="build" size={16} />
-              Watch the build
-            </button>
-          )}
-        </div>
-      )}
+      {m.build_started && <BuildCard m={m} />}
       {m.error && ((last && !!m.retry_text) || !!m.detail) && (
         <div className="msg-actions">
           {last && m.retry_text && (
@@ -368,8 +428,11 @@ export function Chat() {
   }, [picking]);
 
   const create = async (): Promise<ConversationDetail> => {
+    // The host starts a new chat on the owner's current project (the last one talked about,
+    // else the last one built); the chip shows it at once and can be changed.
     const c = (await post('conversations', {revision: 0, text: ''})) as Conversation;
-    const d: ConversationDetail = {...c, project: null, messages: []};
+    const p = c.project_id ? data.projects.find(x => x.id === c.project_id) : null;
+    const d: ConversationDetail = {...c, project: p ? {id: p.id, name: p.name} : null, messages: []};
     seen.current = 0;
     setDetail(d);
     setId(c.id);

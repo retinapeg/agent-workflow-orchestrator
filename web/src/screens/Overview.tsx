@@ -123,26 +123,35 @@ export function StageRail({view}: {view: GoalView}) {
   );
 }
 
-// One live build: project, title, stage bar, the agent and model on it, elapsed, and the
-// last line the agent produced (from the live tail while an attempt runs; otherwise the
-// recorded reason of the current task).
-function BuildRow({view}: {view: GoalView}) {
-  const {data, now, openGoal} = useArena();
+// What one build is doing now, from the snapshot and (while an attempt runs) its live tail:
+// status, stage, the attempt and agent on it, the task in front, an agent line (agent,
+// model, effort, elapsed; else the current task and its state) and the last line the agent
+// produced. Home's Active builds and the chat build card both read it.
+export function useBuildProgress(view: GoalView) {
+  const {data, now} = useArena();
   const status = goalStatus(view);
   const stage = goalStage(view);
-  const providers = providersOf(view, data);
   const liveAttempt = liveAttemptOf(view, data);
   const agent = liveAttempt && data.agents.find(a => a.id === liveAttempt.account_id);
   const tail = useLiveTail(liveAttempt?.id);
   const liveTask = view.tasks.find(t => ACTIVE_TASK.includes(t.state));
   const currentTask = (liveAttempt && view.tasks.find(t => t.id === liveAttempt.task_id)) || liveTask || view.children.find(t => t.state !== 'completed' && t.state !== 'cancelled') || view.plan;
   const lastLine = tail?.lines.length ? liveLineText(tail.lines[tail.lines.length - 1], agent?.name || 'Agent') : '';
-  const tree = milestoneTree(view, data);
   const agentLine = liveAttempt
     ? `${agent?.name || 'Agent'} · ${liveAttempt.model}${liveAttempt.effort ? ' · ' + liveAttempt.effort : ''} · ${duration(now - liveAttempt.created)}`
     : currentTask
       ? `${currentTask.title} · ${stateLabel(currentTask.state)}`
       : status.label;
+  return {status, stage, liveAttempt, currentTask, lastLine, agentLine};
+}
+
+// One live build: project, title, stage bar, the agent and model on it, elapsed, and the
+// last line the agent produced (from the live tail while an attempt runs).
+function BuildRow({view}: {view: GoalView}) {
+  const {data, now, openGoal} = useArena();
+  const {status, stage, liveAttempt, lastLine, agentLine} = useBuildProgress(view);
+  const providers = providersOf(view, data);
+  const tree = milestoneTree(view, data);
   return (
     <button className="build-row" onClick={() => openGoal(view.goal.id)}>
       <Glyph tone={status.tone} />

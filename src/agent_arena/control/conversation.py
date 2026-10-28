@@ -250,13 +250,29 @@ class Catalog:
         }
 
 
-def new_conversation(store, title="New conversation", db=None):
+def default_project(store, db):
+    """The project a new chat starts on: the one the owner talked about most recently, else
+    the one with the most recent build; never an archived or paused project. None when
+    there is neither."""
+    usable = {
+        p["id"]
+        for p in store.rows("projects", db)
+        if not p.get("archived") and p.get("enabled", True)
+    }
+    for table, key in (("conversations", "updated"), ("goals", "created")):
+        for row in sorted(store.rows(table, db), key=lambda r: r.get(key) or 0, reverse=True):
+            if row.get("project_id") in usable:
+                return row["project_id"]
+    return None
+
+
+def new_conversation(store, title="New conversation", db=None, project_id=None):
     ident = "conv_" + secrets.token_hex(6)
     data = {
         "title": title,
         "created": time.time(),
         "updated": time.time(),
-        "project_id": None,
+        "project_id": project_id,
         "spec": None,
         "status": "idle",
     }

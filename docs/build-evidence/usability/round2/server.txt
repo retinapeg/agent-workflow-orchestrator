@@ -1,55 +1,49 @@
-INFO:     Started server process [15367]
+INFO:     Started server process [719]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8795 (Press CTRL+C to quit)
-INFO:     127.0.0.1:42516 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42540 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42540 - "GET /icon.svg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:42542 - "POST /api/v1/pair HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42540 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:42524 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:42524 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42542 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:42524 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:42524 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42552 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "POST /api/v1/conversations/conv_599972be3389/messages HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:36556 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:36556 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:42524 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36556 - "GET /api/v1/conversations/conv_cf641fa8861e HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36570 - "GET /api/v1/conversations/conv_cf641fa8861e HTTP/1.1" 200 OK
-INFO:     127.0.0.1:36570 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36266 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36274 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36274 - "GET /assets/index-DcmPfQ_h.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36288 - "GET /assets/index-BjSQoA1f.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36274 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36274 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36288 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:36296 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36288 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36274 - "GET /assets/index-BjSQoA1f.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:36296 - "GET /assets/index-DcmPfQ_h.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:36296 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36274 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /api/v1/conversations/conv_29286a27b80f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/conversations/conv_29286a27b80f HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /assets/index-DcmPfQ_h.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:36308 - "GET /assets/index-BjSQoA1f.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:36308 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36296 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/conversations/conv_321bc2bd28b8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/conversations/conv_321bc2bd28b8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/attempts/attempt_46a81175f3f9744c/live HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/attempts/attempt_46a81175f3f9744c/live HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "POST /api/v1/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36312 - "GET /api/v1/conversations/conv_321bc2bd28b8 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36308 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36312 - "GET /api/v1/conversations/conv_e8221c5fce2e HTTP/1.1" 200 OK
 INFO:     Shutting down
 INFO:     Waiting for application shutdown.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [15367]
+INFO:     Finished server process [719]

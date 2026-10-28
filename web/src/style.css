@@ -2984,6 +2984,13 @@ pre.code .d-file {
 .build-card b {
   font-size: 14px;
 }
+.chat-build {
+  justify-items: stretch;
+  min-width: min(300px, 76vw); /* a short reply still gets a card wide enough to read */
+}
+.chat-build .msg-actions {
+  margin-top: 2px;
+}
 .msg .warn-banner {
   margin: 0;
 }

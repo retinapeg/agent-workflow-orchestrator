@@ -372,3 +372,124 @@ def test_conversation_records_carry_the_director_progress(setup):
         assert progress["turn_repo"] == "arena-smoke-20261028"
         assert len(progress["step_detail"]) == conversation.STEP_DETAIL_CHARS
         assert 11 <= time.time() - progress["turn_started"] <= 20
+
+
+# -- slice D: chat as the front door ------------------------------------------------------
+
+
+def add_project(store, ident, name, **fields):
+    """A second enrolled project (a copy of the fixture's record under another name)."""
+    with store.transaction() as db:
+        base = store.rows("projects", db)[0]
+        data = {k: v for k, v in base.items() if k not in {"id", "rev"}}
+        data.update(name=name, **fields)
+        db.execute("INSERT INTO projects(id,data) VALUES(?,?)", (ident, support.encode(data)))
+
+
+def change_project(store, ident, **fields):
+    with store.transaction() as db:
+        p = store.get("projects", ident, db)
+        p.update(fields)
+        db.execute(
+            "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+            (support.encode({k: v for k, v in p.items() if k not in {"id", "rev"}}), ident),
+        )
+
+
+def test_a_new_chat_starts_on_the_current_project(tmp_path):
+    def creator(store):
+        client, headers = paired_client(store)
+        keys = iter(range(1000))
+
+        def new(**body):
+            r = client.post(
+                "/api/v1/conversations",
+                json={"revision": 0, "text": "", **body},
+                headers={**headers, "Idempotency-Key": f"new-{next(keys)}"},
+            )
+            return r.json()["project_id"] if r.status_code == 200 else r.status_code
+
+        return new
+
+    # Nothing enrolled: the chat starts without a project.
+    assert creator(support.Store(tmp_path / "empty"))() is None
+
+    store, engine, project, _ = support.setup.__wrapped__(tmp_path / "fixture")
+    fixture = project["id"]
+    add_project(store, "project_second", "Second")
+    new = creator(store)
+    assert new() is None  # enrolled, but never talked about nor built
+    # No conversation names a project yet: the project with the most recent build.
+    goal(store, engine, project, path="src/old.txt")
+    with store.transaction() as db:
+        db.execute(
+            "INSERT INTO goals(id,project_id,data) VALUES(?,?,?)",
+            (
+                "goal_second",
+                "project_second",
+                support.encode({"created": time.time() + 5, "title": "Newest build"}),
+            ),
+        )
+    assert new() == "project_second"
+    # The project of the most recent conversation wins over a newer build; a more recent
+    # chat without a project does not reset it.
+    talked = conversation.new_conversation(store, project_id=fixture)
+    conversation.add_message(store, talked["id"], "user", "How is Fixture doing?")
+    conversation.add_message(store, conversation.new_conversation(store)["id"], "user", "Hi")
+    assert new() == fixture
+    # Archived and paused projects are never a default.
+    change_project(store, fixture, archived=True)
+    assert new() == "project_second"
+    change_project(store, "project_second", enabled=False)
+    assert new() is None
+    change_project(store, fixture, archived=False)
+    assert new() == fixture
+    # The owner's explicit choice (or explicit none) is kept; an archived project is refused.
+    assert new(project_id="project_second") == "project_second"
+    assert new(project_id=None) is None
+    change_project(store, "project_second", archived=True)
+    assert new(project_id="project_second") == 409
+    assert new(project_id="project_missing") == 404
+
+
+def test_build_it_in_a_new_chat_builds_on_the_current_project(tmp_path, monkeypatch):
+    store, engine, project, source = support.setup.__wrapped__(tmp_path)
+    ready_accounts(store)
+    monkeypatch.setattr(conversation, "auth_status", lambda account: (True, {}))
+    earlier = conversation.new_conversation(store, project_id=project["id"])
+    conversation.add_message(store, earlier["id"], "user", "Fixture first")
+    client, headers = paired_client(store)
+    created = client.post(
+        "/api/v1/conversations",
+        json={"revision": 0, "text": ""},
+        headers={**headers, "Idempotency-Key": "front-door"},
+    ).json()
+    assert created["project_id"] == project["id"]  # nobody had to pick it
+    spec = {
+        "outcome": "Add src/hello.txt containing a greeting",
+        "acceptance": ["src/hello.txt exists"],
+        "constraints": ["Only src"],
+        "notes": "",
+    }
+    runner = FakeRunner(
+        [
+            {"reply": "Shall I add it?", "project_hint": None, "action": "build", "spec": spec},
+            {"reply": "Starting the build.", "project_hint": None, "action": "build", "spec": spec},
+        ]
+    )
+    director = conversation.Director(
+        store, engine, run=fake_gh_run, runner=runner, projects_dir=tmp_path / "none"
+    )
+    # The director agreeing is not enough: no "build it" in the owner's words, no build.
+    director.submit(created["id"], "I'd like a greeting file in src.")
+    wait_idle(store, created["id"])
+    assert last_message(store, created["id"]).get("offer_build") and not store.rows("goals")
+    # "Build it" goes through the existing explicit-execution path on the default project.
+    director.submit(created["id"], "Great, build it.")
+    wait_idle(store, created["id"])
+    reply = last_message(store, created["id"])
+    assert reply["build_started"] is True and reply["project"] == "Fixture"
+    goal_row = store.get("goals", reply["goal_id"])
+    assert goal_row["project_id"] == project["id"] and reply["task_id"]
+    detail = client.get(f"/api/v1/conversations/{created['id']}").json()
+    assert detail["messages"][-1]["goal_id"] == reply["goal_id"]
