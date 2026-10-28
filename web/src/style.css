@@ -698,10 +698,9 @@ details.disclosure > summary .muted {
 }
 .facts dt {
   color: var(--muted);
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
   max-width: 62%;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .facts dd {
   text-align: right;
@@ -1719,6 +1718,7 @@ main {
   align-items: center;
   gap: 8px;
   margin-top: 8px;
+  min-height: 44px;
   cursor: pointer;
 }
 .field.inline .check {

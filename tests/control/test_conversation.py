@@ -257,7 +257,8 @@ def test_director_context_carries_live_arena_status_without_a_selected_project(
                 encode({**{k: v for k, v in project.items() if k != "id"}, "archived": True}),
             ),
         )
-    status = arena_status(store)
+    # A fixed clock (the moment the last task was stamped) keeps "0s ago" deterministic.
+    status = arena_status(store, now=store.get("tasks", done_task)["updated"])
     assert status["paused"] is False
     assert status["running"] == [
         {

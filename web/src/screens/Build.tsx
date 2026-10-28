@@ -342,6 +342,9 @@ function useGoalDetail(goalId: string, wanted: boolean): {detail: GoalDetail | n
     })();
     return () => {
       stopped = true;
+      // A fetch abandoned mid-flight (Details closed or the request switched) must not
+      // leave loading=true behind, or re-opening Details would never fetch again.
+      setState(s => (s.id === goalId && s.loading && !s.detail ? {...s, loading: false} : s));
     };
   }, [goalId, wanted]);
   return state.id === goalId ? {detail: state.detail, loading: state.loading} : {detail: null, loading: false};
@@ -658,7 +661,8 @@ export function Build() {
                   {output.length > 0 && '\n'}
                   {tail.lines.map((l, i) => (
                     <span key={i} className={'t-' + l.kind}>
-                      <span className="t-time">[{stamp(l.t ?? liveAttempt.created + (tail.elapsed || 0))}]</span> {liveLineText(l, agentName)}
+                      {/* The transcript records no per-line time: only a stamped line gets one. */}
+                      <span className="t-time">{l.t ? `[${stamp(l.t)}]` : '[   live   ]'}</span> {liveLineText(l, agentName)}
                       {'\n'}
                     </span>
                   ))}

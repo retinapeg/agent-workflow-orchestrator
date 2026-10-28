@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
 from agent_arena.control import livetail, views
 from agent_arena.control.conversation import Catalog
@@ -144,6 +145,11 @@ def test_display_title_cases():
     )
     assert display_title("Wrap here\nand continue. Second.") == "Wrap here and continue"
     assert display_title("src/a.txt") == "src/a.txt"
+    # A hyphenated word that starts with a label word is a word, not a label.
+    assert display_title("Build-time caching for the CLI") == "Build-time caching for the CLI"
+    assert display_title("Task-runner retries. More.") == "Task-runner retries"
+    assert display_title("Outcome - Add a bell") == "Add a bell"
+    assert display_title("Outcome — Add a bell") == "Add a bell"
     assert display_title("") == "" and display_title(None) == "" and display_title("OUTCOME:") == ""
     long = "word " * 40
     cut = display_title(long)
@@ -443,7 +449,7 @@ def test_live_tail_parses_codex_and_claude_transcripts(setup):
             assert "Bearer [REDACTED]" in texts
             assert "Grep def main in src" in texts and "TodoWrite" in texts
             assert live["lines"][-1]["text"].startswith("Finished · success")
-            assert "thinking" not in texts.lower()
+            assert "thinking" not in texts.lower() and "SECRET-PLAN" not in texts
 
 
 def test_live_tail_tolerates_missing_partial_and_corrupt_transcripts(setup):
@@ -466,10 +472,13 @@ def test_live_tail_tolerates_missing_partial_and_corrupt_transcripts(setup):
     # still being written, plus junk in the middle.
     artifact = store.home / "attempts" / ident
     artifact.mkdir(parents=True)
-    filler = json.dumps(
-        {"type": "item.completed", "item": {"type": "agent_message", "text": "F" * 1000}}
-    )
-    lines = [filler] * 80  # ~80 KB, more than the 64 KB window
+    filler = [
+        json.dumps(
+            {"type": "item.completed", "item": {"type": "agent_message", "text": f"F{n:03d}" * 250}}
+        )
+        for n in range(80)
+    ]
+    lines = list(filler)  # ~80 KB, more than the 64 KB window
     lines.append("this is not json")
     lines.append('{"type": "item.started", "item": {"type": "command_execution", "command": 42}}')
     lines.append('{"type": "item.completed", "item": {"type": "file_change", "changes": "nope"}}')
@@ -483,6 +492,10 @@ def test_live_tail_tolerates_missing_partial_and_corrupt_transcripts(setup):
     assert live["lines"][-1]["text"] == "Turn completed"
     assert live["lines"][-2]["text"] == "changed files" and live["lines"][-3]["text"] == "$ 42"
     assert "tail" not in json.dumps(live["lines"][-4:])  # the cut trailing line is ignored
+    # Only the last 64 KB were read: the earliest surviving filler line is well past the start.
+    assert len(livetail.read_window(artifact / "transcript.jsonl")[0]) <= livetail.WINDOW
+    earliest = min(int(line["text"][1:4]) for line in live["lines"] if line["text"].startswith("F"))
+    assert earliest >= 15, earliest
     # Direct reader: an unreadable path and an empty file never raise.
     assert livetail.read_window(Path("/nonexistent/transcript.jsonl")) == ("", 0, None)
     (artifact / "transcript.jsonl").write_bytes(b"")
@@ -490,6 +503,34 @@ def test_live_tail_tolerates_missing_partial_and_corrupt_transcripts(setup):
     (artifact / "transcript.jsonl").write_bytes(b"\xff\xfe{garbage\n" + b"\x00" * 10)
     assert client.get(f"/api/v1/attempts/{ident}/live").json()["lines"] == []
     assert client.get("/api/v1/attempts/attempt_missing/live").status_code == 404
+
+
+def test_live_tail_elapsed_stops_for_interrupted_attempts_and_lines_split_on_newlines(setup):
+    store, engine, project, _ = setup
+    client, headers = paired_client(store)
+    # An attempt interrupted by recovery records no `ended`: its clock must not keep running.
+    task_id = goal(store, engine, project, path="src/stopped.txt")
+    ident = insert_attempt(store, task_id, state="interrupted", created=time.time() - 3600)
+    live = client.get(f"/api/v1/attempts/{ident}/live").json()
+    assert live["done"] is True and live["elapsed"] is None  # nothing recorded, nothing claimed
+    artifact = store.home / "attempts" / ident
+    artifact.mkdir(parents=True)
+    (artifact / "transcript.jsonl").write_text('{"type": "turn.started"}\n')
+    live = client.get(f"/api/v1/attempts/{ident}/live").json()
+    assert 3595 <= live["elapsed"] <= 3605  # the moment the transcript stopped growing
+    with store.transaction() as db:
+        db.execute(
+            "UPDATE attempts SET data=json_set(data,'$.result',json(?)) WHERE id=?",
+            (json.dumps({"status": "failed", "seconds": 42.5}), ident),
+        )
+    assert client.get(f"/api/v1/attempts/{ident}/live").json()["elapsed"] == 42.5
+    # A JSON line whose text carries a Unicode line separator is still one line.
+    lines = livetail.parse_lines(
+        '{"type": "item.completed", "item": {"type": "agent_message", '
+        '"text": "first\u2028second\u0085third"}}\n'
+    )
+    assert [line["kind"] for line in lines] == ["assistant"]
+    assert "first" in lines[0]["text"] and "third" in lines[0]["text"]
 
 
 # -- archive ------------------------------------------------------------------------------
@@ -615,3 +656,63 @@ def test_migration_archives_proof_snapshots_inside_the_home_once(setup):
             ),
         )
     assert Store(store.home).get("projects", "project_proof_late").get("archived") is None
+
+
+# -- real-state fixture safety ------------------------------------------------------------
+
+
+def test_real_state_fixture_cannot_reach_live_workers_or_mutate(tmp_path, monkeypatch):
+    from tests.control import real_state_server
+
+    # A "live" database whose attempt carries a worker identity, and a scratch home.
+    live_home = tmp_path / "live" / ".arena-control"
+    live_store = Store(live_home)
+    with live_store.transaction() as db:
+        db.execute(
+            "INSERT INTO projects(id,data) VALUES(?,?)",
+            ("project_live", encode({"name": "Live", "repo": "/tmp/x", "scope": ["src"]})),
+        )
+        db.execute(
+            "INSERT INTO accounts(id,data) VALUES(?,?)",
+            ("slot_live", encode({"name": "Codex", "provider": "codex"})),
+        )
+        db.execute(
+            "INSERT INTO tasks(id,project_id,goal_id,state,rev,token,data) VALUES(?,?,?,?,?,?,?)",
+            ("task_live", "project_live", None, "running", 0, 1, encode({"title": "t"})),
+        )
+        db.execute(
+            "INSERT INTO attempts VALUES(?,?,?,?,?,?)",
+            (
+                "attempt_live",
+                "task_live",
+                "slot_live",
+                1,
+                "running",
+                encode({"identity": {"pid": 1, "created": 1.0, "boot": 1.0}, "created": 1.0}),
+            ),
+        )
+    scratch = tmp_path / "scratch"
+    monkeypatch.setenv("ARENA_UI_STATE", str(scratch))
+    monkeypatch.setenv("ARENA_REAL_DB", str(live_home / "control.sqlite3"))
+    monkeypatch.setenv("ARENA_UI_PORT", "8794")
+    app = real_state_server.create_app()
+    # The copy carries no worker identity, so nothing in it can resolve to a live process.
+    assert Store(scratch).get("attempts", "attempt_live")["identity"] is None
+    assert live_store.get("attempts", "attempt_live")["identity"]["pid"] == 1  # untouched
+    client = TestClient(app, base_url="http://127.0.0.1:8794")
+    origin = {"Origin": "http://127.0.0.1:8794"}
+    r = client.post("/api/v1/pair", json={"code": "real-state-one-use-code"}, headers=origin)
+    assert r.status_code == 200
+    headers = {**origin, "X-CSRF-Token": r.json()["csrf"], "Idempotency-Key": "fixture-1"}
+    assert client.get("/api/v1/overview").status_code == 200
+    for path in ("/api/v1/tasks/task_live/cancel", "/api/v1/control/stop-all"):
+        r = client.post(path, json={"revision": 0}, headers=headers)
+        assert r.status_code == 403 and "copy" in r.json()["detail"], (path, r.text)
+    assert live_store.get("tasks", "task_live")["state"] == "running"
+    # Conversations stay writable (a read-only director turn on the copy).
+    r = client.post("/api/v1/conversations", json={"revision": 0, "text": ""}, headers=headers)
+    assert r.status_code == 200
+    # Scratch directories that could touch the live state are refused.
+    for bad in (live_home, live_home / "sub", real_state_server.ROOT):
+        with pytest.raises(SystemExit):
+            real_state_server.check_home(bad, live_home / "control.sqlite3")

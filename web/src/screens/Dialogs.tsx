@@ -264,10 +264,29 @@ function NewProject() {
   );
 }
 
-function TaskDialog({task}: {task: RecordData}) {
-  const {data, now, action, disabled, showEvidence, setEvidence} = useArena();
+// The snapshot row is list-sized (no specification, no queued instruction text); the full
+// record arrives from GET tasks/{id} when the dialog opens. State, revision and reason stay
+// live from the snapshot so controls never act on a stale revision.
+function TaskDialog({task: listed}: {task: RecordData}) {
+  const {data, now, action, disabled, showEvidence, setEvidence, get} = useArena();
   const [answer, setAnswer] = useState('');
   const [steer, setSteer] = useState('');
+  const [full, setFull] = useState<RecordData | null>(null);
+  useEffect(() => {
+    let stopped = false;
+    setFull(null);
+    get(`tasks/${listed.id}`)
+      .then(r => {
+        if (!stopped && r && r.id === listed.id) setFull(r);
+      })
+      .catch(() => {
+        /* an older host has no detail endpoint; the list-sized record is shown */
+      });
+    return () => {
+      stopped = true;
+    };
+  }, [listed.id]);
+  const task: RecordData = full ? {...full, ...listed, specification: full.specification, instructions: full.instructions, instructions_pending: full.instructions_pending} : listed;
   const attempts = data.attempts.filter(a => a.task_id === task.id).sort((a, b) => a.created - b.created);
   const live = attempts.find(a => ACTIVE_ATTEMPT.includes(a.state));
   const agent = live && data.agents.find(a => a.id === live.account_id);

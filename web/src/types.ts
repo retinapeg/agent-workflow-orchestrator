@@ -272,14 +272,18 @@ export function liveAttemptOf(view: GoalView, snap: Snapshot): RecordData | unde
   return snap.attempts.filter(a => ids.has(a.task_id) && ACTIVE_ATTEMPT.includes(a.state)).sort((a, b) => b.created - a.created)[0];
 }
 
-// Which request the Builds tab should open on when none is chosen: the live one, else the
-// one waiting on the owner, else the newest. Archived projects' requests only when live.
+// Task states in which the owner has to act for the request to move on.
+export const NEEDS_TASK = ['awaiting_input', 'needs_auth', 'needs_permission', 'ready_for_approval'];
+
+// Which request the Builds tab should open on when none is chosen: the live one (an
+// attempt is running now), else one waiting on the owner, else the newest. A merely queued
+// request does not outrank one that needs an answer. Archived projects' requests only when
+// live.
 export function defaultGoal(views: GoalView[], snap: Snapshot): GoalView | undefined {
   const byTime = [...views].sort((a, b) => b.goal.created - a.goal.created);
   return (
     byTime.find(v => !!liveAttemptOf(v, snap)) ||
-    byTime.find(v => goalClass(v) === 'active' && !v.archived) ||
-    byTime.find(v => goalClass(v) === 'needs' && !v.archived) ||
+    byTime.find(v => !v.archived && v.tasks.some(t => NEEDS_TASK.includes(t.state))) ||
     byTime.find(v => !v.archived) ||
     byTime[0]
   );

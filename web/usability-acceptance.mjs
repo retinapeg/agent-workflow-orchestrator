@@ -2,13 +2,13 @@
 // Dispatch is disabled; the live database and the service on 8791 are never touched.
 import {chromium} from '@playwright/test';
 import {spawn} from 'node:child_process';
-import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-real-'),port='8794',base='http://127.0.0.1:'+port;
 const output=root+'/docs/build-evidence/usability';mkdirSync(output,{recursive:true});
 const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const PROOF=/^Orchestrator live proof/;
-const ACTIVE_ATTEMPT=['leased','running','verifying'],ACTIVE_TASK=['leased','running','verifying','reviewing','recovering','integrating','ready','waiting_capacity','waiting_dependency','cooldown','repair_queued'];
+const ACTIVE_ATTEMPT=['leased','running','verifying'];
 const NEEDS_TASK=['awaiting_input','needs_auth','needs_permission','ready_for_approval'];
 const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.real_state_server:create_app','--factory','--host','127.0.0.1','--port',port],{cwd:root,env:{...process.env,ARENA_UI_STATE:state,ARENA_UI_PORT:port},stdio:'pipe'});
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
@@ -16,7 +16,8 @@ let browser;const result={state,viewport:390,userAgent:ANDROID,dispatch:false,ch
 const nav=page=>page.getByRole('navigation',{name:'Primary'});
 const overflow=page=>page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
 try{
- for(let n=0;n<80;n++){try{if((await fetch(base)).ok)break}catch{}await new Promise(r=>setTimeout(r,250));}
+ for(let n=0;n<80;n++){if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+' (is port '+port+' free?)\n'+serverLog.slice(-800));try{if((await fetch(base)).ok)break}catch{}await new Promise(r=>setTimeout(r,250));}
+ if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+'\n'+serverLog.slice(-800));
  browser=await chromium.launch();
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:ANDROID,deviceScaleFactor:2});
  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -27,8 +28,13 @@ try{
 
  // 1. Slim overview on the real state.
  const {bytes,snap}=await page.evaluate(async()=>{const r=await fetch('/api/v1/overview');const b=await r.arrayBuffer();return{bytes:b.byteLength,snap:JSON.parse(new TextDecoder().decode(b))}});
- result.checks.overviewBytes=bytes;
+ // Absolute phone-size limit on today's state, plus a per-record budget (the list-sized
+ // shape: ≤ 2 KB per attempt, ≤ 1.6 KB per task, ≤ 0.6 KB per goal, 40 KB for the rest)
+ // that keeps catching a fat record after the state has grown past the absolute figure.
+ const budget=40_000+2_000*snap.attempts.length+1_600*snap.tasks.length+600*snap.goals.length;
+ result.checks.overviewBytes=bytes;result.checks.overviewBudget=budget;result.checks.overviewRecords={attempts:snap.attempts.length,tasks:snap.tasks.length,goals:snap.goals.length};
  if(bytes>=200_000)throw Error('Overview is '+bytes+' bytes (limit 200,000)');
+ if(bytes>budget)throw Error('Overview is '+bytes+' bytes for '+snap.attempts.length+' attempts / '+snap.tasks.length+' tasks (budget '+budget+')');
 
  // 2. The four proof projects are archived.
  const proofs=snap.projects.filter(p=>PROOF.test(p.name));
@@ -66,8 +72,9 @@ try{
  const isLive=g=>{const ids=new Set(goalTasks(g).map(t=>t.id));return snap.attempts.some(a=>ids.has(a.task_id)&&ACTIVE_ATTEMPT.includes(a.state))};
  const open=g=>!archivedIds.has(g.project_id);
  const has=(g,states)=>goalTasks(g).some(t=>states.includes(t.state));
- const expected=goals.find(isLive)||goals.find(g=>open(g)&&has(g,ACTIVE_TASK))||goals.find(g=>open(g)&&has(g,NEEDS_TASK))||goals.find(open)||goals[0];
- const why=goals.find(isLive)?'live':goals.find(g=>open(g)&&has(g,ACTIVE_TASK))?'active':goals.find(g=>open(g)&&has(g,NEEDS_TASK))?'needs-you':'newest';
+ // The binding rule: the live request, else one that needs the owner, else the newest.
+ const expected=goals.find(isLive)||goals.find(g=>open(g)&&has(g,NEEDS_TASK))||goals.find(open)||goals[0];
+ const why=goals.find(isLive)?'live':goals.find(g=>open(g)&&has(g,NEEDS_TASK))?'needs-you':'newest';
  await nav(page).getByRole('button',{name:'Build',exact:true}).click();
  await page.locator('#goal-pick').waitFor();
  const selected=await page.locator('#goal-pick').inputValue();
@@ -114,4 +121,11 @@ try{
  console.log(JSON.stringify(result.checks,null,1));
  console.log('USABILITY_ACCEPTANCE_PASSED');
 }catch(error){result.passed=false;result.failure=String(error);writeFileSync(output+'/result.json',JSON.stringify(result,null,2));writeFileSync(output+'/failure.txt',String(error));throw error}
-finally{if(browser)await browser.close();server.kill('SIGTERM');writeFileSync(output+'/server.txt',serverLog)}
+finally{
+ if(browser)await browser.close();
+ // Stop the fixture and remove the copy of the state it served (a full copy of the control database).
+ const exited=new Promise(r=>{if(server.exitCode!==null)r();else{server.once('exit',r);setTimeout(r,5000)}});
+ server.kill('SIGTERM');await exited;
+ writeFileSync(output+'/server.txt',serverLog);
+ rmSync(state,{recursive:true,force:true});
+}

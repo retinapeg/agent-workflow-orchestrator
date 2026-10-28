@@ -172,7 +172,7 @@ def parse_lines(
 ) -> list[dict[str, Any]]:
     """Map transcript lines (either provider) to the last ``limit`` phone lines."""
     out = []
-    for line in raw.splitlines():
+    for line in raw.split("\n"):  # not splitlines(): JSON text may carry U+2028/U+2029
         line = line.strip()
         if not line.startswith("{"):
             continue
@@ -223,14 +223,22 @@ def tail(
     path = Path(artifact_dir) / "transcript.jsonl" if artifact_dir else None
     raw, size, mtime = read_window(path) if path else ("", 0, None)
     started = attempt.get("created")
-    ended = attempt.get("ended") or (attempt.get("result") or {}).get("provider_ended")
+    result = attempt.get("result") if isinstance(attempt.get("result"), dict) else {}
+    ended = attempt.get("ended") or result.get("provider_ended")
     if not isinstance(ended, int | float):
         ended = None
-    elapsed = (
-        round(((ended if done and ended else now) - started), 1)
-        if isinstance(started, int | float)
-        else None
-    )
+    if done and ended is None and isinstance(started, int | float):
+        # An interrupted attempt records no end: use the worker's own wall time, else the
+        # moment its transcript stopped growing, else report nothing rather than a clock
+        # that keeps running forever.
+        seconds = result.get("seconds")
+        if isinstance(seconds, int | float):
+            ended = started + seconds
+        elif mtime:
+            ended = max(mtime, started)
+    elapsed = None
+    if isinstance(started, int | float) and (not done or ended is not None):
+        elapsed = round(((ended if done and ended else now) - started), 1)
     return {
         "state": attempt.get("state"),
         "phase": attempt.get("phase"),

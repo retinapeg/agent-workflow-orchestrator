@@ -1,0 +1,59 @@
+{
+ "overviewBytes": 194620,
+ "overviewBudget": 244600,
+ "overviewRecords": {
+  "attempts": 76,
+  "tasks": 28,
+  "goals": 13
+ },
+ "proofProjects": [
+  {
+   "name": "Orchestrator live proof",
+   "archived": true
+  },
+  {
+   "name": "Orchestrator live proof parallel",
+   "archived": true
+  },
+  {
+   "name": "Orchestrator live proof parallel2",
+   "archived": true
+  },
+  {
+   "name": "Orchestrator live proof final",
+   "archived": true
+  }
+ ],
+ "requestPicker": [
+  "Let Arena decide",
+  "Arena (this app)",
+  "Arena Smoke 20261028"
+ ],
+ "chatPicker": [
+  "Arena (this app)",
+  "Arena Smoke 20261028",
+  "None"
+ ],
+ "buildsDefault": {
+  "expected": "goal_815db45a71e3a62d",
+  "selected": "goal_815db45a71e3a62d",
+  "rule": "newest",
+  "title": "Add to an existing project: What repo are we in?"
+ },
+ "liveOutput": {
+  "goal": "goal_a6faaa785f084d70",
+  "title": "Add optional silent completion, a Pomodoro: countdown prefix and a…",
+  "lines": 41,
+  "first": "[10:56:17] Document bell control, prefixed output and quiet mode · Running · Bounded worker started"
+ },
+ "overflow": {
+  "Chat": false,
+  "Overview": false,
+  "Projects": false,
+  "Build": false,
+  "Agents": false,
+  "Review": false
+ }
+}
+USABILITY_ACCEPTANCE_PASSED
+ACCEPTANCE_EXIT=0

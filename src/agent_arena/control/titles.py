@@ -14,8 +14,11 @@ TITLE_LIMIT = 72
 
 # Leading labels the director and owners write: "OUTCOME:", "Outcome -", "Request:", also
 # wrapped in markdown emphasis ("**OUTCOME:**") and repeated ("Request: Outcome: …").
+# A hyphen counts as a separator only with whitespace around it ("Outcome - Add…"), so
+# "Build-time caching" or "Task-runner" keep their first word.
 _LABEL = re.compile(
-    r"^\s*[*_#>\-\s]*(?:outcome|request|goal|task|title|summary|build)\s*[:\-–—]\s*[*_]*\s*",
+    r"^\s*[*_#>\-\s]*(?:outcome|request|goal|task|title|summary|build)"
+    r"\s*(?::|[–—]|(?<=\s)-(?=\s))\s*[*_]*\s*",
     re.I,
 )
 _MARKDOWN = (
