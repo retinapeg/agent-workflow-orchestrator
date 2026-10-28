@@ -60,6 +60,48 @@ try{
   result.slices.A=r;console.log('A',JSON.stringify(r));
  }
 
+ if(wanted.includes('B')){
+  // B. Task detail on demand and the Transcript view.
+  const r={};
+  const snap=await api(page,'overview');
+  const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
+  const goals=[...snap.goals].sort((a,b)=>b.created-a.created);
+  const integrated=goals.find(g=>!archivedIds.has(g.project_id)&&snap.tasks.some(t=>t.goal_id===g.id&&t.integrated_commit));
+  await nav(page).getByRole('button',{name:'Build',exact:true}).click();
+  await page.locator('#goal-pick').waitFor();
+  await page.locator('#goal-pick').selectOption(integrated.id);
+  // The first row of the Agent stack is the first non-cancelled child task (by creation).
+  const children=snap.tasks.filter(t=>t.goal_id===integrated.id&&!(t.director&&(t.phase==='plan'||t.phase==='replan'))).sort((a,b)=>a.created-b.created).filter(t=>t.state!=='cancelled');
+  const target=children[0];
+  await page.locator('.agent-row').first().click();
+  const dialog=page.getByRole('dialog');await dialog.waitFor();
+  const summary=dialog.locator('details.spec summary',{hasText:'Instructions'});
+  await summary.waitFor({timeout:10000});
+  await summary.click();
+  await page.waitForFunction(()=>!document.querySelector('details.spec summary')?.textContent?.includes('loading'),null,{timeout:10000});
+  const shown=(await dialog.locator('.prewrap').first().innerText()).replace(/\s+/g,' ').trim();
+  const full=await api(page,'tasks/'+target.id);
+  const expected=String(full.instructions||'').replace(/\s+/g,' ').trim();
+  r.instructions={task:target.id,chars:shown.length,listExcerpt:(target.instructions||'').length,truncatedInList:!!target.instructions_truncated};
+  if(shown!==expected)throw Error('Dialog instructions differ from GET tasks/{id}: '+shown.length+' vs '+expected.length);
+  if(target.instructions_truncated&&shown.length<=target.instructions.length)throw Error('Dialog shows only the list excerpt');
+  await page.screenshot({path:output+'/b-task-detail-390.png'});
+  // The Transcript view renders agent lines, never raw JSON.
+  await dialog.getByRole('button',{name:'Transcript'}).first().click();
+  const tr=dialog.locator('.transcript-view');await tr.waitFor({timeout:15000});
+  await page.waitForFunction(()=>{const t=document.querySelector('.transcript-view .transcript');return t&&t.textContent.trim().length>40},null,{timeout:20000});
+  const lines=(await tr.locator('.transcript').innerText()).split('\n').map(l=>l.trim()).filter(Boolean);
+  r.transcript={lines:lines.length,head:await tr.locator('.transcript-head').innerText(),first:lines[0]?.slice(0,120),last:lines[lines.length-1]?.slice(0,120)};
+  if(lines.some(l=>l.startsWith('{')))throw Error('Transcript shows raw JSON');
+  if(lines.length<3)throw Error('Transcript too short: '+lines.join(' | '));
+  await tr.scrollIntoViewIfNeeded();
+  await page.screenshot({path:output+'/b-transcript-390.png'});
+  if(await overflow(page))throw Error('Horizontal overflow in the task dialog');
+  await dialog.getByRole('button',{name:'Close dialog'}).click();
+  await dialog.waitFor({state:'hidden'});
+  result.slices.B=r;console.log('B',JSON.stringify(r));
+ }
+
  const after=await api(page,'overview');
  if(after.__status)throw Error('Overview unreadable at the end: '+after.__status);
  if(errors.length)throw Error(errors.join('\n'));

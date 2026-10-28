@@ -38,7 +38,7 @@ export type LiveTail = {
   model: string;
   provider: string;
   started: number | null;
-  elapsed: number;
+  elapsed: number | null;
   bytes: number;
   done: boolean;
   lines: LiveLine[];

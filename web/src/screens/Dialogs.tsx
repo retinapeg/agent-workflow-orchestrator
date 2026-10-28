@@ -1,8 +1,48 @@
 import React, {useEffect, useState} from 'react';
 import {useArena, type PostError} from '../App';
+import {TRANSCRIPT_QUERY, bytes, liveLineText, useLiveTail} from '../live';
 import {useSpeech} from '../speech';
 import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, attemptTone, cap, clock, duration, family, human, pickableProjects, seconds, stateLabel, when, type RecordData} from '../types';
 import {Chip, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
+
+// What the agent did, as lines (GET attempts/{id}/live with the whole transcript), for a
+// finished or a live attempt; the live one keeps refreshing until the host reports it done.
+function TranscriptView({attempt, agent, onClose}: {attempt: RecordData; agent: string; onClose: () => void}) {
+  const {showEvidence} = useArena();
+  const live = ACTIVE_ATTEMPT.includes(attempt.state);
+  const tail = useLiveTail(attempt.id, live ? 2500 : 0, TRANSCRIPT_QUERY);
+  const head = tail
+    ? [tail.provider ? cap(tail.provider) : agent, tail.model, tail.phase ? cap(tail.phase) : '', tail.elapsed != null ? duration(tail.elapsed) : '', bytes(tail.bytes || 0), tail.done ? stateLabel(attempt.state) : 'live'].filter(Boolean).join(' · ')
+    : 'Loading the transcript…';
+  return (
+    <div className="evidence transcript-view">
+      <div className="row between">
+        <Eyebrow>Transcript</Eyebrow>
+        <span className="row">
+          <button className="text-btn" onClick={() => showEvidence(attempt.id, 'transcript.jsonl')}>
+            Raw
+          </button>
+          <button className="text-btn" onClick={onClose}>
+            Hide
+          </button>
+        </span>
+      </div>
+      <p className="small muted num transcript-head">{head}</p>
+      <pre className="terminal transcript" aria-live={live ? 'polite' : undefined}>
+        {tail && tail.lines.length > 0
+          ? tail.lines.map((l, i) => (
+              <span key={i} className={'t-' + l.kind}>
+                {liveLineText(l, agent)}
+                {'\n'}
+              </span>
+            ))
+          : tail
+            ? 'No transcript was recorded for this attempt.\n'
+            : ''}
+      </pre>
+    </div>
+  );
+}
 import {Devices} from './Devices';
 import {ProposalCard, ProvisionCard, type Proposal} from './Provision';
 
@@ -272,6 +312,7 @@ function TaskDialog({task: listed}: {task: RecordData}) {
   const [answer, setAnswer] = useState('');
   const [steer, setSteer] = useState('');
   const [full, setFull] = useState<RecordData | null>(null);
+  const [transcript, setTranscript] = useState<RecordData | null>(null);
   useEffect(() => {
     let stopped = false;
     setFull(null);
@@ -303,6 +344,15 @@ function TaskDialog({task: listed}: {task: RecordData}) {
         {task.cancel_requested && <Chip tone="blocked">Stop requested</Chip>}
       </div>
       <p className="reason">{task.reason}</p>
+      {task.instructions && (
+        <details className="spec">
+          <summary>
+            Instructions
+            {!full && listed.instructions_truncated ? <span className="muted small"> · loading the full text</span> : null}
+          </summary>
+          <p className="prewrap small">{task.instructions}</p>
+        </details>
+      )}
       <Facts
         rows={[
           ['Scope', task.scope.join(', ')],
@@ -382,7 +432,7 @@ function TaskDialog({task: listed}: {task: RecordData}) {
               </div>
             )}
             <div className="btn-row">
-              <button className="btn sm" onClick={() => showEvidence(a.id, 'transcript.jsonl')}>
+              <button className="btn sm" aria-pressed={transcript?.id === a.id} onClick={() => setTranscript(t => (t?.id === a.id ? null : a))}>
                 Transcript
               </button>
               <button className="btn sm" onClick={() => showEvidence(a.id)}>
@@ -396,6 +446,7 @@ function TaskDialog({task: listed}: {task: RecordData}) {
         ))}
         {!attempts.length && <li className="small muted">No attempts yet.</li>}
       </ul>
+      {transcript && <TranscriptView attempt={transcript} agent={data.agents.find(x => x.id === transcript.account_id)?.name || 'Agent'} onClose={() => setTranscript(null)} />}
       <EvidenceView />
       <div className="field">
         <label htmlFor="steer">Anything to change?</label>
@@ -423,6 +474,7 @@ function ReviewDialog({review, task}: {review: RecordData; task: RecordData}) {
   const [feedback, setFeedback] = useState('');
   const independent = task.review_attempt && data.attempts.find(a => a.id === task.review_attempt);
   const director = task.director_review_attempt && data.attempts.find(a => a.id === task.director_review_attempt);
+  const [transcript, setTranscript] = useState(false);
   const pub = review.publication;
   const summary = director?.result?.review?.summary || independent?.result?.review?.summary || independent?.result?.reason || task.reason;
   const build = task.build_attempt && data.attempts.find(a => a.id === task.build_attempt);
@@ -522,13 +574,14 @@ function ReviewDialog({review, task}: {review: RecordData; task: RecordData}) {
           <Icon name="code" size={14} />
           Read combined diff
         </button>
-        {task.review_attempt && (
-          <button className="btn" onClick={() => showEvidence(task.review_attempt, 'transcript.jsonl')}>
+        {independent && (
+          <button className="btn" aria-pressed={transcript} onClick={() => setTranscript(t => !t)}>
             <Icon name="doc" size={14} />
             Read independent review
           </button>
         )}
       </div>
+      {transcript && independent && <TranscriptView attempt={independent} agent={data.agents.find(x => x.id === independent.account_id)?.name || 'Reviewer'} onClose={() => setTranscript(false)} />}
       <EvidenceView />
 
       {review.state === 'pending' && (

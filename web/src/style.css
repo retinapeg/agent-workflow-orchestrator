@@ -590,6 +590,18 @@ dialog,
 .away-panel .panel-head {
   align-items: center;
 }
+.prewrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 6px 0 0;
+}
+.transcript-view .transcript {
+  max-height: 46vh;
+}
+.transcript-head {
+  margin: 4px 0 8px;
+  overflow-wrap: anywhere;
+}
 .empty {
   padding: 36px 22px;
   border: 1px dashed var(--line-2);

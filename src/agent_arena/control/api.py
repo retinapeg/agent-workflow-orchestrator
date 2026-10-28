@@ -475,13 +475,16 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
         return task
 
     @app.get("/api/v1/attempts/{ident}/live")
-    def attempt_live(ident: str):
+    def attempt_live(ident: str, lines: int = livetail.LINES, window: int = livetail.WINDOW):
+        """The polled tail by default; the Transcript view asks for more (both bounded)."""
         a = store.get("attempts", ident)
         try:
             provider = store.get("accounts", a["account_id"]).get("provider")
         except KeyError:
             provider = None
-        return livetail.tail(a, provider=provider, done=a["state"] not in ACTIVE)
+        return livetail.tail(
+            a, provider=provider, done=a["state"] not in ACTIVE, lines=lines, window=window
+        )
 
     @app.get("/api/v1/health")
     def health():

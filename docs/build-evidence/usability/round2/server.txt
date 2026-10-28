@@ -1,33 +1,40 @@
-INFO:     Started server process [40417]
+INFO:     Started server process [48026]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8795 (Press CTRL+C to quit)
-INFO:     127.0.0.1:52231 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /assets/index-i9E8qmqa.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52233 - "GET /assets/index-DqVNymRU.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /icon.svg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52233 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:52234 - "POST /api/v1/pair HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52233 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /assets/index-DqVNymRU.css HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:52234 - "GET /assets/index-i9E8qmqa.js HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:52234 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52232 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "POST /api/v1/session/seen HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/goals/goal_afb7917a45ac17d8/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52234 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52350 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "GET /assets/index-DDUpnirZ.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /assets/index-B1cLJJbX.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52354 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:52353 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52354 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "GET /assets/index-B1cLJJbX.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52353 - "GET /assets/index-DDUpnirZ.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52352 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "POST /api/v1/session/seen HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/goals/goal_afb7917a45ac17d8/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52353 - "GET /api/v1/goals/goal_afb7917a45ac17d8/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "GET /api/v1/tasks/task_613472a2ca0d2adb HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "GET /api/v1/tasks/task_613472a2ca0d2adb HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "GET /api/v1/attempts/attempt_014e80a9a7197932/live?lines=400&window=1048576 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52355 - "GET /api/v1/overview HTTP/1.1" 200 OK
 INFO:     Shutting down
 INFO:     Waiting for application shutdown.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [40417]
+INFO:     Finished server process [48026]

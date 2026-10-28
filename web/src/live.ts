@@ -8,7 +8,10 @@ import type {LiveKind, LiveTail} from './types';
 
 const unsupported = new Set<string>();
 
-export function useLiveTail(attemptId: string | null | undefined, every = 2500): LiveTail | null {
+// `query` asks the host for more than the polled default (the Transcript view: up to 400
+// lines from the last megabyte). Polling stops once the host reports the attempt done, or
+// at once when `every` is 0.
+export function useLiveTail(attemptId: string | null | undefined, every = 2500, query = ''): LiveTail | null {
   const {get} = useArena();
   const [tail, setTail] = useState<LiveTail | null>(null);
   const getRef = useRef(get);
@@ -19,10 +22,14 @@ export function useLiveTail(attemptId: string | null | undefined, every = 2500):
     let stopped = false;
     let timer = 0;
     const poll = async () => {
+      let done = false;
       try {
-        const r = (await getRef.current(`attempts/${attemptId}/live`)) as LiveTail;
+        const r = (await getRef.current(`attempts/${attemptId}/live${query}`)) as LiveTail;
         if (stopped) return;
-        if (r && Array.isArray(r.lines)) setTail(r);
+        if (r && Array.isArray(r.lines)) {
+          setTail(r);
+          done = !!r.done;
+        }
       } catch (e) {
         if (stopped) return;
         const status = (e as PostError)?.status;
@@ -31,16 +38,19 @@ export function useLiveTail(attemptId: string | null | undefined, every = 2500):
           return;
         }
       }
-      timer = window.setTimeout(poll, every);
+      if (every > 0 && !done) timer = window.setTimeout(poll, every);
     };
     poll();
     return () => {
       stopped = true;
       window.clearTimeout(timer);
     };
-  }, [attemptId, every]);
+  }, [attemptId, every, query]);
   return tail;
 }
+
+// The Transcript view's request: the whole recorded transcript (bounded by the host).
+export const TRANSCRIPT_QUERY = '?lines=400&window=1048576';
 
 // `[hh:mm:ss] Codex · editing src/pomodoro/cli.py`
 export const stamp = (epoch: number | null | undefined) => (epoch ? new Date(epoch * 1000).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false}) : '--:--:--');

@@ -1,0 +1,46 @@
+Round 1 independent review: 6 reviewers, 22 findings, verification votes at stop time:
+- Dialogs.tsx:316 [high] (review:frontend): Task dialog still reads task.specification and task.instructions_pending, both dropped from the slim snapshot,
+    votes: [('refute', True, 'medium'), ('impact', True, 'medium'), ('reproduce', True, 'high')]
+- Build.tsx:332 [medium] (review:frontend): Switching requests while Details is open leaves useGoalDetail stuck at loading:true; re-opening Details never 
+    votes: [('impact', True, 'medium'), ('refute', True, 'medium'), ('reproduce', True, 'medium')]
+- types.ts:281 [low] (review:frontend): Builds default selection puts merely queued requests ahead of requests that need the owner, contrary to the bi
+    votes: [('reproduce', True, 'low'), ('refute', True, 'low'), ('impact', True, 'low')]
+- Build.tsx:661 [low] (review:frontend): Every live-output line is stamped with the poll time, not the line's time, so all 60 lines show one identical 
+    votes: [('reproduce', True, 'low'), ('impact', True, 'low'), ('refute', True, 'low')]
+- views.py:51 [medium] (review:backend-contract): Slim snapshot drops task.specification and task.instructions_pending that the shipped task sheet still reads f
+    votes: [('reproduce', True, 'medium'), ('impact', True, 'medium'), ('refute', True, 'medium')]
+- livetail.py:230 [medium] (review:backend-contract): /attempts/{id}/live reports a forever-growing elapsed for finished attempts that have no `ended` (every `inter
+    votes: [('impact', True, 'low'), ('refute', True, 'low'), ('reproduce', True, 'medium')]
+- titles.py:18 [low] (review:backend-contract): display_title treats a hyphen as a label separator, so hyphenated words starting with outcome/request/goal/tas
+    votes: [('refute', True, 'low'), ('impact', True, 'low'), ('reproduce', True, 'low')]
+- livetail.py:175 [low] (review:backend-contract): parse_lines splits the transcript with str.splitlines(), so any JSON line containing a raw U+2028/U+2029/U+008
+    votes: [('impact', False, 'none'), ('refute', False, 'none'), ('reproduce', False, 'none')]
+- real-state.sqlite3.gz:1 [medium] (review:security): Copy of the live production control database committed to a PUBLIC GitHub repository
+    votes: [('reproduce', True, 'medium'), ('impact', True, 'medium'), ('refute', True, 'low')]
+- usability-acceptance.mjs:31 [medium] (review:tests): Overview-size gate runs on the live, growing state with a 5 KB margin; fails on the next real build
+    votes: [('reproduce', True, 'medium'), ('refute', True, 'low'), ('impact', True, 'low')]
+- test_usability_api.py:482 [medium] (review:tests): 64 KB live-tail window is not asserted: the 60-line cap satisfies the test for any window size
+    votes: [('refute', False, 'none'), ('reproduce', False, 'none'), ('impact', False, 'none')]
+- test_usability_api.py:243 [low] (review:tests): summary clip asserted as <= 600 on a 5000-char input, hiding a 300-char implementation vs the contract's 600
+    votes: [('reproduce', True, 'low'), ('impact', False, 'low'), ('refute', False, 'none')]
+- test_usability_api.py:446 [low] (review:tests): Thinking-leak assertion is vacuous: the fixture's only thinking block is empty
+    votes: [('reproduce', False, 'none'), ('refute', False, 'none'), ('impact', False, 'none')]
+- test_conversation.py:282 [low] (review:tests): Exact wall-clock assertion `"when": "0s ago"` depends on sub-second timing
+    votes: none yet
+- test_conversation.py:303 [low] (review:tests): `"project_old" not in prompt` is tautological, and the archived-project setup exercises neither arena_status f
+    votes: none yet
+- test_usability_api.py:343 [low] (review:tests): Contract caps untested: goal-detail events 'last 200', recent[:5], and attempt/approval events in the goal fee
+    votes: none yet
+- real_state_server.py:51 [medium] (review:fixture-safety): Fixture keeps the cancel/stop-all routes live; on a copy that captured a running attempt they SIGTERM the prod
+    votes: none yet
+- usability-acceptance.mjs:19 [low] (review:fixture-safety): Readiness probe accepts any HTTP 200 on 8794, so a squatter (previous run's server) is mistaken for the spawne
+    votes: none yet
+- usability-acceptance.mjs:7 [low] (review:fixture-safety): A full copy of the production control database is left in TMPDIR after every run and never removed
+    votes: none yet
+- real_state_server.py:41 [low] (review:fixture-safety): Live-home guard only refuses the exact .arena-control directory; the repo root or a subdirectory of the live h
+    votes: none yet
+- style.css:699 [medium] (review:nxt-blue): Changed `.facts dt` rule splits one-word fact labels mid-word on the phone ("Sco/pe", "Work/er", "Integrati/on
+    votes: none yet
+- style.css:1717 [low] (review:nxt-blue): New "Show archived (n)" checkbox control is a 21 px tall / 18 px box tap target on the phone
+    votes: none yet
+verifier runs started: 45 of 66; real votes: 28 refuted: 11

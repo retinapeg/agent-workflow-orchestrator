@@ -19,6 +19,9 @@ from .worker import redact
 
 WINDOW = 64 * 1024
 LINES = 60
+# The Transcript view may ask for more (bounded): a whole megabyte, four hundred lines.
+WINDOW_MAX = 1024 * 1024
+LINES_MAX = 400
 TEXT_CHARS = 300
 KINDS = ("assistant", "tool", "command", "file", "test", "error", "system")
 # A test runner invoked as a command (not merely mentioned inside a grep pattern).
@@ -215,13 +218,21 @@ def read_window(path: Path, window: int = WINDOW) -> tuple[str, int, float | Non
 
 
 def tail(
-    attempt: dict[str, Any], *, provider: str | None, done: bool, now: float | None = None
+    attempt: dict[str, Any],
+    *,
+    provider: str | None,
+    done: bool,
+    now: float | None = None,
+    lines: int = LINES,
+    window: int = WINDOW,
 ) -> dict[str, Any]:
     """The live view of one attempt: metadata plus the parsed transcript tail."""
     now = now or time.time()
+    lines = max(1, min(int(lines), LINES_MAX))
+    window = max(4096, min(int(window), WINDOW_MAX))
     artifact_dir = attempt.get("artifact_dir")
     path = Path(artifact_dir) / "transcript.jsonl" if artifact_dir else None
-    raw, size, mtime = read_window(path) if path else ("", 0, None)
+    raw, size, mtime = read_window(path, window) if path else ("", 0, None)
     started = attempt.get("created")
     result = attempt.get("result") if isinstance(attempt.get("result"), dict) else {}
     ended = attempt.get("ended") or result.get("provider_ended")
@@ -249,8 +260,17 @@ def tail(
         "bytes": size,
         "updated": mtime,
         "done": done,
-        "lines": parse_lines(raw, workspace=attempt.get("workspace")),
+        "lines": parse_lines(raw, workspace=attempt.get("workspace"), limit=lines),
     }
 
 
-__all__ = ["KINDS", "LINES", "WINDOW", "parse_lines", "read_window", "tail"]
+__all__ = [
+    "KINDS",
+    "LINES",
+    "LINES_MAX",
+    "WINDOW",
+    "WINDOW_MAX",
+    "parse_lines",
+    "read_window",
+    "tail",
+]
