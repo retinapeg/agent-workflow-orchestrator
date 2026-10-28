@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 WORKSPACE = Path.cwd().resolve()
@@ -32,6 +33,9 @@ def stage(name, argv, env=None, cwd=None, timeout=420):
     merged["PYTHONPATH"] = str(WORKSPACE / "src")
     merged["PYTHONDONTWRITEBYTECODE"] = "1"
     merged["ARENA_INSIDE_SANDBOX"] = "1"  # candidate tests must not nest sandbox-exec
+    # npm must not write caches or logs into the candidate tree (HOME is the workspace here).
+    merged["npm_config_cache"] = os.path.join(tempfile.gettempdir(), "arena-npm-cache")
+    merged["npm_config_update_notifier"] = "false"
     result = subprocess.run(
         argv, cwd=cwd or WORKSPACE, env=merged, text=True, capture_output=True, timeout=timeout
     )
