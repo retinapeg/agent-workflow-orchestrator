@@ -456,7 +456,12 @@ def test_remote_origin_secure_pairing_health_and_unknown_api(tmp_path):
     )
     app = make_app(store.home, origin=origin, run_scheduler=False)
     with TestClient(app, base_url=origin) as client:
-        assert client.get("/api/v1/health").status_code == 401
+        # Health is answerable without a session (readiness only); no heartbeat yet -> 503.
+        unpaired = client.get("/api/v1/health")
+        assert unpaired.status_code == 503 and set(unpaired.json()) == {
+            "scheduler_ready",
+            "heartbeat_age_seconds",
+        }
         response = client.post("/api/v1/pair", json={"code": code}, headers={"Origin": origin})
         assert response.status_code == 200
         assert all(

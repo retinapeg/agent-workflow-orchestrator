@@ -46,7 +46,15 @@ def doctor(store):
     }
 
 
-def probe_claude_capabilities(account, env, models=(("claude-fable-5-1", "max"),)):
+CLAUDE_PROBES = (
+    ("claude-haiku-5-5", "low"),
+    ("sonnet", "medium"),
+    ("claude-fable-5-1", "high"),
+    ("claude-fable-5-1", "max"),
+)
+
+
+def probe_claude_capabilities(account, env, models=CLAUDE_PROBES):
     """One tiny tool-free invocation per model/effort; records only what the CLI confirms."""
     validated = {}
     for model, effort in models:
@@ -81,11 +89,10 @@ def probe_claude_capabilities(account, env, models=(("claude-fable-5-1", "max"),
             data = json.loads(result.stdout)
         except (OSError, ValueError, subprocess.TimeoutExpired):
             continue
-        if (
-            result.returncode == 0
-            and not data.get("is_error")
-            and isinstance(data.get("modelUsage"), dict)
-            and model in data["modelUsage"]
-        ):
+        usage = data.get("modelUsage")
+        # Aliases such as "sonnet" resolve to a dated model id; any non-error completion
+        # under this model/effort request proves the CLI accepts the pair.
+        accepted = result.returncode == 0 and not data.get("is_error")
+        if accepted and isinstance(usage, dict) and usage:
             validated.setdefault(model, []).append(effort)
     return validated

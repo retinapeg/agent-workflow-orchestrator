@@ -1,6 +1,7 @@
 import React, {useState} from 'react';
 import {useArena} from '../App';
 import {
+  usageTotals,
   ACTIVE_ATTEMPT,
   cap,
   duration,
@@ -279,6 +280,11 @@ export function Build() {
                 ['Tasks', `${completed}/${selected.children.length} completed`],
                 ['Scope authority', selected.project?.scope.join(', ') || ''],
                 selected.project?.integrated_head ? ['Main', <Sha value={selected.project.integrated_head} />] : null,
+                (() => {
+                  const mine = data.attempts.filter(a => data.tasks.find(t => t.id === a.task_id)?.goal_id === selected.goal.id);
+                  const u = usageTotals(mine);
+                  return ['Tokens this build (subscription, no API charges)', u ? `${u.calls} calls · ${u.fields.map(([k, v]) => `${k} ${v.toLocaleString()}`).join(' · ')}` : 'Not reported yet'];
+                })(),
               ]}
             />
           </article>

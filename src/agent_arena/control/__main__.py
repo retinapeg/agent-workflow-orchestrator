@@ -420,7 +420,12 @@ def main(argv=None):
             checks=[
                 {
                     "name": "Arena self-check",
-                    "argv": ["{python}", "scripts/self_check.py"],
+                    "argv": [
+                        "{python}",
+                        "scripts/self_check.py",
+                        "--node-modules",
+                        str(root / "web/node_modules"),
+                    ],
                     "timeout": 600,
                 }
             ],

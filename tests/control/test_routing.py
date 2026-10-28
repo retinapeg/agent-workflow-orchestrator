@@ -105,12 +105,40 @@ def test_successful_measured_outcomes_can_replace_nominal_speed_preference(tmp_p
     assert route["history_samples"] == 3
 
 
-def test_director_model_is_not_silently_substituted(tmp_path):
+def test_director_is_routed_by_need_not_prestige(tmp_path):
     a = account(tmp_path)
-    chosen, route = select_route(task(director=True, phase="plan"), [a], [])
-    assert route["model"] == "gpt-6-astra" and route["effort"] == "max"
+    small = task(director=True, phase="plan", instructions="Rename the app on my phone")
+    chosen, route = select_route(small, [a], [])
+    assert (route["model"], route["effort"]) == ("gpt-6.1-sol", "high")
+    assert "mid-tier" in route["reason"]
+    broad = task(director=True, phase="plan", instructions="x" * 600)
+    _, route = select_route(broad, [a], [])
+    assert (route["model"], route["effort"]) == ("gpt-6-astra", "high")
+    _, route = select_route(task(director=True, phase="replan", repairs=1), [a], [])
+    assert (route["model"], route["effort"]) == ("gpt-6-astra", "max")  # xhigh unsupported here
+    _, route = select_route(task(director=True, phase="replan", repairs=2), [a], [])
+    assert (route["model"], route["effort"]) == ("gpt-6-astra", "max")
+    _, route = select_route(task(director=True, phase="direct"), [a], [])
+    assert route["model"] == "gpt-6.1-sol"
     (Path(a["config_home"]) / "models_cache.json").unlink()
     assert select_route(task(director=True, phase="plan"), [a], []) is None
+
+
+def test_claude_builds_use_the_smallest_validated_model(tmp_path):
+    a = account(tmp_path, "claude")
+    a["model_capabilities"] = {
+        "claude-haiku-5-5": ["low"],
+        "sonnet": ["medium"],
+        "claude-fable-5-1": ["high", "max"],
+    }
+    _, route = select_route(task(), [a], [])
+    assert (route["model"], route["effort"]) == ("claude-haiku-5-5", "low")
+    _, route = select_route(task(complexity="moderate", risk="medium"), [a], [])
+    assert (route["model"], route["effort"]) == ("sonnet", "medium")
+    _, route = select_route(task(complexity="complex", risk="high"), [a], [])
+    assert (route["model"], route["effort"]) == ("claude-fable-5-1", "high")
+    _, route = select_route(task(repairs=2), [a], [])
+    assert (route["model"], route["effort"]) == ("claude-fable-5-1", "max")
 
 
 def test_validated_fable_slot_stands_in_as_director_only_without_codex(tmp_path):
@@ -119,7 +147,7 @@ def test_validated_fable_slot_stands_in_as_director_only_without_codex(tmp_path)
     assert select_route(director, [claude], []) is None  # No validated capability: no guess.
     claude["model_capabilities"] = {"claude-fable-5-1": ["max"]}
     chosen, route = select_route(director, [codex, claude], [])
-    assert chosen is codex and (route["model"], route["effort"]) == ("gpt-6-astra", "max")
+    assert chosen is codex and route["model"] == "gpt-6.1-sol"
     chosen, route = select_route(director, [claude], [])
     assert chosen is claude and (route["model"], route["effort"]) == ("claude-fable-5-1", "max")
     assert route["capability_source"] == "validated_probe"

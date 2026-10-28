@@ -52,6 +52,19 @@ def classify(task):
     return complexity, risk
 
 
+def director_tier(task, repair):
+    """Cheapest director that fits: short requests on narrow scopes plan with a mid model;
+    broad or long requests use Astra; repairs escalate; evidence review stays mid-tier."""
+    if task["phase"] == "direct":
+        return ("astra", "high") if repair else ("mid", "high")
+    if repair >= 2:
+        return ("astra", "max")
+    if repair == 1:
+        return ("astra", "xhigh")
+    light = len(task.get("instructions", "")) <= 500 and len(task.get("scope", [])) <= 4
+    return ("mid", "high") if light else ("astra", "high")
+
+
 def select_route(task, accounts, attempts):
     complexity, risk = classify(task)
     director = task.get("director") and task["phase"] in {"plan", "direct", "replan"}
@@ -68,17 +81,34 @@ def select_route(task, accounts, attempts):
     for account in accounts:
         available = capabilities(account)
         if director:
-            # Astra at max is the requested director. A Claude slot whose Fable 5.1 max
-            # support was validated by a probe stands in only when no Codex slot can
-            # take the phase now; the attempt records whichever model actually ran.
+            # The director is routed by need, not by prestige: a mid-tier model at high
+            # effort plans small requests and judges evidence; Astra takes broad requests
+            # and repairs (xhigh, then max). A Claude slot with probe-validated Fable 5.1
+            # stands in only when no Codex slot can take the phase now.
+            tier, wanted = director_tier(task, repair)
             if account["provider"] == "codex":
-                if "max" not in available.get("gpt-6-astra", []):
+                preferred = ["gpt-6.1-sol", "gpt-6-sol"] if tier == "mid" else ["gpt-6-astra"]
+                # The effort chosen below rounds up to the nearest supported level.
+                models = [m for m in preferred if available.get(m)] or (
+                    ["gpt-6-astra"] if available.get("gpt-6-astra") else []
+                )
+                if not models:
                     continue
-                models = ["gpt-6-astra"]
-            elif "max" in available.get("claude-fable-5-1", []):
+            elif available.get("claude-fable-5-1"):
                 models = ["claude-fable-5-1"]
             else:
                 continue
+        elif available and account["provider"] == "claude":
+            # Validated Claude models by probe: the smallest that fits the work.
+            ladder = (
+                ["claude-haiku-5-5", "sonnet"]
+                if complexity == "simple" and risk == "low" and not repair
+                else ["sonnet"]
+                if complexity != "complex" and risk != "high" and repair < 2
+                else ["claude-fable-5-1", "sonnet"]
+            )
+            # Never escalate past the enrolled model just because a bigger one was validated.
+            models = [m for m in ladder if m in available] or [account["model"]]
         elif available and account["provider"] == "codex":
             suitable = (
                 FAMILIES
@@ -109,7 +139,7 @@ def select_route(task, accounts, attempts):
             ):
                 continue
             desired = (
-                "max"
+                director_tier(task, repair)[1]
                 if director
                 else "xhigh"
                 if repair >= 2
@@ -166,20 +196,26 @@ def select_route(task, accounts, attempts):
                 if not available
                 else "initial"
             )
+            shown = effort or "default effort"
             reason = (
-                "Your director is diagnosing the failed approach before another build"
+                f"Escalated director: {model} at {shown} to diagnose repair #{repair}"
                 if action == "director_diagnosis"
-                else "Your director (Fable 5.1, max effort) is standing in for Astra"
+                else f"Director stand-in: Fable 5.1 at {shown} because no Codex slot is free"
                 if director and model == "claude-fable-5-1"
-                else "Your director is assessing the product outcome"
+                else f"Director: {model} at {shown} — "
+                + (
+                    "small request, a mid-tier planner is enough"
+                    if director_tier(task, repair)[0] == "mid"
+                    else "broad request, strongest planner"
+                )
                 if director
-                else "Trying a different worker using the failure evidence"
+                else f"Switched provider after failure evidence: {model} at {shown}"
                 if action == "switch_provider"
-                else "Using more reasoning with a corrected approach"
+                else f"Escalated for repair #{repair}: {model} at {shown}"
                 if repair
-                else "Using a lightweight worker for this small, low-risk change"
+                else f"Economical: small, low-risk change → {model} at {shown}"
                 if complexity == "simple" and risk == "low"
-                else "Using a stronger worker for this change"
+                else f"Standard: {complexity}, {risk} risk → {model} at {shown}"
             )
             options.append(
                 (

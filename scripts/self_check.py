@@ -67,7 +67,11 @@ def main():
         timeout=540,
     )
     modules = WORKSPACE / "web/node_modules"
-    source_modules = CANONICAL / "web/node_modules"
+    source_modules = (
+        Path(sys.argv[sys.argv.index("--node-modules") + 1])
+        if "--node-modules" in sys.argv
+        else CANONICAL / "web/node_modules"
+    )
     if not modules.exists() and source_modules.is_dir():
         modules.symlink_to(source_modules)
     if modules.exists():
