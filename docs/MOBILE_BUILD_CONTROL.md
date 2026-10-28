@@ -13,6 +13,14 @@ Everything below this section is the historical build log; this section is what 
   cd ~/Projects/agent-workflow-orchestrator && .venv/bin/python -m agent_arena.control --home .arena-control pair
   ```
 
+Each trusted device pairs **once**: the session cookie lasts 30 days and renews itself
+whenever the device is used, so an active phone never sees the pairing screen again. The
+app only asks for a code when the host answers 401 (unpaired, revoked or 30 days unused);
+while Tailscale is reconnecting it shows "Connecting… retrying" instead. Devices are listed
+in the Device session dialog (tap the avatar) with pair/last-seen times; revoke any other
+device there, "Unpair this device" ends your own session, and `revoke-sessions` on the Mac
+ends all of them.
+
 The controller is a launchd login service (`local.agent-arena.control.1a6834e84b5a`, plist
 `.arena-control/control.plist` symlinked from `~/Library/LaunchAgents`). It starts at login,
 restarts itself if it crashes, keeps the Mac from idle-sleeping (`caffeinate -i`), and does not
