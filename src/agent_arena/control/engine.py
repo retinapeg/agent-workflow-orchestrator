@@ -148,13 +148,14 @@ class Engine:
     ):
         repo = Path(repo).expanduser().resolve()
         controller = Path(__file__).resolve().parents[3]
-        if repo == Path.home() or (repo in controller.parents):
-            raise ValueError("The home directory and parents of the controller cannot be projects")
+        # Self-target first: inside a verification sandbox HOME is the workspace itself.
         if repo == controller and not self_target:
             raise ValueError(
                 "Enrolling Arena itself requires self_target=true; builds then run in isolated "
                 "workspaces, integrate into local main and activate through a release worktree"
             )
+        if repo == Path.home() or (repo in controller.parents):
+            raise ValueError("The home directory and parents of the controller cannot be projects")
         if self_target and repo != controller:
             raise ValueError("self_target is only valid for the controller's own repository")
         if not trusted:
