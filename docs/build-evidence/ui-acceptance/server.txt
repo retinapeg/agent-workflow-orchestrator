@@ -1,5 +1,40 @@
-INFO:     Started server process [51177]
+INFO:     Started server process [38087]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8793 (Press CTRL+C to quit)
-INFO:     127.0.0.1:53203 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55675 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55676 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55676 - "GET /assets/index-K2K2whvf.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55677 - "GET /assets/index-DCxWpXw4.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55676 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55676 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55677 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55678 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55677 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55677 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55678 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55677 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55676 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55679 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55680 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55680 - "POST /api/v1/requests HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55680 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55680 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55680 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55679 - "GET /assets/index-DCxWpXw4.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55680 - "GET /assets/index-K2K2whvf.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:55680 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55679 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55680 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55676 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55677 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55682 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "POST /api/v1/projects/project_bdfc4d15a14e383f/policy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "GET /api/v1/devices HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "POST /api/v1/logout HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55681 - "GET /api/v1/overview HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:55684 - "GET /api/v1/overview HTTP/1.1" 401 Unauthorized

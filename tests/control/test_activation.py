@@ -9,6 +9,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import psutil
 import pytest
@@ -78,6 +79,9 @@ class Harness:
 
     # -- fakes ---------------------------------------------------------------------
     def run(self, argv, **kw):
+        if argv[:2] == ["launchctl", "print"]:
+            # The label is never listed in this harness: teardown is instantaneous.
+            return SimpleNamespace(returncode=113, stdout="", stderr="not found")
         self.calls.append(argv)
         stdout = ""
         if argv[:2] == ["git", "-C"] and argv[3:5] == ["worktree", "add"]:
@@ -357,3 +361,55 @@ def test_cli_status_and_origin_defaults(harness, capsys):
     assert activation.default_origin(h.home, 8791) == "http://127.0.0.1:8791"
     assert activation.main(["--home", str(h.home), "status"]) == 0
     assert json.loads(capsys.readouterr().out) == {"current": None, "previous": None, "history": []}
+
+
+def test_swap_waits_for_launchd_teardown_and_retries_bootstrap(tmp_path):
+    from types import SimpleNamespace
+
+    from agent_arena.control.activation import _swap
+
+    home = tmp_path / "home"
+    home.mkdir()
+    source = home / "control.plist.next"
+    source.write_text("<plist/>")
+    calls = []
+    state = {"prints": 0, "bootstraps": 0}
+
+    def run(argv, **kwargs):
+        calls.append(argv[:2])
+        if argv[1] == "bootout":
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        if argv[1] == "print":
+            state["prints"] += 1  # Still listed for the first two polls, then gone.
+            return SimpleNamespace(
+                returncode=0 if state["prints"] <= 2 else 113, stdout="", stderr=""
+            )
+        if argv[1] == "bootstrap":
+            state["bootstraps"] += 1
+            if state["bootstraps"] < 3:
+                return SimpleNamespace(
+                    returncode=5, stdout="", stderr="Bootstrap failed: 5: Input/output error"
+                )
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        raise AssertionError(argv)
+
+    clock = {"t": 0.0}
+    _swap(
+        run,
+        home,
+        "label.test",
+        source,
+        sleep=lambda s: clock.__setitem__("t", clock["t"] + s),
+        clock=lambda: clock["t"],
+    )
+    assert state["prints"] == 3 and state["bootstraps"] == 3
+    assert (home / "control.plist").read_text() == "<plist/>"
+    assert [c[1] for c in calls] == [
+        "bootout",
+        "print",
+        "print",
+        "print",
+        "bootstrap",
+        "bootstrap",
+        "bootstrap",
+    ]

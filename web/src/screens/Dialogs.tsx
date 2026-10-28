@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import {useArena} from '../App';
+import {useArena, type PostError} from '../App';
 import {useSpeech} from '../speech';
 import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, attemptTone, cap, clock, duration, family, human, seconds, stateLabel, when, type RecordData} from '../types';
 import {Chip, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
@@ -40,22 +40,86 @@ function EvidenceView() {
   );
 }
 
+// "Let Arena decide": the host resolves the project from the request text, or answers
+// 409 with candidates so the owner picks one with a single tap.
+export const AUTO = 'auto';
+export type Candidate = {id: string; name: string; score: number; why: string};
+export type Asked = {reason: string; candidates: Candidate[]};
+
+export function askedFrom(e: unknown): Asked | null {
+  const err = e as PostError;
+  if (err?.status === 409 && Array.isArray(err.body?.candidates) && err.body.candidates.length) {
+    return {reason: typeof err.body.reason === 'string' ? err.body.reason : 'Arena could not tell which project you mean', candidates: err.body.candidates};
+  }
+  return null;
+}
+
+export function ProjectAsk({asked, busy, onPick, onCancel}: {asked: Asked; busy: boolean; onPick: (id: string) => void; onCancel: () => void}) {
+  return (
+    <div className="note" role="group" aria-label="Which project?">
+      <Eyebrow>Which project?</Eyebrow>
+      <p className="small">{asked.reason}. Tap one to send the request there.</p>
+      <div className="btn-row">
+        {asked.candidates.map(c => (
+          <button key={c.id} type="button" className="btn" disabled={busy} title={c.why} onClick={() => onPick(c.id)}>
+            {c.name}
+          </button>
+        ))}
+        <button type="button" className="text-btn" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function NewRequest() {
-  const {data, action, disabled} = useArena();
+  const {data, post, notify, setModal, disabled} = useArena();
   const [draft, setDraft] = useState('');
-  const [project, setProject] = useState(data.projects[0]?.id || '');
+  const [project, setProject] = useState(AUTO);
+  const [asked, setAsked] = useState<Asked | null>(null);
+  const [sending, setSending] = useState(false);
   const speech = useSpeech(text => setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + ' ' : '') + text));
+  const submit = async (target: string) => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      if (target === AUTO) await post('requests', {instructions: text});
+      else {
+        const p = data.projects.find(p => p.id === target);
+        if (!p) throw Error('Choose a project');
+        await post(`projects/${p.id}/requests`, {revision: p.rev, instructions: text});
+      }
+      notify('Your director is inspecting the project and preparing the work.');
+      setModal(null);
+    } catch (e) {
+      const which = askedFrom(e);
+      if (which) setAsked(which);
+      else notify(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
   return (
     <form
-      onSubmit={async e => {
+      onSubmit={e => {
         e.preventDefault();
-        const p = data.projects.find(p => p.id === project)!;
-        await action(`projects/${p.id}/requests`, {revision: p.rev, instructions: draft}, 'Your director is inspecting the project and preparing the work.', true);
+        submit(project);
       }}
     >
       <div className="field">
         <label htmlFor="project">Your project</label>
-        <select id="project" name="project" value={project} onChange={e => setProject(e.target.value)}>
+        <select
+          id="project"
+          name="project"
+          value={project}
+          onChange={e => {
+            setProject(e.target.value);
+            setAsked(null);
+          }}
+        >
+          <option value={AUTO}>Let Arena decide</option>
           {data.projects.map(p => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -85,8 +149,9 @@ function NewRequest() {
       <p className="field-help">
         Describe the result in your own words. Type here{speech.supported ? ', tap Dictate,' : ''} or use your phone keyboard's microphone. Your director inspects the project, plans the work and coordinates the agents.
       </p>
+      {asked && <ProjectAsk asked={asked} busy={disabled || sending} onPick={submit} onCancel={() => setAsked(null)} />}
       <div className="dialog-actions">
-        <button className="btn primary" disabled={disabled}>
+        <button className="btn primary" disabled={disabled || sending}>
           Build this for me
         </button>
       </div>

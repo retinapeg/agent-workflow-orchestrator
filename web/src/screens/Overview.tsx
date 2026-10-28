@@ -1,5 +1,7 @@
-import React from 'react';
+import React, {useEffect, useRef, useState} from 'react';
 import {useArena} from '../App';
+import {useSpeech} from '../speech';
+import {AUTO, ProjectAsk, askedFrom, type Asked} from './Dialogs';
 import {
   ACTIVE_ATTEMPT,
   ACTIVE_TASK,
@@ -21,7 +23,204 @@ import {
   type GoalView,
   type RecordData,
 } from '../types';
-import {Chip, Empty, Eyebrow, Icon, Panel, Sha} from '../ui';
+import {Chip, Empty, Eyebrow, Icon, LiveDot, Panel, Sha} from '../ui';
+
+// Per-build stepper. Every "done" comes from a recorded state or attempt result, never
+// from elapsed time: plan task completed → Plan; build attempt passed → Code; its frozen
+// checks all PASS → Test; independent review attempt passed → Review; integrated commit
+// recorded → Integrate. The current step reuses the task stage derivation (stageIndex).
+export const STEPS = ['Plan', 'Code', 'Test', 'Review', 'Integrate'];
+const STEPS_SHORT = ['Plan', 'Code', 'Test', 'Review', 'Merge'];
+const STAGE_TO_STEP = [0, 1, 2, 3, 3, 4, 4];
+
+export function buildSteps(view: GoalView, attempts: RecordData[]): {done: boolean[]; active: number; detail: string[]} {
+  const live = view.children.filter(t => t.state !== 'cancelled');
+  const byId = (id?: string) => (id ? attempts.find(a => a.id === id) : undefined);
+  const coded = live.filter(t => byId(t.build_attempt)?.state === 'passed');
+  const tested = coded.filter(t => {
+    const checks = byId(t.build_attempt)?.result?.checks;
+    return Array.isArray(checks) && checks.length > 0 && checks.every((c: RecordData) => c.status === 'PASS');
+  });
+  const reviewed = live.filter(t => byId(t.review_attempt)?.state === 'passed');
+  const integrated = live.filter(t => t.integrated_commit);
+  const planDone = view.plan?.state === 'completed' || view.children.length > 0;
+  const all = (n: number) => live.length > 0 && n === live.length;
+  const done = [planDone, all(coded.length), all(tested.length), all(reviewed.length), all(integrated.length)];
+  const count = (n: number, what: string) => (live.length ? `${n}/${live.length} tasks ${what}` : 'no tasks yet');
+  const detail = [
+    planDone ? 'Specification recorded' : view.plan ? `Director: ${stateLabel(view.plan.state)}` : 'No plan task',
+    count(coded.length, 'built'),
+    count(tested.length, 'passed frozen checks'),
+    count(reviewed.length, 'passed independent review'),
+    count(integrated.length, 'integrated into main'),
+  ];
+  let active = -1;
+  if (view.active) {
+    const indexes = (live.length ? live : view.plan ? [view.plan] : []).map(stageIndex).filter(i => i >= 0);
+    const current = indexes.length ? STAGE_TO_STEP[Math.min(...indexes)] : 0;
+    active = done[current] ? done.findIndex(d => !d) : current;
+  }
+  return {done, active, detail};
+}
+
+export function BuildSteps({view}: {view: GoalView}) {
+  const {data} = useArena();
+  const {done, active, detail} = buildSteps(view, data.attempts);
+  return (
+    <ol className="rail compact" aria-label="Build steps">
+      {STEPS.map((name, i) => (
+        <li key={name} className={done[i] ? 'done' : i === active ? 'active' : ''} title={`${name} · ${detail[i]}`} aria-label={`${name}: ${done[i] ? 'done' : i === active ? 'in progress' : 'not started'} · ${detail[i]}`}>
+          <i />
+          <span className="full">{name}</span>
+          <span className="abbr" aria-hidden="true">
+            {STEPS_SHORT[i]}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// "Tell me what to build": the everyday entry. Quick intents prefill the text, the
+// project defaults to "Let Arena decide", and a shared spec (ChatGPT → Share → Arena)
+// lands here through the handoff read on load.
+const INTENTS = [
+  {label: 'Build a new feature', prefix: 'Build a new feature: ', self: false},
+  {label: 'Fix a bug', prefix: 'Fix a bug: ', self: false},
+  {label: 'Improve Arena', prefix: 'Improve Arena: ', self: true},
+  {label: 'Add to an existing project', prefix: 'Add to an existing project: ', self: false},
+];
+const PREFIX = /^(Build a new feature|Fix a bug|Improve Arena|Add to an existing project): ?/;
+
+function TellArena() {
+  const {data, post, notify, disabled, handoff, clearHandoff} = useArena();
+  const [draft, setDraft] = useState(handoff);
+  const [project, setProject] = useState(AUTO);
+  const [asked, setAsked] = useState<Asked | null>(null);
+  const [sending, setSending] = useState(false);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLSelectElement>(null);
+  const speech = useSpeech(text => setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + ' ' : '') + text));
+  const self = data.projects.find(p => p.self);
+  const enabled = data.projects.filter(p => p.enabled !== false);
+
+  useEffect(() => {
+    if (!handoff) return;
+    setDraft(handoff);
+    setProject(AUTO);
+    setAsked(null);
+    clearHandoff();
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    box.current?.scrollIntoView({block: 'center', behavior: reduce ? 'auto' : 'smooth'});
+    box.current?.focus({preventScroll: true});
+  }, [handoff]);
+
+  const intent = (i: (typeof INTENTS)[number]) => {
+    setDraft(d => i.prefix + d.replace(PREFIX, ''));
+    setAsked(null);
+    if (i.self && self) setProject(self.id);
+    if (i.label.startsWith('Add to')) {
+      setProject(AUTO);
+      picker.current?.focus();
+    } else box.current?.focus();
+  };
+
+  const submit = async (target: string) => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const r = await post('requests', target === AUTO ? {instructions: text} : {instructions: text, project_id: target});
+      const name = data.projects.find(p => p.id === r.project_id)?.name || 'your project';
+      const why = typeof r.why === 'string' ? r.why.replace(`${name}: `, '') : '';
+      setDraft('');
+      setAsked(null);
+      setProject(AUTO);
+      notify(`Sent to ${name}${r.resolved && why ? ` (${why})` : ''}. Your director is inspecting the project and preparing the work.`);
+    } catch (e) {
+      const which = askedFrom(e);
+      if (which) setAsked(which);
+      else notify(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const busy = disabled || sending;
+  return (
+    <Panel title="Tell me what to build" aside={<Eyebrow>{speech.supported ? 'Voice or text' : 'Text'}</Eyebrow>}>
+      <div className="panel-body stack" style={{gap: 12}}>
+        <div className="btn-row" style={{marginTop: 0}} role="group" aria-label="Quick intents">
+          {INTENTS.map(i => (
+            <button key={i.label} type="button" className="btn" disabled={i.self && !self} title={i.self && !self ? 'Arena is not enrolled as a project on this host' : undefined} onClick={() => intent(i)}>
+              {i.label}
+            </button>
+          ))}
+        </div>
+        <div className="field" style={{marginBottom: 0}}>
+          <div className="field-row">
+            <label htmlFor="tell-text">What should Arena build?</label>
+            {speech.supported && (
+              <button type="button" className={'mic' + (speech.listening ? ' on' : '')} aria-pressed={speech.listening} onClick={speech.toggle}>
+                <Icon name={speech.listening ? 'stop' : 'mic'} size={15} />
+                {speech.listening ? 'Stop' : 'Dictate'}
+              </button>
+            )}
+          </div>
+          <textarea
+            id="tell-text"
+            ref={box}
+            rows={5}
+            style={{fontSize: 17, minHeight: 132}}
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => {
+              if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(project);
+            }}
+            placeholder="Describe the feature, the bug, or paste the spec you finished in ChatGPT."
+          />
+          {speech.listening && (
+            <p className="listening" aria-live="polite">
+              <LiveDot tone="live" />
+              Listening{speech.interim ? ` · ${speech.interim}` : ' · speak now; the transcript is appended when you pause.'}
+            </p>
+          )}
+          {speech.error && <p className="field-help warn">{speech.error}</p>}
+        </div>
+        <div className="row wrap" style={{alignItems: 'flex-end'}}>
+          <div className="field inline" style={{flex: '1 1 220px'}}>
+            <label htmlFor="tell-project">Build for</label>
+            <select
+              id="tell-project"
+              ref={picker}
+              value={project}
+              onChange={e => {
+                setProject(e.target.value);
+                setAsked(null);
+              }}
+            >
+              <option value={AUTO}>Let Arena decide</option>
+              {enabled.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.self ? ' (this app)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          <button type="button" className="btn primary" style={{flex: '1 1 160px'}} disabled={busy || !draft.trim() || !enabled.length} onClick={() => submit(project)}>
+            <Icon name="bolt" size={16} />
+            Start building
+          </button>
+        </div>
+        <p className="field-help" style={{margin: 0}}>
+          From ChatGPT: Share → Arena, or paste your spec here.{!enabled.length ? ' Enrol a project on the Mac first.' : ''}
+        </p>
+        {asked && <ProjectAsk asked={asked} busy={busy} onPick={submit} onCancel={() => setAsked(null)} />}
+      </div>
+    </Panel>
+  );
+}
 
 export function StageRail({view}: {view: GoalView}) {
   const tasks = view.children.length ? view.children : view.tasks;
@@ -80,7 +279,7 @@ function Stack({view}: {view: GoalView}) {
           })}
         </ol>
       )}
-      <StageRail view={view} />
+      <BuildSteps view={view} />
       <div className="row between stack-foot">
         <span className="small muted">
           {view.children.length ? `${view.children.filter(t => t.state === 'completed').length}/${view.children.length} tasks completed` : 'Director is preparing the specification'}
@@ -121,6 +320,10 @@ export function Overview() {
           <Icon name="plus" size={16} />
           New request
         </button>
+      </div>
+
+      <div className="stack" style={{marginBottom: 22}}>
+        <TellArena />
       </div>
 
       <div className="tiles">

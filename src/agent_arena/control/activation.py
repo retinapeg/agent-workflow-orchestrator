@@ -394,13 +394,42 @@ def _bootout(run, label):
     )
 
 
-def _bootstrap(run, plist):
-    _run(
-        run,
-        ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)],
-        timeout=60,
-        what="Loading the login service",
-    )
+def _bootstrap(run, plist, *, sleep=time.sleep, clock=time.monotonic, timeout=60):
+    """launchd answers 'Input/output error' (exit 5) while it is still tearing the previous
+    job down; keep trying until the deadline instead of failing the whole activation."""
+    deadline = clock() + timeout
+    while True:
+        result = run(
+            ["launchctl", "bootstrap", f"gui/{os.getuid()}", str(plist)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        text = _text(result).lower()
+        if result.returncode == 0 or "already loaded" in text or "already bootstrapped" in text:
+            return
+        transient = result.returncode == 5 or "input/output error" in text
+        if not transient or clock() >= deadline:
+            raise ActivationError(
+                f"Loading the login service failed (exit {result.returncode}): {_text(result)}"
+            )
+        sleep(2)
+
+
+def _wait_unloaded(run, label, *, sleep, clock, timeout=60):
+    """Wait until launchd no longer lists the label (bootout finishes asynchronously)."""
+    deadline = clock() + timeout
+    while clock() < deadline:
+        result = run(
+            ["launchctl", "print", f"gui/{os.getuid()}/{label}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return True
+        sleep(1)
+    return False
 
 
 def _wait_for_exit(ident, *, sleep, clock, timeout=30):
@@ -511,10 +540,11 @@ def _swap(run, home: Path, label: str, source: Path, *, sleep, clock):
     old = _server_identity(home)
     _bootout(run, label)
     _wait_for_exit(old, sleep=sleep, clock=clock)
+    _wait_unloaded(run, label, sleep=sleep, clock=clock)
     control = Path(home) / "control.plist"
     if source != control:
         shutil.copy2(source, control)
-    _bootstrap(run, control)
+    _bootstrap(run, control, sleep=sleep, clock=clock)
     return old
 
 

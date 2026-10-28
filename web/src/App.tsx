@@ -35,12 +35,36 @@ export type Ctx = {
   showEvidence: (attempt: string, name?: string) => Promise<void>;
   showApprovalDiff: (id: string) => Promise<void>;
   unpair: () => Promise<void>;
+  handoff: string;
+  clearHandoff: () => void;
 };
 
 const ArenaContext = createContext<Ctx>(null!);
 export const useArena = () => useContext(ArenaContext);
 
 const LABELS: Record<Tab, string> = Object.fromEntries(TABS.map(t => [t.key, t.label])) as Record<Tab, string>;
+
+const RESTARTING = 'Arena is restarting — reconnecting…';
+
+// A spec shared from another app (Web Share Target: GET /share?title&text&url) or a plain
+// ?text= link lands here. The address is rewritten to / at once so a reload cannot resubmit.
+function readHandoff(): string {
+  try {
+    const url = new URL(window.location.href);
+    const shared = url.pathname === '/share' || url.searchParams.has('text') || url.searchParams.has('title');
+    if (!shared) return '';
+    const title = (url.searchParams.get('title') || '').trim();
+    const text = (url.searchParams.get('text') || '').trim();
+    const link = (url.searchParams.get('url') || '').trim();
+    window.history.replaceState(null, '', '/');
+    return [title, text, link && !text.includes(link) ? link : ''].filter(Boolean).join('\n\n').trim();
+  } catch {
+    return '';
+  }
+}
+
+// Thrown by post() so callers can read the host's structured answer (e.g. project candidates).
+export type PostError = Error & {status: number; body: any};
 
 export function App() {
   const [data, setData] = useState<Snapshot | null>(null);
@@ -55,6 +79,7 @@ export function App() {
   const [evidence, setEvidence] = useState<Evidence>(null);
   const [busy, setBusy] = useState(false);
   const [goal, setGoal] = useState<string | null>(null);
+  const [handoff, setHandoff] = useState(readHandoff);
   const [, setTick] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const csrfRef = useRef('');
@@ -108,6 +133,8 @@ export function App() {
           setBootError(`${j.detail || 'Host refused this address'} (HTTP ${r.status}). Open the private HTTPS address from the Device session screen.`);
           return;
         }
+        // 502/503 is Tailscale Serve answering while the controller restarts.
+        if (r.status === 502 || r.status === 503) throw Error(RESTARTING);
         if (!r.ok) throw Error(`Host answered ${r.status}`);
         const s = await r.json();
         setCsrf(s.csrf);
@@ -117,7 +144,8 @@ export function App() {
         // Tailscale not up yet, cached shell offline, or a transient host error:
         // keep the paired state and retry instead of demanding a new pairing code.
         if (stopped) return;
-        setBootError(String(e));
+        const reason = e instanceof Error ? e.message : String(e);
+        setBootError(reason === RESTARTING ? RESTARTING : `Reaching your build host · retrying (${reason}). Check the Tailscale app is connected.`);
         timer = window.setTimeout(bootstrap, 3000);
       }
     };
@@ -177,7 +205,12 @@ export function App() {
       body: JSON.stringify(body),
     });
     const j = await r.json();
-    if (!r.ok) throw Error(typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail));
+    if (!r.ok) {
+      const error = Error(typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail)) as PostError;
+      error.status = r.status;
+      error.body = j;
+      throw error;
+    }
     await refresh();
     return j;
   }
@@ -255,7 +288,9 @@ export function App() {
         <div className="pair-card">
           <Mark size={44} />
           <h1>Connecting…</h1>
-          <p className="muted">{bootError ? `Reaching your build host · retrying (${bootError}). Check the Tailscale app is connected.` : 'Reaching your build host.'}</p>
+          <p className="muted" aria-live="polite">
+            {bootError || 'Reaching your build host.'}
+          </p>
         </div>
       </div>
     );
@@ -366,6 +401,8 @@ export function App() {
     showEvidence,
     showApprovalDiff,
     unpair,
+    handoff,
+    clearHandoff: () => setHandoff(''),
   };
 
   return (

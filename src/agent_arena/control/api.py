@@ -17,6 +17,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from .engine import ACTIVE, Engine, git
+from .intent import resolve_project
 from .store import Conflict, Store, encode
 from .worker import redact
 
@@ -65,6 +66,14 @@ MAX_SESSION_SECONDS = 180 * 86400
 class Intent(Model):
     instructions: str = Field(min_length=1, max_length=20000)
     revision: int
+
+
+class AutoIntent(Model):
+    """A request without a chosen project: Arena resolves it, or asks which one."""
+
+    instructions: str = Field(min_length=1, max_length=20000)
+    project_id: str | None = None
+    revision: int | None = None
 
 
 def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
@@ -403,22 +412,62 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             callback,
         )
 
+    def request_goal(db, project_id, instructions, expected_revision=None):
+        """Create a director-planned goal for a project (shared by both request routes)."""
+        project = store.get("projects", project_id, db)
+        if expected_revision is not None:
+            revision(project, expected_revision)
+        return engine.add_goal(
+            db,
+            project_id,
+            instructions.strip()[:100],
+            instructions,
+            project["scope"],
+            review=True,
+            timeout=900,
+            planning=True,
+            director=True,
+        )
+
     @app.post("/api/v1/projects/{project_id}/requests")
     def product_request(project_id: str, body: Intent, request: Request):
         def create(db):
-            project = store.get("projects", project_id, db)
-            revision(project, body.revision)
-            return engine.add_goal(
-                db,
-                project_id,
-                body.instructions.strip()[:100],
-                body.instructions,
-                project["scope"],
-                review=True,
-                timeout=900,
-                planning=True,
-                director=True,
+            return request_goal(db, project_id, body.instructions, body.revision)
+
+        return command(request, body.model_dump(), create)
+
+    @app.post("/api/v1/requests")
+    def auto_request(body: AutoIntent, request: Request):
+        """Tell Arena what to build; it picks the project when that is unambiguous."""
+        if body.project_id:
+            chosen = body.project_id
+
+            def create(db):
+                result = request_goal(db, chosen, body.instructions, body.revision)
+                return {**result, "project_id": chosen, "resolved": False}
+
+            return command(request, body.model_dump(), create)
+        enabled = [p for p in store.rows("projects") if p.get("enabled", True)]
+        resolved = resolve_project(body.instructions, enabled)
+        if not resolved["project"]:
+            return JSONResponse(
+                {
+                    "detail": "Which project?",
+                    "reason": resolved["reason"],
+                    "candidates": resolved["candidates"],
+                },
+                status_code=409,
             )
+        project_id = resolved["project"]["id"]
+
+        def create(db):
+            result = request_goal(db, project_id, body.instructions)
+            return {
+                **result,
+                "project_id": project_id,
+                "resolved": True,
+                "why": resolved["reason"],
+            }
 
         return command(request, body.model_dump(), create)
 
