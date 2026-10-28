@@ -114,6 +114,13 @@ def alive(attempt):
         return None
 
 
+# "manual": a person accepts the staged commit and authorizes local main integration.
+# "auto_local_main": fully verified routine changes (frozen checks, independent review,
+# director sign-off, combined staging checks) integrate into the enrolled source's LOCAL
+# main without a tap. Remote publication is never automatic.
+INTEGRATION_POLICIES = ("manual", "auto_local_main")
+
+
 class Engine:
     def __init__(self, store: Store):
         self.store = store
@@ -124,7 +131,9 @@ class Engine:
         self.integrations = {}
         self.integrator = ThreadPoolExecutor(max_workers=2, thread_name_prefix="arena-integration")
 
-    def enroll(self, name, repo, scope, checks, protected, trusted=False):
+    def enroll(
+        self, name, repo, scope, checks, protected, trusted=False, integration_policy="manual"
+    ):
         repo = Path(repo).expanduser().resolve()
         controller = Path(__file__).resolve().parents[3]
         if repo == controller or repo in controller.parents or repo == Path.home():
@@ -141,6 +150,8 @@ class Engine:
             not c.get("argv") or not all(isinstance(x, str) for x in c["argv"]) for c in checks
         ):
             raise ValueError("Frozen acceptance argv commands are required")
+        if integration_policy not in INTEGRATION_POLICIES:
+            raise ValueError("integration_policy must be one of " + ", ".join(INTEGRATION_POLICIES))
         if git(repo, "status", "--porcelain"):
             raise ValueError(
                 "Enroll a clean committed source; uncommitted work must be preserved first"
@@ -166,6 +177,7 @@ class Engine:
             priority=1,
             last_dispatch=0,
             trusted=True,
+            integration_policy=integration_policy,
             created=time.time(),
         )
         with self.store.transaction() as db:
@@ -922,29 +934,67 @@ class Engine:
                     result["covered_tasks"] = covered
                     result["review_base"] = project.get("accepted_head", project["base"])
                     approval = uid("approval")
+                    record = {
+                        **result,
+                        "operation": "accept_staged_change",
+                        "created": time.time(),
+                    }
+                    automatic = project.get("integration_policy") == "auto_local_main"
+                    if automatic:
+                        # Every gate passed inside the enrolled scope: policy accepts the exact
+                        # candidate and queues the same guarded local-main integration a person
+                        # would authorize. publish() still refuses dirty or diverged sources.
+                        record["decision"] = {
+                            "decision": "accept",
+                            "by": "integration_policy",
+                            "policy": "auto_local_main",
+                            "time": time.time(),
+                        }
+                        record["publication"] = {
+                            "state": "queued",
+                            "branch": "main",
+                            "expected_source": project.get("integrated_head", project["base"]),
+                            "requested": time.time(),
+                            "automatic": True,
+                        }
                     db.execute(
                         "INSERT INTO approvals(id,task_id,state,data) VALUES(?,?,?,?)",
                         (
                             approval,
                             task["id"],
-                            "pending",
-                            encode(
-                                {
-                                    **result,
-                                    "operation": "accept_staged_change",
-                                    "created": time.time(),
-                                }
-                            ),
+                            "accept" if automatic else "pending",
+                            encode(record),
                         ),
                     )
                     self.store.update_task(
                         db,
                         live,
                         "ready_for_approval",
-                        "Combined checks passed; exact staging commit awaits acceptance",
+                        "Verified; integrating into local main under the project's policy"
+                        if automatic
+                        else "Combined checks passed; exact staging commit awaits acceptance",
                         staged=result["candidate"],
                         approval_id=approval,
                     )
+                    if automatic:
+                        project["accepted_head"] = result["candidate"]
+                        db.execute(
+                            "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+                            (
+                                encode(
+                                    {k: v for k, v in project.items() if k not in {"id", "rev"}}
+                                ),
+                                project["id"],
+                            ),
+                        )
+                        self.store.event(
+                            db,
+                            "integration.authorized",
+                            approval_id=approval,
+                            candidate=result["candidate"],
+                            branch="main",
+                            by="integration_policy",
+                        )
             except Exception as exc:
                 with self.store.transaction() as db:
                     live = self.store.get("tasks", task["id"], db)

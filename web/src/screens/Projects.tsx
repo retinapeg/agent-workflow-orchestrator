@@ -38,9 +38,19 @@ export function Projects() {
                   ['Checks', p.checks.map((c: any) => c.name).join(', ') || 'None'],
                   ['Base → head', <span className="num">{<Sha value={p.base} n={7} />} → {<Sha value={p.head} n={7} />}</span>],
                   ['Main', p.integrated_head ? <Sha value={p.integrated_head} /> : 'No integration yet'],
+                  ['Integration', p.integration_policy === 'auto_local_main' ? 'Automatic into local main after every gate passes' : 'Manual: you accept each verified change'],
                 ]}
               />
               <div className="project-controls">
+                <select
+                  aria-label={`${p.name} integration policy`}
+                  value={p.integration_policy || 'manual'}
+                  disabled={disabled}
+                  onChange={e => action(`projects/${p.id}/policy`, {revision: p.rev, integration_policy: e.target.value}, 'Integration policy updated')}
+                >
+                  <option value="manual">Ask me before integrating</option>
+                  <option value="auto_local_main">Integrate verified work automatically</option>
+                </select>
                 <select
                   aria-label={`${p.name} priority`}
                   value={p.priority}

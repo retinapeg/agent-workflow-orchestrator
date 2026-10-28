@@ -41,6 +41,7 @@ class Change(Model):
     enabled: bool | None = None
     priority: int | None = Field(default=None, ge=1, le=100)
     limit: int | None = Field(default=None, ge=1, le=3)
+    integration_policy: str | None = Field(default=None, pattern="^(manual|auto_local_main)$")
     candidate: str | None = None
     base: str | None = None
     decision: str | None = None
@@ -345,6 +346,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                 p["enabled"] = action == "resume"
             if body.priority is not None:
                 p["priority"] = body.priority
+            if body.integration_policy is not None:
+                p["integration_policy"] = body.integration_policy
             db.execute(
                 "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
                 (encode({k: v for k, v in p.items() if k not in {"id", "rev"}}), ident),

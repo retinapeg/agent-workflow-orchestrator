@@ -147,7 +147,33 @@ try {
   log(`Verified staging reached in ${result.seconds_to_verified.toFixed(0)}s; builders: ${[...providers].join(', ')}; concurrent=${result.concurrent}`);
   await page.screenshot({path: evidence + '/04-verified.png', fullPage: true});
 
-  if (integrate) {
+  if (process.env.ARENA_EXPECT_AUTO === '1') {
+    // Project policy integrates verified work on its own: no accept/integrate taps.
+    let done = false;
+    for (let n = 0; n < 180; n++) {
+      snapshot = await overview(page);
+      tasks = mine(snapshot, goalId);
+      const builds = tasks.filter((t) => !(t.phase === 'plan' && t.director));
+      if (builds.every((t) => t.state === 'completed' && t.integrated_commit)) { done = true; break; }
+      if (tasks.some((t) => attention.includes(t.state))) throw Error('Needs a human during automatic integration: ' + describe(tasks));
+      await sleep(1000);
+    }
+    if (!done) throw Error('Automatic integration did not complete: ' + describe(tasks));
+    const project = snapshot.projects.find((p) => p.id === projectId);
+    const main = execFileSync('git', ['-C', project.repo, 'rev-parse', 'main'], {encoding: 'utf8'}).trim();
+    const commits = new Set(tasks.filter((t) => t.integrated_commit).map((t) => t.integrated_commit));
+    if (!commits.has(main)) throw Error(`Source main ${main} is not among integrated commits ${[...commits]}`);
+    const auto = snapshot.approvals.filter((a) => tasks.some((t) => t.id === a.task_id) && a.decision?.by === 'integration_policy');
+    if (!auto.length) throw Error('No policy-authorized approval recorded');
+    result.publication = auto.at(-1).publication;
+    result.integrated_commit = main;
+    result.source_repo = project.repo;
+    result.zero_click = true;
+    log(`Integrated automatically into ${project.repo} main at ${main} (${auto.length} policy decision(s), no taps)`);
+    await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Review', exact: true}).click();
+    await page.waitForTimeout(500);
+    await page.screenshot({path: evidence + '/06-integrated.png', fullPage: true});
+  } else if (integrate) {
     // 5. Accept the exact staged commit and integrate it into the source's local main, from the phone UI.
     await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Review', exact: true}).click();
     const inspect = async () => {

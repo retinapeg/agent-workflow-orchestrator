@@ -581,3 +581,67 @@ def test_host_permission_failure_never_invokes_provider(setup, monkeypatch):
     assert engine.finish(attempt, result)
     assert store.get("tasks", task_id)["state"] == "needs_permission"
     assert not Path(attempt["workspace"]).exists()
+
+
+def test_auto_local_main_policy_integrates_verified_work_without_a_decision(setup, monkeypatch):
+    store, engine, project, source = setup
+
+    def synthetic_checks(project, workspace, artifact, prefix="checks", runner=None):
+        log = Path(artifact) / f"{prefix}-0.txt"
+        log.write_text("Explicit unit fixture: verification result supplied by test\n")
+        return [
+            {
+                "name": "synthetic",
+                "status": "PASS",
+                "artifact": log.name,
+                "sha256": hashlib.sha256(log.read_bytes()).hexdigest(),
+            }
+        ]
+
+    monkeypatch.setattr("agent_arena.control.worker.checks_run", synthetic_checks)
+    git(source, "branch", "-M", "main")
+    with store.transaction() as db:
+        current = store.get("projects", project["id"], db)
+        current["integration_policy"] = "auto_local_main"
+        db.execute(
+            "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+            (encode({k: v for k, v in current.items() if k not in {"id", "rev"}}), project["id"]),
+        )
+    base = project["head"]
+    task_id = goal(store, engine, project, "src/a.txt")
+    attempt = engine.claim()
+    workspace = Path(attempt["workspace"])
+    workspace.parent.mkdir(exist_ok=True)
+    git(workspace.parent, "clone", "--no-hardlinks", project["staging"], str(workspace))
+    (workspace / "src/a.txt").write_text("verified\n")
+    git(workspace, "add", ".")
+    git(workspace, "commit", "-qm", "a")
+    candidate = git(workspace, "rev-parse", "HEAD")
+    Path(attempt["artifact_dir"]).mkdir(parents=True)
+    assert engine.finish(
+        attempt,
+        {
+            "attempt_id": attempt["id"],
+            "token": attempt["token"],
+            "status": "passed",
+            "candidate": candidate,
+            "checks": [{"status": "PASS"}],
+        },
+    )
+    engine.integrate(store.get("tasks", task_id))
+    approvals = store.rows("approvals")
+    assert len(approvals) == 1 and approvals[0]["state"] == "accept"
+    approval = approvals[0]
+    assert approval["decision"]["by"] == "integration_policy"
+    assert approval["publication"]["state"] == "queued"
+    assert approval["publication"]["expected_source"] == base
+    assert store.get("projects", project["id"])["accepted_head"] == approval["candidate"]
+    assert git(source, "rev-parse", "main") == base  # Nothing reaches the source before publish.
+    from agent_arena.control.publication import publish
+
+    publish(store, approval)
+    assert git(source, "rev-parse", "main") == approval["candidate"]
+    task = store.get("tasks", task_id)
+    assert task["state"] == "completed" and task["integrated_commit"] == approval["candidate"]
+    assert store.get("approvals", approval["id"])["publication"]["state"] == "integrated"
+    assert store.get("approvals", approval["id"])["publication"]["receipt"]["pushed"] is False
