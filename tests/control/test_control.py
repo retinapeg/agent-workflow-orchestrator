@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import contextlib
 import hashlib
 import json
 import sys
@@ -646,3 +647,50 @@ def test_auto_local_main_policy_integrates_verified_work_without_a_decision(setu
     assert task["state"] == "completed" and task["integrated_commit"] == approval["candidate"]
     assert store.get("approvals", approval["id"])["publication"]["state"] == "integrated"
     assert store.get("approvals", approval["id"])["publication"]["receipt"]["pushed"] is False
+
+
+def test_device_sessions_persist_renew_and_revoke(setup):
+    store, engine, project, source = setup
+    client, headers = paired_client(store)
+    cookie = client.cookies.get("arena_session")
+    with contextlib.closing(store.connect()) as db:
+        row = dict(db.execute("SELECT * FROM sessions").fetchone())
+    assert row["expires"] - time.time() > 29 * 86400 and row["id"] and row["created"]
+    # Fresh session: no renewal needed, overview works.
+    assert client.get("/api/v1/overview").status_code == 200
+    # Age the session past the renewal interval; the next request extends it and re-sets the cookie.
+    with store.transaction() as db:
+        db.execute("UPDATE sessions SET expires=?", (time.time() + 20 * 86400,))
+    response = client.get("/api/v1/session")
+    assert response.status_code == 200
+    assert "arena_session" in response.headers.get("set-cookie", "")
+    assert client.cookies.get("arena_session") == cookie  # Same token, longer life.
+    with contextlib.closing(store.connect()) as db:
+        expires = db.execute("SELECT expires FROM sessions").fetchone()[0]
+    assert expires - time.time() > 29 * 86400
+    # A second device pairs with its own code; both are listed; one can revoke the other.
+    other = TestClient(make_app(store.home, run_scheduler=False), base_url="http://127.0.0.1:8790")
+    atomic_json(
+        store.home / "pairing.json",
+        {"hash": hashlib.sha256(b"second-device-code").hexdigest(), "expires": time.time() + 60},
+    )
+    paired = other.post(
+        "/api/v1/pair",
+        json={"code": "second-device-code"},
+        headers={"Origin": "http://127.0.0.1:8790"},
+    )
+    assert paired.status_code == 200, paired.text
+    devices = client.get("/api/v1/devices").json()
+    assert len(devices) == 2 and sum(d["current"] for d in devices) == 1
+    victim = next(d for d in devices if not d["current"])
+    r = client.post(
+        f"/api/v1/devices/{victim['id']}/revoke",
+        json={"revision": 0},
+        headers={**headers, "Idempotency-Key": "revoke-1"},
+    )
+    assert r.status_code == 200, r.text
+    assert other.get("/api/v1/overview").status_code == 401
+    assert client.get("/api/v1/overview").status_code == 200
+    # Explicit logout ends this device's session.
+    assert client.post("/api/v1/logout", json={}, headers=headers).status_code == 200
+    assert client.get("/api/v1/overview").status_code == 401

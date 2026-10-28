@@ -76,6 +76,16 @@ class Store:
             CREATE INDEX IF NOT EXISTS tasks_state ON tasks(state,project_id);
             CREATE INDEX IF NOT EXISTS attempts_state ON attempts(state,account_id);
             """)
+        with self.connect() as db:
+            present = {r[1] for r in db.execute("PRAGMA table_info(sessions)")}
+            for column, kind in (
+                ("id", "TEXT"),
+                ("label", "TEXT"),
+                ("created", "REAL"),
+                ("last_seen", "REAL"),
+            ):
+                if column not in present:
+                    db.execute(f"ALTER TABLE sessions ADD COLUMN {column} {kind}")
         self.path.chmod(0o600)
 
     def connect(self):

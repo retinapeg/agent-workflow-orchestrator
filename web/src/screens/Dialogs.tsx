@@ -3,6 +3,7 @@ import {useArena} from '../App';
 import {useSpeech} from '../speech';
 import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, attemptTone, cap, clock, duration, family, human, seconds, stateLabel, when, type RecordData} from '../types';
 import {Chip, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
+import {Devices} from './Devices';
 
 function lineClass(line: string) {
   if (line.startsWith('+++') || line.startsWith('---')) return 'd-file';
@@ -419,6 +420,7 @@ export function DialogBody() {
                 ['Server time', when(data.server_time)],
               ]}
             />
+            <Devices action={action} disabled={disabled} />
             <p className="small muted">A sleeping Mac cannot execute tasks. Stopping all workers pauses dispatch and asks every owned attempt to stop.</p>
             <div className="dialog-actions">
               <button className="btn danger" disabled={disabled} onClick={() => action('control/stop-all', {revision: data.revision}, 'Dispatch paused and all owned attempts asked to stop', true)}>

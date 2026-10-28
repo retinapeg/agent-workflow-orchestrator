@@ -51,6 +51,13 @@ class Pair(Model):
     code: str = Field(min_length=8, max_length=128)
 
 
+# A trusted device pairs once. Its session lasts SESSION_SECONDS and is renewed on use
+# once RENEW_AFTER_SECONDS have elapsed, so an active device never re-pairs; an unused
+# one expires. Logout and per-device revocation end a session immediately.
+SESSION_SECONDS = 30 * 86400
+RENEW_AFTER_SECONDS = 7 * 86400
+
+
 class Intent(Model):
     instructions: str = Field(min_length=1, max_length=20000)
     revision: int
@@ -105,6 +112,31 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             ).fetchone()
         return dict(row) if row else None
 
+    def session_cookie(response, token):
+        response.set_cookie(
+            "arena_session",
+            token,
+            httponly=True,
+            secure=origin.startswith("https:"),
+            samesite="strict",
+            max_age=SESSION_SECONDS,
+        )
+
+    def touch(auth, request, response):
+        """Record activity; renew the cookie and expiry once the renewal interval passed."""
+        now = time.time()
+        renew = auth["expires"] - now < SESSION_SECONDS - RENEW_AFTER_SECONDS
+        seen = auth.get("last_seen") or 0
+        if not renew and now - seen < 60:
+            return
+        with store.transaction() as db:
+            db.execute(
+                "UPDATE sessions SET last_seen=?, expires=? WHERE hash=?",
+                (now, now + SESSION_SECONDS if renew else auth["expires"], auth["hash"]),
+            )
+        if renew:
+            session_cookie(response, request.cookies["arena_session"])
+
     @app.middleware("http")
     async def security(request, call_next):
         if request.headers.get("host", "") not in hosts:
@@ -126,7 +158,14 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                     auth["csrf"].encode(),
                 ):
                     return JSONResponse({"detail": "CSRF token rejected"}, status_code=403)
+                response = await call_next(request)
+                if request.url.path != "/api/v1/logout":
+                    touch(auth, request, response)
+                return finish_headers(request, response)
         response = await call_next(request)
+        return finish_headers(request, response)
+
+    def finish_headers(request, response):
         response.headers["Cache-Control"] = (
             "no-store" if request.url.path.startswith("/api/") else "no-cache"
         )
@@ -157,26 +196,60 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             if db.execute("SELECT 1 FROM meta WHERE key=?", ("paired:" + code["hash"],)).fetchone():
                 return JSONResponse({"detail": "Pairing code already used"}, status_code=403)
             token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
+            device = secrets.token_urlsafe(8)
+            label = request.headers.get("user-agent", "")[:160]
             db.execute(
-                "INSERT INTO sessions VALUES(?,?,?)",
-                (hashlib.sha256(token.encode()).hexdigest(), time.time() + 7 * 86400, csrf),
+                "INSERT INTO sessions(hash,expires,csrf,id,label,created,last_seen) "
+                "VALUES(?,?,?,?,?,?,?)",
+                (
+                    hashlib.sha256(token.encode()).hexdigest(),
+                    time.time() + SESSION_SECONDS,
+                    csrf,
+                    device,
+                    label,
+                    time.time(),
+                    time.time(),
+                ),
             )
             db.execute("INSERT INTO meta VALUES(?,?)", ("paired:" + code["hash"], "true"))
-            store.event(db, "device.paired")
-        response = JSONResponse({"csrf": csrf})
-        response.set_cookie(
-            "arena_session",
-            token,
-            httponly=True,
-            secure=origin.startswith("https:"),
-            samesite="strict",
-            max_age=7 * 86400,
-        )
+            store.event(db, "device.paired", device_id=device, label=label)
+        response = JSONResponse({"csrf": csrf, "device_id": device})
+        session_cookie(response, token)
         return response
 
     @app.get("/api/v1/session")
     def get_session(request: Request):
-        return {"csrf": session(request)["csrf"]}
+        auth = session(request)
+        return {"csrf": auth["csrf"], "device_id": auth.get("id"), "expires": auth["expires"]}
+
+    @app.get("/api/v1/devices")
+    def devices(request: Request):
+        auth = session(request)
+        with contextlib.closing(store.connect()) as db:
+            rows = db.execute("SELECT * FROM sessions WHERE expires>?", (time.time(),)).fetchall()
+        return [
+            {
+                "id": r["id"] or r["hash"][:12],
+                "label": r["label"] or "Paired before device labels were recorded",
+                "created": r["created"],
+                "last_seen": r["last_seen"],
+                "expires": r["expires"],
+                "current": r["hash"] == auth["hash"],
+            }
+            for r in rows
+        ]
+
+    @app.post("/api/v1/devices/{ident}/revoke")
+    def revoke_device(ident: str, body: Change, request: Request):
+        with store.transaction() as db:
+            row = db.execute(
+                "SELECT hash FROM sessions WHERE id=? OR substr(hash,1,12)=?", (ident, ident)
+            ).fetchone()
+            if not row:
+                raise KeyError(ident)
+            db.execute("DELETE FROM sessions WHERE hash=?", (row["hash"],))
+            store.event(db, "device.revoked", device_id=ident)
+        return {"ok": True}
 
     @app.post("/api/v1/logout")
     def logout(request: Request):

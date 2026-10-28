@@ -91,13 +91,35 @@ export function App() {
     }
   }
 
+  const [bootError, setBootError] = useState('');
   useEffect(() => {
-    get('session')
-      .then(s => {
+    let stopped = false;
+    let timer = 0;
+    const bootstrap = async () => {
+      try {
+        const r = await fetch('/api/v1/session', {cache: 'no-store'});
+        if (r.status === 401) {
+          setPaired(false); // The only answer that means this device is not paired.
+          return;
+        }
+        if (!r.ok) throw Error(`Host answered ${r.status}`);
+        const s = await r.json();
         setCsrf(s.csrf);
+        setBootError('');
         setPaired(true);
-      })
-      .catch(() => setPaired(false));
+      } catch (e) {
+        // Tailscale not up yet, cached shell offline, or a transient host error:
+        // keep the paired state and retry instead of demanding a new pairing code.
+        if (stopped) return;
+        setBootError(String(e));
+        timer = window.setTimeout(bootstrap, 3000);
+      }
+    };
+    bootstrap();
+    return () => {
+      stopped = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
   useEffect(() => {
@@ -227,7 +249,7 @@ export function App() {
         <div className="pair-card">
           <Mark size={44} />
           <h1>Connecting…</h1>
-          <p className="muted">Reaching your build host.</p>
+          <p className="muted">{bootError ? `Reaching your build host · retrying (${bootError}). Check the Tailscale app is connected.` : 'Reaching your build host.'}</p>
         </div>
       </div>
     );
