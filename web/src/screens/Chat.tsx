@@ -1,4 +1,4 @@
-import React, {useEffect, useRef, useState} from 'react';
+import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useArena} from '../App';
 import {useSpeech} from '../speech';
 import {ago, buildPhrase, clock, duration, pickableProjects, planTasks, seconds, type ChatMessage, type Conversation, type ConversationDetail, type PlanMilestone, type Spec} from '../types';
@@ -208,7 +208,8 @@ function Meta({m}: {m: ChatMessage}) {
   );
 }
 
-function Bubble({m, spec, onSend, busy}: {m: ChatMessage; spec: Spec; onSend: (text: string) => void; busy: boolean}) {
+// `last`: only the newest message offers Retry, so an old error never re-asks an old question.
+function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSend: (text: string) => void; busy: boolean; last: boolean}) {
   const {openGoal} = useArena();
   if (m.role === 'user')
     return (
@@ -251,6 +252,22 @@ function Bubble({m, spec, onSend, busy}: {m: ChatMessage; spec: Spec; onSend: (t
           )}
         </div>
       )}
+      {m.error && ((last && !!m.retry_text) || !!m.detail) && (
+        <div className="msg-actions">
+          {last && m.retry_text && (
+            <button type="button" className="btn" disabled={busy} onClick={() => m.retry_text && onSend(m.retry_text)}>
+              <Icon name="play" size={16} />
+              Retry
+            </button>
+          )}
+          {m.detail && (
+            <details className="small muted error-detail">
+              <summary>Technical detail</summary>
+              <p className="prewrap">{m.detail}</p>
+            </details>
+          )}
+        </div>
+      )}
       {m.launch_error && <p className="warn-banner">{m.launch_error}</p>}
     </div>
   );
@@ -274,11 +291,15 @@ export function Chat() {
 
   const conversations: Conversation[] = data.conversations || [];
   const listed = id ? conversations.find(c => c.id === id) : undefined;
-  const thinking = detail?.status === 'thinking' || (!!listed && listed.status === 'thinking');
+  // The freshest copy of the open thread: its own poll (every 2 s while the director
+  // answers) or the snapshot, whichever the host saved last (each save bumps `rev`).
+  const own = detail?.id === id ? detail : null;
+  const thread: Conversation | null | undefined = own && listed ? (listed.rev > own.rev ? listed : own) : own || listed;
+  const thinking = thread?.status === 'thinking';
   const projects = pickableProjects(data).filter(p => p.enabled !== false);
-  const projectId = detail?.project_id ?? listed?.project_id ?? null;
-  const project = detail?.project || (projectId ? data.projects.find(p => p.id === projectId) : null);
-  const spec: Spec = detail?.spec ?? listed?.spec ?? null;
+  const projectId = thread?.project_id ?? null;
+  const project = projectId ? data.projects.find(p => p.id === projectId) || (own?.project?.id === projectId ? own.project : null) : null;
+  const spec: Spec = thread?.spec ?? null;
 
   // Load the thread: on mount, when the id changes, when the snapshot says it moved, when an
   // SSE conversation event names it, and every 2 s while the director is still answering.
@@ -320,7 +341,7 @@ export function Chat() {
   }, [id, thinking]);
 
   // Keep the newest message in view as the thread grows; honour reduced motion.
-  const messages: ChatMessage[] = [...(detail?.messages || []), ...(pending ? [pending] : [])];
+  const messages: ChatMessage[] = [...(own?.messages || []), ...(pending ? [pending] : [])];
   useEffect(() => {
     const count = messages.length + (thinking ? 1 : 0);
     if (count === seen.current) return;
@@ -404,31 +425,36 @@ export function Chat() {
     }
   };
 
-  // While the director answers: how long it has been and what it is doing. A director turn
-  // reads the repository first, which is why it can take a minute; the line says so rather
-  // than spinning silently. The clock is the host's, ticked locally once a second.
+  // While the director answers: the step the host persists on the conversation (what it is
+  // reading, with the command or file it is on) and how long the turn has run. Past 90 s
+  // the line says "Still working" rather than going quiet. The clock is the host's: the
+  // offset is taken when a snapshot arrives, then the elapsed time ticks locally.
   const [, setTick] = useState(0);
   useEffect(() => {
     if (!thinking) return;
     const t = window.setInterval(() => setTick(n => n + 1), 1000);
     return () => window.clearInterval(t);
   }, [thinking]);
-  const skew = Date.now() / 1000 - now;
+  const skew = useMemo(() => Date.now() / 1000 - now, [now]);
+  const hostNow = Date.now() / 1000 - skew;
   const lastUser = [...messages].reverse().find(m => m.role === 'user');
-  const thinkingFor = thinking && lastUser ? Math.max(0, Date.now() / 1000 - skew - lastUser.time) : null;
-  const thinkingLine = !thinking
-    ? ''
-    : project
-      ? thinkingFor !== null && thinkingFor > 20
-        ? `Still working in ${project.name} · a director turn reads the repository first`
-        : `Reading ${project.name}…`
-      : thinkingFor !== null && thinkingFor > 20
-        ? 'Still thinking · the director checks Arena before answering'
-        : 'Thinking…';
+  const turnStarted = thread?.turn_started ?? lastUser?.time;
+  const thinkingFor = thinking && turnStarted ? Math.max(0, hostNow - turnStarted) : null;
+  const step = thread?.step || 'starting';
+  const stepLabel: Record<string, string> = {
+    starting: 'Starting the director',
+    'reading Arena status': 'Checking what Arena is doing',
+    'reading repository': `Reading ${project?.name || thread?.turn_repo || 'the repository'}`,
+    thinking: 'Thinking',
+    answering: 'Writing the answer',
+  };
+  const stepDetail = step === 'answering' ? '' : thread?.step_detail || '';
+  const stillWorking = thinkingFor !== null && thinkingFor >= 90;
+  const thinkingLine = !thinking ? '' : `${stillWorking ? 'Still working · ' : ''}${stepLabel[step] || 'Thinking'}`;
 
   const coarse = typeof window !== 'undefined' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
   const canSend = !!draft.trim() && online;
-  const title = detail?.title || listed?.title || (id ? 'Conversation' : 'New conversation');
+  const title = thread?.title || (id ? 'Conversation' : 'New conversation');
   const recent = conversations.filter(c => c.id !== id).slice(0, 12);
   const empty = !messages.length && !thinking;
 
@@ -502,16 +528,24 @@ export function Chat() {
             </div>
           </div>
         )}
-        {messages.map(m => (
-          <Bubble key={m.id === -1 ? 'pending' : m.id} m={m} spec={spec} onSend={send} busy={disabled || sending || thinking} />
+        {messages.map((m, i) => (
+          <Bubble key={m.id === -1 ? 'pending' : m.id} m={m} spec={spec} onSend={send} busy={disabled || sending || thinking} last={i === messages.length - 1} />
         ))}
         {thinking && (
           <div className="msg arena thinking" role="status">
             <div className="bubble">
               <LiveDot tone="live" />
-              <span>
-                {thinkingLine}
-                {thinkingFor !== null && <span className="num muted"> · {duration(thinkingFor)}</span>}
+              <span className="thinking-text">
+                <span>
+                  {thinkingLine}
+                  {thinkingFor !== null && <span className="num muted"> · {duration(thinkingFor)}</span>}
+                </span>
+                {stepDetail && (
+                  <code className="thinking-detail" title={stepDetail}>
+                    {stepDetail}
+                  </code>
+                )}
+                {stillWorking && <span className="small muted">A director turn can take a few minutes; you can leave and come back.</span>}
               </span>
             </div>
           </div>

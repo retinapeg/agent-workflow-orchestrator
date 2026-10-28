@@ -41,6 +41,51 @@ BUILD_INTENT = re.compile(
 CHAT_MODELS = {"codex": ("gpt-6.1-sol", "medium"), "claude": ("sonnet", None)}
 HISTORY_LIMIT = 30
 GH_CACHE_SECONDS = 600
+TURN_TIMEOUT_SECONDS = 240
+# What the director is doing right now, persisted on the conversation for the phone:
+# "starting" → "reading Arena status" → "reading repository" (step_detail: the command or
+# file it is on; turn_repo: the folder it reads) or "thinking" (no repository) →
+# "answering". Written whenever it changes; the phone polls it while the turn runs.
+STEP_DETAIL_CHARS = 120
+PROGRESS_DEFAULTS = {
+    "step": None,
+    "step_detail": "",
+    "step_since": None,
+    "turn_started": None,
+    "turn_repo": None,
+    "commands": 0,
+}
+# A turn still "thinking" this long after it started has no live process behind it (Arena
+# restarted mid-turn): no turn runs longer than the CLI timeout plus its own bookkeeping.
+STALE_TURN_SECONDS = TURN_TIMEOUT_SECONDS + 60
+INTERRUPTED = "The director was interrupted (Arena restarted). Tap Retry."
+
+
+class TurnError(Exception):
+    """A director turn that produced no answer, with a plain-language message for the owner
+    and a short kind for the UI (no_account, auth, timeout, cli). Any other failure is kind
+    "error"; a turn closed by recovery is "interrupted". Every one carries retry_text."""
+
+    def __init__(self, kind, message, detail=""):
+        super().__init__(message)
+        self.kind, self.message, self.detail = kind, message, detail
+
+
+def _clip(text, limit=STEP_DETAIL_CHARS):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def view(conv):
+    """A conversation as the phone reads it: the director's progress fields always present
+    (older records lack them), meaningful only while it is thinking, texts clipped."""
+    out = {**PROGRESS_DEFAULTS, **conv}
+    if out.get("status") != "thinking":
+        out.update(step=None, step_detail="", step_since=None)
+    out["step_detail"] = _clip(out["step_detail"])
+    out["turn_repo"] = _clip(out["turn_repo"]) or None
+    return out
+
 
 DIRECTOR_CHAT_PROMPT = """You are Arena's engineering director talking with the product owner on
 their phone.
@@ -225,19 +270,23 @@ def new_conversation(store, title="New conversation", db=None):
     return store.get("conversations", ident)
 
 
+def _insert_message(store, db, conversation_id, role, text, data):
+    cursor = db.execute(
+        "INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?,?,?,?)",
+        (conversation_id, time.time(), role, text, encode(data)),
+    )
+    conv = store.get("conversations", conversation_id, db)
+    conv["updated"] = time.time()
+    if role == "user" and conv.get("title") in {"New conversation", None}:
+        conv["title"] = text.strip().split("\n")[0][:60]
+    _save(store, db, conv)
+    store.event(db, "conversation.message", conversation_id=conversation_id, role=role)
+    return cursor.lastrowid
+
+
 def add_message(store, conversation_id, role, text, **data):
     with store.transaction() as db:
-        cursor = db.execute(
-            "INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?,?,?,?)",
-            (conversation_id, time.time(), role, text, encode(data)),
-        )
-        conv = store.get("conversations", conversation_id, db)
-        conv["updated"] = time.time()
-        if role == "user" and conv.get("title") in {"New conversation", None}:
-            conv["title"] = text.strip().split("\n")[0][:60]
-        _save(store, db, conv)
-        store.event(db, "conversation.message", conversation_id=conversation_id, role=role)
-        return cursor.lastrowid
+        return _insert_message(store, db, conversation_id, role, text, data)
 
 
 def messages(store, conversation_id, limit=200):
@@ -278,35 +327,156 @@ class Director:
         self.store, self.engine, self.run = store, engine, run
         self.runner = runner or ProcessRunner()
         self.catalog = catalog or Catalog(store, run=run, projects_dir=projects_dir)
-        self.busy = set()
+        self.busy = set()  # conversations this process is answering right now
 
     # -- public ---------------------------------------------------------------------
     def submit(self, conversation_id, text):
+        self.recover(conversation_id)  # a turn orphaned by a restart must not block the owner
         conv = self.store.get("conversations", conversation_id)
         if conv.get("status") == "thinking":
             raise ValueError("Arena is still answering the previous message")
         add_message(self.store, conversation_id, "user", text)
+        self.busy.add(conversation_id)
+        try:
+            with self.store.transaction() as db:
+                live = self.store.get("conversations", conversation_id, db)
+                now = time.time()
+                live.update(
+                    PROGRESS_DEFAULTS,
+                    status="thinking",
+                    step="starting",
+                    step_since=now,
+                    turn_started=now,
+                )
+                _save(self.store, db, live)
+            threading.Thread(
+                target=self._turn, args=(conversation_id, text), daemon=True, name="arena-chat"
+            ).start()
+        except BaseException:
+            self.busy.discard(conversation_id)  # no turn runs: recovery may close it later
+            raise
+
+    def recover(self, conversation_id=None, *, now=None):
+        """Close turns that no process is answering any more: a conversation still
+        "thinking" STALE_TURN_SECONDS after its turn started (Arena restarted mid-turn) gets
+        a plain-language error with Retry and is idle again. Runs when the controller
+        starts, before a new message and when the phone reads the conversation. Returns
+        the recovered conversation ids."""
+        now = time.time() if now is None else now
+
+        def stale(conv):
+            started = conv.get("turn_started") or conv.get("updated") or 0
+            return (
+                conv.get("status") == "thinking"
+                and conv["id"] not in self.busy
+                and now - started > STALE_TURN_SECONDS
+            )
+
+        rows = (
+            [self.store.get("conversations", conversation_id)]
+            if conversation_id
+            else self.store.rows("conversations")
+        )
+        candidates = [c["id"] for c in rows if stale(c)]
+        recovered = []
+        if not candidates:
+            return recovered  # the common case: a read, no write lock
         with self.store.transaction() as db:
-            live = self.store.get("conversations", conversation_id, db)
-            live["status"] = "thinking"
-            _save(self.store, db, live)
-        threading.Thread(
-            target=self._turn, args=(conversation_id, text), daemon=True, name="arena-chat"
-        ).start()
+            for ident in candidates:
+                if not stale(self.store.get("conversations", ident, db)):
+                    continue  # answered meanwhile
+                asked = db.execute(
+                    "SELECT text FROM messages WHERE conversation_id=? AND role='user' "
+                    "ORDER BY id DESC LIMIT 1",
+                    (ident,),
+                ).fetchone()
+                _insert_message(
+                    self.store,
+                    db,
+                    ident,
+                    "assistant",
+                    INTERRUPTED,
+                    {
+                        "error": True,
+                        "error_kind": "interrupted",
+                        "retry_text": asked["text"] if asked else None,
+                    },
+                )
+                live = self.store.get("conversations", ident, db)
+                live.update(status="idle", step=None, step_detail="", step_since=None)
+                _save(self.store, db, live)
+                recovered.append(ident)
+        return recovered
 
     # -- internals ------------------------------------------------------------------
     def _account(self):
-        accounts = [
-            a
-            for a in self.store.rows("accounts")
-            if a.get("enabled") and a.get("health") == "ready"
-        ]
+        known = [a for a in self.store.rows("accounts") if a.get("provider") in CHAT_MODELS]
+        accounts = [a for a in known if a.get("enabled") and a.get("health") == "ready"]
         for provider in ("codex", "claude"):
             for account in accounts:
                 if account["provider"] == provider:
                     model, effort = CHAT_MODELS[provider]
                     return {**account, "model": model, "effort": effort}
-        raise ValueError("No signed-in Codex or Claude slot is available to answer")
+        if any(a.get("health") == "ready" for a in known):
+            raise TurnError(
+                "no_account",
+                "Every agent slot is switched off, so the director cannot answer. Turn one "
+                "on in Agents, then tap Retry.",
+            )
+        raise TurnError(
+            "no_account",
+            "No agent slot is signed in, so the director cannot answer. Sign in on the Mac "
+            "(check-accounts), then tap Retry.",
+        )
+
+    def _step(self, conversation_id, step, detail="", **extra):
+        """Persist what the director is doing right now (only while the turn is open);
+        display only, it never fails a turn."""
+        try:
+            with self.store.transaction() as db:
+                live = self.store.get("conversations", conversation_id, db)
+                if live.get("status") != "thinking":
+                    return
+                live.update(step=step, step_detail=_clip(detail), step_since=time.time(), **extra)
+                _save(self.store, db, live)
+        except Exception:
+            pass
+
+    def _progress(self, conversation_id, workspace, *, scratch=False):
+        """An on_output callback: the CLI's streamed events (either provider) become the
+        persisted step: the command or file the director is on, and how many it ran. It
+        never raises, because it runs on the reader thread that drains the CLI's output."""
+        from .livetail import parse_lines
+
+        buffer = bytearray()
+        state = {"written": None, "commands": 0}
+
+        def on_output(channel, chunk):
+            if channel != "stdout":
+                return
+            try:
+                buffer.extend(chunk)
+                if b"\n" not in chunk:
+                    return
+                complete, _, rest = bytes(buffer).rpartition(b"\n")
+                buffer[:] = rest
+                text = complete.decode("utf-8", "replace")
+                step = None
+                for line in parse_lines(text, workspace=workspace, limit=1_000_000):
+                    if line["kind"] in {"command", "test", "tool", "file"}:
+                        state["commands"] += 1
+                        detail = line["text"].removeprefix("$ ")
+                        step = ("thinking" if scratch else "reading repository", detail)
+                    elif line["kind"] == "assistant":
+                        step = ("answering", "")
+                if step is None or (*step, state["commands"]) == state["written"]:
+                    return
+                state["written"] = (*step, state["commands"])
+                self._step(conversation_id, *step, commands=state["commands"])
+            except Exception:
+                pass
+
+        return on_output
 
     def _context(self, conv, text):
         projects = self.store.rows("projects")
@@ -367,10 +537,17 @@ class Director:
         return scratch
 
     def _turn(self, conversation_id, text):
+        try:
+            self._answer(conversation_id, text)
+        finally:
+            self.busy.discard(conversation_id)
+
+    def _answer(self, conversation_id, text):
         conv = self.store.get("conversations", conversation_id)
         reply, extra = "", {}
         try:
             account = self._account()
+            self._step(conversation_id, "reading Arena status")
             context, selected = self._context(conv, text)
             history = messages(self.store, conversation_id, HISTORY_LIMIT)[:-1]
             prompt = (
@@ -385,17 +562,35 @@ class Director:
             cwd = self._cwd(conv, text, selected)
             ok, env = auth_status(account)
             if not ok:
-                raise ValueError(f"{account['name']} is not signed in on the Mac")
+                raise TurnError(
+                    "auth",
+                    f"{account['name']} is not signed in on the Mac. Sign in there, then tap "
+                    "Retry.",
+                )
             argv = invocation(account, cwd, "plan")
+            scratch = cwd == self.store.home / "chat-scratch"
+            self._step(
+                conversation_id,
+                "thinking" if scratch else "reading repository",
+                turn_repo=None if scratch else cwd.name,
+            )
             started = time.time()
             process = self.runner.run(
                 argv,
                 cwd=cwd,
                 env=env,
                 stdin_text=prompt,
-                timeout_seconds=240,
+                timeout_seconds=TURN_TIMEOUT_SECONDS,
                 max_output_bytes=2_000_000,
+                on_output=self._progress(conversation_id, str(cwd), scratch=scratch),
             )
+            if getattr(process, "timed_out", False):
+                raise TurnError(
+                    "timeout",
+                    f"The director took longer than {TURN_TIMEOUT_SECONDS // 60} minutes and "
+                    "was stopped. Nothing was changed. Tap Retry to ask again.",
+                    redact((process.stderr or "")[-400:]),
+                )
             parsed = (
                 parse_codex_stream(process.stdout, account["model"])
                 if account["provider"] == "codex"
@@ -405,7 +600,18 @@ class Director:
             if raw.startswith("```"):
                 raw = "\n".join(raw.splitlines()[1:-1])
             if process.exit_code or not raw:
-                raise ValueError(f"The director did not answer (CLI exit {process.exit_code})")
+                raise TurnError(
+                    "cli",
+                    "The director's CLI "
+                    + (
+                        f"returned an error (exit {process.exit_code})"
+                        if process.exit_code
+                        else "finished without an answer"
+                    )
+                    + ". Nothing was changed. Tap Retry to ask again.",
+                    redact((process.stderr or "")[-400:]),
+                )
+            self._step(conversation_id, "answering")
             try:
                 answer = json.loads(raw)
             except ValueError:
@@ -450,13 +656,31 @@ class Director:
                 extra["offer_build"] = True  # The owner has to say so in their own words.
             elif action == "clarify":
                 extra["clarify"] = True
+        except TurnError as exc:
+            reply = exc.message
+            extra = {
+                "error": True,
+                "error_kind": exc.kind,
+                "detail": exc.detail or None,
+                "retry_text": text,
+            }
         except Exception as exc:
-            reply = "I couldn't answer that: " + redact(str(exc))[:400]
-            extra = {"error": True}
-        add_message(self.store, conversation_id, "assistant", reply, **extra)
+            reply = (
+                "Something went wrong while answering, so no build was started. Tap Retry to "
+                "ask again."
+            )
+            extra = {
+                "error": True,
+                "error_kind": "error",
+                "detail": redact(str(exc))[:400],
+                "retry_text": text,
+            }
+        # The answer and the end of the turn land together: the phone never sees a reply
+        # under a conversation that still says it is thinking.
         with self.store.transaction() as db:
+            _insert_message(self.store, db, conversation_id, "assistant", reply, extra)
             live = self.store.get("conversations", conversation_id, db)
-            live["status"] = "idle"
+            live.update(status="idle", step=None, step_detail="", step_since=None)
             _save(self.store, db, live)
 
     def _launch(self, conversation_id):

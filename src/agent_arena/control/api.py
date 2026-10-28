@@ -130,6 +130,11 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     app.state.engine = engine
     director = conversation.Director(store, engine)
     app.state.director = director
+    # A director turn the previous controller was answering died with it: close it with a
+    # plain-language error and Retry (later ones are closed when the phone reads them).
+    # Bookkeeping only: a busy database must not stop the controller starting.
+    with contextlib.suppress(Exception):
+        director.recover()
 
     @app.exception_handler(ValueError)
     async def value_error(request, exc):
@@ -401,9 +406,12 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             "api_fallback": False,
             "goals": [views.slim_goal(g) for g in goals],
             "provisions": provisioning.provisions(store),
-            "conversations": sorted(
-                store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True
-            )[:20],
+            "conversations": [
+                conversation.view(c)
+                for c in sorted(
+                    store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True
+                )[:20]
+            ],
         }
 
     @app.get("/api/v1/overview")
@@ -567,7 +575,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
     @app.get("/api/v1/conversations")
     def conversations():
-        return sorted(store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True)
+        rows = sorted(store.rows("conversations"), key=lambda c: c.get("updated", 0), reverse=True)
+        return [conversation.view(c) for c in rows]
 
     @app.post("/api/v1/conversations")
     def new_conversation(body: Change, request: Request):
@@ -578,7 +587,10 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
     @app.get("/api/v1/conversations/{ident}")
     def conversation_detail(ident: str):
-        conv = store.get("conversations", ident)
+        # The phone polls this while the director answers, so a turn whose process died
+        # (Arena restarted) turns into an error with Retry here once it is stale.
+        director.recover(ident)
+        conv = conversation.view(store.get("conversations", ident))
         project = store.get("projects", conv["project_id"]) if conv.get("project_id") else None
         return {
             **conv,

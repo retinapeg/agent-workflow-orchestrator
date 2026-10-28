@@ -1,40 +1,55 @@
-INFO:     Started server process [48026]
+INFO:     Started server process [15367]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8795 (Press CTRL+C to quit)
-INFO:     127.0.0.1:52350 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52352 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52352 - "GET /assets/index-DDUpnirZ.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /assets/index-B1cLJJbX.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52352 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52352 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /icon.svg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52354 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:52353 - "POST /api/v1/pair HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52354 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52352 - "GET /assets/index-B1cLJJbX.css HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:52353 - "GET /assets/index-DDUpnirZ.js HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52352 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "POST /api/v1/session/seen HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/goals/goal_afb7917a45ac17d8/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52353 - "GET /api/v1/goals/goal_afb7917a45ac17d8/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52355 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52355 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52355 - "GET /api/v1/tasks/task_613472a2ca0d2adb HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52355 - "GET /api/v1/tasks/task_613472a2ca0d2adb HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52355 - "GET /api/v1/attempts/attempt_014e80a9a7197932/live?lines=400&window=1048576 HTTP/1.1" 200 OK
-INFO:     127.0.0.1:52355 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42516 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42540 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42540 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:42542 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42540 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:42524 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:42524 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42542 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /api/v1/conversations/conv_48d30661219c HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:42524 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:42524 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42552 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "POST /api/v1/conversations/conv_599972be3389/messages HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /api/v1/conversations/conv_599972be3389 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /assets/index-Cwhv_-sx.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:36556 - "GET /assets/index-X6ZTPES9.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:36556 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:42524 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36556 - "GET /api/v1/conversations/conv_cf641fa8861e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36570 - "GET /api/v1/conversations/conv_cf641fa8861e HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36570 - "GET /api/v1/overview HTTP/1.1" 200 OK
 INFO:     Shutting down
 INFO:     Waiting for application shutdown.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [48026]
+INFO:     Finished server process [15367]

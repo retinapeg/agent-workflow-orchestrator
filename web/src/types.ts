@@ -97,6 +97,13 @@ export type Conversation = {
   spec: Spec;
   status: 'idle' | 'thinking';
   builds?: {goal_id: string; task_id: string; time: number}[];
+  // What the director is doing while status is 'thinking' (host clock).
+  step?: string | null;
+  step_detail?: string;
+  step_since?: number | null;
+  turn_started?: number | null;
+  turn_repo?: string | null;
+  commands?: number;
 };
 export type ChatMessage = {
   id: number;
@@ -117,6 +124,9 @@ export type ChatMessage = {
   project?: string;
   launch_error?: string;
   error?: boolean;
+  error_kind?: string;
+  detail?: string | null;
+  retry_text?: string | null;
 };
 export type ConversationDetail = Conversation & {project: {id: string; name: string} | null; messages: ChatMessage[]};
 
