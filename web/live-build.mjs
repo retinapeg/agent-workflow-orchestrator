@@ -7,8 +7,8 @@ import {resolve} from 'node:path';
 
 if (process.env.ARENA_LIVE !== '1') throw Error('ARENA_LIVE=1 is required: this drives real subscription agents');
 const root = process.cwd();
-const {ARENA_HOME: home, ARENA_URL: url, ARENA_PROJECT: projectId, ARENA_INSTRUCTIONS: instructions} = process.env;
-if (!home || !url || !projectId || !instructions) throw Error('ARENA_HOME, ARENA_URL, ARENA_PROJECT and ARENA_INSTRUCTIONS are required');
+const {ARENA_HOME: home, ARENA_URL: url, ARENA_PROJECT: projectId, ARENA_INSTRUCTIONS: instructions, ARENA_GOAL: attachGoal} = process.env;
+if (!home || !url || !projectId || (!instructions && !attachGoal)) throw Error('ARENA_HOME, ARENA_URL, ARENA_PROJECT and ARENA_INSTRUCTIONS (or ARENA_GOAL to attach to an existing request) are required');
 const integrate = process.env.ARENA_INTEGRATE === '1';
 const limitMs = Number(process.env.ARENA_LIMIT_SECONDS || 1800) * 1000;
 const offlineMs = Number(process.env.ARENA_OFFLINE_SECONDS || 45) * 1000;
@@ -50,21 +50,31 @@ try {
   await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
   log('Paired a phone-sized browser session');
   const before = await overview(page);
-  await page.getByRole('button', {name: 'New request', exact: true}).click();
-  await page.getByLabel('Your project').selectOption(projectId);
-  await page.getByLabel('What would you like to change?').fill(instructions);
-  const t0 = Date.now();
-  await page.getByRole('button', {name: 'Build this for me', exact: true}).click();
-  await page.getByRole('dialog').waitFor({state: 'hidden'});
-  const acknowledgedMs = Date.now() - t0;
-  const submitted = await overview(page);
-  const created = submitted.tasks.filter((t) => t.project_id === projectId && !before.tasks.some((b) => b.id === t.id));
-  if (created.length !== 1) throw Error('Expected exactly one new request task, saw ' + created.length);
-  const goalId = created[0].goal_id;
-  result.goal_id = goalId;
-  result.request_task = created[0].id;
-  result.acknowledged_ms = acknowledgedMs;
-  log(`Request persisted as ${created[0].id} (goal ${goalId}); UI acknowledged in ${acknowledgedMs} ms; state=${created[0].state}`);
+  let goalId = attachGoal, t0 = Date.now();
+  if (attachGoal) {
+    const existing = before.tasks.filter((t) => t.goal_id === attachGoal);
+    if (!existing.length) throw Error('No tasks found for goal ' + attachGoal);
+    t0 = Math.min(...existing.map((t) => t.created)) * 1000;
+    result.goal_id = goalId;
+    result.instructions = before.goals.find((g) => g.id === attachGoal)?.request;
+    log(`Attached to existing request ${attachGoal}: ${describe(existing)}`);
+  } else {
+    await page.getByRole('button', {name: 'New request', exact: true}).click();
+    await page.getByLabel('Your project').selectOption(projectId);
+    await page.getByLabel('What would you like to change?').fill(instructions);
+    t0 = Date.now();
+    await page.getByRole('button', {name: 'Build this for me', exact: true}).click();
+    await page.getByRole('dialog').waitFor({state: 'hidden'});
+    const acknowledgedMs = Date.now() - t0;
+    const submitted = await overview(page);
+    const created = submitted.tasks.filter((t) => t.project_id === projectId && !before.tasks.some((b) => b.id === t.id));
+    if (created.length !== 1) throw Error('Expected exactly one new request task, saw ' + created.length);
+    goalId = created[0].goal_id;
+    result.goal_id = goalId;
+    result.request_task = created[0].id;
+    result.acknowledged_ms = acknowledgedMs;
+    log(`Request persisted as ${created[0].id} (goal ${goalId}); UI acknowledged in ${acknowledgedMs} ms; state=${created[0].state}`);
+  }
   await page.screenshot({path: evidence + '/01-submitted.png', fullPage: true});
 
   // 2. Close the whole browser. The controller must keep working without it.
@@ -140,14 +150,21 @@ try {
   if (integrate) {
     // 5. Accept the exact staged commit and integrate it into the source's local main, from the phone UI.
     await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Review', exact: true}).click();
-    await page.getByRole('button', {name: 'Inspect evidence & diff'}).last().click();
+    const inspect = async () => {
+      snapshot = await overview(page);
+      const approval = snapshot.approvals.filter((a) => ['pending', 'accept'].includes(a.state) && tasks.some((t) => t.id === a.task_id)).at(-1);
+      const owner = tasks.find((t) => t.id === approval?.task_id);
+      if (!owner) throw Error('No pending approval belongs to this request');
+      await page.locator('article').filter({hasText: owner.title}).getByRole('button', {name: 'Inspect evidence & diff'}).first().click();
+    };
+    await inspect();
     await page.getByRole('button', {name: 'Read combined diff'}).click();
     await page.locator('pre').waitFor();
     await page.screenshot({path: evidence + '/05-review.png', fullPage: true});
     await page.getByRole('button', {name: 'Accept staged change', exact: true}).click();
     await page.getByRole('dialog').waitFor({state: 'hidden'});
     log('Accepted the exact staged candidate from the phone UI');
-    await page.getByRole('button', {name: 'Inspect evidence & diff'}).last().click();
+    await inspect();
     await page.getByRole('button', {name: 'Integrate into main', exact: true}).click();
     await page.getByRole('dialog').waitFor({state: 'hidden'});
     let publication;

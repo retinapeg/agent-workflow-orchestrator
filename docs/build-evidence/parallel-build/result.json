@@ -1,0 +1,491 @@
+{
+  "passed": true,
+  "url": "http://127.0.0.1:8791",
+  "project": "project_152b31b123b79723",
+  "instructions": "Make this app easier to recognise on my phone, and stop malformed server\naddresses getting through. Keep the existing behaviour working.",
+  "integrate": true,
+  "timeline": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/docs/build-evidence/parallel-build/timeline.log",
+  "goal_id": "goal_bb04ff462afaa38e",
+  "reconnected_state": [
+    {
+      "id": "task_4087ab3670330e2e",
+      "phase": "plan",
+      "state": "completed"
+    },
+    {
+      "id": "task_d805fdd988adff61",
+      "phase": "direct",
+      "state": "ready_for_approval"
+    },
+    {
+      "id": "task_8898660876ac38bc",
+      "phase": "direct",
+      "state": "ready_for_approval"
+    }
+  ],
+  "transitions": [
+    {
+      "time": 1793165368.088,
+      "state": "plan:Make this app easier to recognise on my  → completed | direct:Reject malformed server addresses before → ready_for_approval | direct:Describe Arena clearly in phone installa → ready_for_approval"
+    }
+  ],
+  "seconds_to_verified": 669.0397360839844,
+  "director": {
+    "acceptance": [
+      "The final candidate changes both authorized files and no other files.",
+      "The manifest parses as JSON and contains description exactly 'Control your private engineering agents from your phone.' and lang exactly 'en', with every existing manifest field and value preserved.",
+      "validate_origin raises ValueError before parsing any input containing a backslash, a character recognized by str.isspace(), an ASCII control character U+0000–U+001F, or U+007F.",
+      "The four frozen malformed examples are rejected: 'https://exa mple.com', 'https://example.com\\evil', 'https://example.com\\n' with an actual trailing newline, and '\\thttps://example.com' with an actual leading tab.",
+      "Valid HTTPS origins and HTTP origins using localhost, 127.0.0.1 or [::1] remain accepted. Explicit valid ports remain intact, and an optional trailing slash is removed as before.",
+      "Existing scheme, hostname, credentials, path, query, fragment, remote HTTPS and port checks remain unchanged.",
+      "The configured Frozen origin and manifest contracts check passes against the completed candidate."
+    ],
+    "constraints": [
+      "Edit only src/agent_arena/control/configuration.py and web/public/manifest.webmanifest. Treat acceptance, existing tests and all other repository files as read-only.",
+      "Reject malformed input rather than trimming, sanitizing or silently repairing it. Preserve the validate_origin interface and existing successful return behavior.",
+      "Add no dependencies and make no changes to authentication, device pairing, transport configuration, app assets or service-worker behavior.",
+      "Preserve M1 build, M2 deterministic verification, M3 independent review, M4 composition checks and M5 explicit main-integration approval. Do not change frozen checks or bypass any gate.",
+      "Do not access other projects, publish, grant permissions or integrate into main without the existing explicit approval gate."
+    ],
+    "observations": [
+      "web/public/manifest.webmanifest already defines the Arena name, icon, standalone display and root launch URL, but lacks description and lang. web/index.html already links this manifest and declares English.",
+      "src/agent_arena/control/configuration.py calls urlsplit before checking the original string. Read-only execution confirmed it accepts spaces, backslashes, leading tabs, trailing newlines, embedded tabs, NUL and DEL characters.",
+      "The same execution confirmed valid HTTPS addresses, HTTP localhost, IPv4 loopback, bracketed IPv6 loopback and trailing-slash removal currently work.",
+      "src/agent_arena/control/api.py, src/agent_arena/control/__main__.py and src/agent_arena/control/remote.py all use validate_origin, so fixing this shared function covers their existing connection paths.",
+      "tests/control/test_control.py::test_remote_origin_secure_pairing_health_and_unknown_api protects existing rejection of remote HTTP, credentials, paths, queries, unsupported schemes and malformed ports.",
+      "Commit bf2ae3d introduced both target files. Commit 0b1d3f9 added acceptance/proof.py, which specifies the exact description, English language and four malformed-address rejection cases. The frozen check currently passes because it skips unchanged baseline files; both requested improvements therefore require actual file changes."
+    ],
+    "outcome": "Give Arena clear English identification in its phone installation metadata and reject server addresses containing whitespace, control characters or backslashes while preserving valid connections and launch behavior.",
+    "question": "",
+    "strategy": "parallel",
+    "summary": "Add a clear description of what Arena does on your phone, and reject malformed server addresses before they reach connection setup. Keep the existing app name, icon and valid connection behavior.",
+    "tasks": [
+      {
+        "acceptance": [
+          "The original input is checked for whitespace, backslashes, ASCII controls and DEL before urlsplit is called; offending input raises ValueError.",
+          "All four malformed inputs in acceptance/proof.py are rejected, including actual newline and tab characters.",
+          "https://example.com and http://127.0.0.1:8790 return unchanged; https://example.com/ and http://localhost:8790/ lose only their trailing slash; http://[::1]:8790 remains valid.",
+          "All existing parsed-origin restrictions and port checks remain in place.",
+          "The configured frozen check passes with this changed file and the untouched manifest baseline."
+        ],
+        "complexity": "simple",
+        "dependencies": [],
+        "instructions": "In src/agent_arena/control/configuration.py, add a guard at the beginning of validate_origin, before urlsplit(origin). Inspect the original string and raise ValueError when any character is a backslash, satisfies str.isspace(), has a code point below 0x20, or equals 0x7F. Use a concise error explaining that these characters are invalid in an origin. Add a brief comment explaining that validation must precede parsing because parsing can discard some control characters. Keep the existing parsed-origin checks, port validation and return origin.rstrip('/') unchanged. This addresses the malformed inputs reproduced during inspection and the configuration contract in acceptance/proof.py without changing callers or dependencies.",
+        "risk": "low",
+        "scope": [
+          "src/agent_arena/control/configuration.py"
+        ],
+        "title": "Reject malformed server addresses before URL parsing"
+      },
+      {
+        "acceptance": [
+          "The manifest is valid JSON with the exact required description and lang 'en'.",
+          "Every pre-existing manifest field retains its original value, including the full icon entry and root launch URL.",
+          "The configured frozen check passes with this changed file and the untouched configuration baseline."
+        ],
+        "complexity": "simple",
+        "dependencies": [],
+        "instructions": "Update web/public/manifest.webmanifest to add description exactly 'Control your private engineering agents from your phone.' and lang exactly 'en', as required by acceptance/proof.py. Preserve the existing name 'Arena Build Control', short_name 'Arena', start_url '/', display 'standalone', both color values and the complete icons array. Keep the document valid JSON. The existing manifest link in web/index.html already connects this metadata to the app; no HTML, icon or service-worker changes are needed.",
+        "risk": "low",
+        "scope": [
+          "web/public/manifest.webmanifest"
+        ],
+        "title": "Describe Arena clearly in phone installation metadata"
+      }
+    ]
+  },
+  "tasks": [
+    {
+      "id": "task_4087ab3670330e2e",
+      "title": "Make this app easier to recognise on my phone, and stop malformed server\naddresses getting through. ",
+      "phase": "plan",
+      "state": "completed",
+      "scope": [
+        "src/agent_arena/control/configuration.py",
+        "web/public/manifest.webmanifest"
+      ],
+      "reason": "Add a clear description of what Arena does on your phone, and reject malformed server addresses before they reach connection setup. Keep the existing app name, icon and valid connection behavior.",
+      "repairs": 0
+    },
+    {
+      "id": "task_d805fdd988adff61",
+      "title": "Reject malformed server addresses before URL parsing",
+      "phase": "direct",
+      "state": "ready_for_approval",
+      "scope": [
+        "src/agent_arena/control/configuration.py"
+      ],
+      "reason": "Combined checks passed; exact staging commit awaits acceptance",
+      "repairs": 0
+    },
+    {
+      "id": "task_8898660876ac38bc",
+      "title": "Describe Arena clearly in phone installation metadata",
+      "phase": "direct",
+      "state": "ready_for_approval",
+      "scope": [
+        "web/public/manifest.webmanifest"
+      ],
+      "reason": "Combined checks passed; exact staging commit awaits acceptance",
+      "repairs": 0
+    }
+  ],
+  "attempts": [
+    {
+      "id": "attempt_5175519fa4720daa",
+      "task_id": "task_4087ab3670330e2e",
+      "phase": "plan",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-astra",
+      "effort": "max",
+      "seconds": 140.323,
+      "provider_started": 1793164700.749165,
+      "provider_ended": 1793164840.0743701,
+      "usage": [
+        {
+          "cache_read": 96256,
+          "cache_write": 0,
+          "call": 1,
+          "input": 109833,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-astra",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 4365,
+          "provider": "codex_cli",
+          "reasoning": 1761,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "reason": "Bounded plan schema, authority and dependency graph validated",
+      "session_ids": [
+        "01a180f1-ee8d-7f82-9d7e-8aea16939ffb"
+      ]
+    },
+    {
+      "id": "attempt_b2d8314d2da6fc18",
+      "task_id": "task_d805fdd988adff61",
+      "phase": "build",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-luna",
+      "effort": "low",
+      "seconds": 15.021,
+      "provider_started": 1793164843.7508638,
+      "provider_ended": 1793164856.3982248,
+      "usage": [
+        {
+          "cache_read": 57600,
+          "cache_write": 0,
+          "call": 1,
+          "input": 70377,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-luna",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 358,
+          "provider": "codex_cli",
+          "reasoning": 0,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [
+        {
+          "argv": [
+            "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+            "acceptance/proof.py"
+          ],
+          "artifact": "checks-0.txt",
+          "exit_code": 0,
+          "name": "Frozen origin and manifest contracts",
+          "seconds": 0.077,
+          "sha256": "c9f54a82a53ff75959bce6fb75ee211078f1daeafecc7d938adb496aa33f756b",
+          "status": "PASS"
+        }
+      ],
+      "candidate": "09051632f452fd18e80695cfe79b76a9d896af8b",
+      "reason": "CLI completed and frozen acceptance checks passed",
+      "session_ids": [
+        "01a180f4-1eb4-7bc0-ba2f-b5e514d0735f"
+      ]
+    },
+    {
+      "id": "attempt_a5a92ffadcfdd969",
+      "task_id": "task_8898660876ac38bc",
+      "phase": "build",
+      "state": "passed",
+      "provider": "claude",
+      "account": "Claude",
+      "model": "sonnet",
+      "effort": null,
+      "seconds": 9.96,
+      "provider_started": 1793164845.462388,
+      "provider_ended": 1793164852.125941,
+      "usage": [
+        {
+          "cache_read": 649,
+          "cache_write": 4454,
+          "cache_write_1h": 4454,
+          "cache_write_5m": 0,
+          "call": 1,
+          "input": 2,
+          "input_includes_cache_read": false,
+          "model": "claude-sonnet-5-5",
+          "model_source": "reported",
+          "not_applicable": [
+            "reasoning"
+          ],
+          "output": 334,
+          "provider": "claude_cli",
+          "reasoning": null,
+          "service_tier": "standard",
+          "single_request": true,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [
+        {
+          "argv": [
+            "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+            "acceptance/proof.py"
+          ],
+          "artifact": "checks-0.txt",
+          "exit_code": 0,
+          "name": "Frozen origin and manifest contracts",
+          "seconds": 0.074,
+          "sha256": "c9f54a82a53ff75959bce6fb75ee211078f1daeafecc7d938adb496aa33f756b",
+          "status": "PASS"
+        }
+      ],
+      "candidate": "91096f650e72560ad781760efb7818dfefd2fab9",
+      "reason": "CLI completed and frozen acceptance checks passed",
+      "session_ids": [
+        "4cef7697-199e-4c74-9253-ee435e0ca6fb"
+      ]
+    },
+    {
+      "id": "attempt_e168f1a12a3971e9",
+      "task_id": "task_d805fdd988adff61",
+      "phase": "review",
+      "state": "passed",
+      "provider": "claude",
+      "account": "Claude",
+      "model": "sonnet",
+      "effort": null,
+      "seconds": 5.345,
+      "provider_started": 1793164896.3323588,
+      "provider_ended": 1793164900.270567,
+      "usage": [
+        {
+          "cache_read": 649,
+          "cache_write": 3873,
+          "cache_write_1h": 3873,
+          "cache_write_5m": 0,
+          "call": 1,
+          "input": 2,
+          "input_includes_cache_read": false,
+          "model": "claude-sonnet-5-5",
+          "model_source": "reported",
+          "not_applicable": [
+            "reasoning"
+          ],
+          "output": 195,
+          "provider": "claude_cli",
+          "reasoning": null,
+          "service_tier": "standard",
+          "single_request": true,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "review": {
+        "approved": true,
+        "findings": []
+      },
+      "candidate": "09051632f452fd18e80695cfe79b76a9d896af8b",
+      "reason": "Independent review passed",
+      "session_ids": [
+        "8fb7e848-6bdb-444e-95f8-9a255a00436a"
+      ]
+    },
+    {
+      "id": "attempt_5e6166d09732ecd3",
+      "task_id": "task_8898660876ac38bc",
+      "phase": "review",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-luna",
+      "effort": "low",
+      "seconds": 6.029,
+      "provider_started": 1793164896.53014,
+      "provider_ended": 1793164901.6524842,
+      "usage": [
+        {
+          "cache_read": 11520,
+          "cache_write": 0,
+          "call": 1,
+          "input": 14310,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-luna",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 13,
+          "provider": "codex_cli",
+          "reasoning": 0,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "review": {
+        "approved": true,
+        "findings": []
+      },
+      "candidate": "91096f650e72560ad781760efb7818dfefd2fab9",
+      "reason": "Independent review passed",
+      "session_ids": [
+        "01a180f4-ebf3-7432-9372-906c3e9fd82a"
+      ]
+    },
+    {
+      "id": "attempt_0709601ef8b90698",
+      "task_id": "task_d805fdd988adff61",
+      "phase": "direct",
+      "state": "passed",
+      "provider": "claude",
+      "account": "Claude",
+      "model": "claude-fable-5-1",
+      "effort": "max",
+      "seconds": 122.407,
+      "provider_started": 1793164902.703692,
+      "provider_ended": 1793165023.6879108,
+      "usage": [
+        {
+          "cache_read": 649,
+          "cache_write": 13527,
+          "cache_write_1h": 13527,
+          "cache_write_5m": 0,
+          "call": 1,
+          "input": 2,
+          "input_includes_cache_read": false,
+          "model": "claude-fable-5-1",
+          "model_source": "reported",
+          "not_applicable": [
+            "reasoning"
+          ],
+          "output": 8684,
+          "provider": "claude_cli",
+          "reasoning": null,
+          "service_tier": "standard",
+          "single_request": true,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "review": {
+        "approved": true,
+        "findings": [
+          "The guard sits before urlsplit(origin) and rejects any character that is a backslash, satisfies str.isspace(), has a code point below 0x20, or equals 0x7F, exactly as specified. It raises ValueError with a concise message and carries the required comment about parsing discarding control characters.",
+          "Everything after the guard is unchanged: scheme, hostname, credentials, path, query, fragment, remote-HTTPS and port checks remain, and the function still returns origin.rstrip('/').",
+          "The frozen check passed with exit code 0. Because configuration.py no longer matches its baseline hash, acceptance/proof.py exercised the contract: https://example.com and http://127.0.0.1:8790 returned unchanged, and all four malformed inputs (embedded space, backslash, real trailing newline, real leading tab) raised ValueError.",
+          "Valid cases not covered by the proof script (https://example.com/, http://localhost:8790/, http://[::1]:8790) contain none of the guarded characters, so they follow the pre-existing code path unchanged.",
+          "Scope and constraints hold: only src/agent_arena/control/configuration.py is in the diff, no imports or dependencies were added, acceptance/proof.py is untouched, and the manifest remains at its baseline. The independent review approved with no findings.",
+          "Non-blocking: the new guard line is 128 characters, over the 100-character ruff line length configured in pyproject.toml. This is cosmetic, is not enforced by the frozen check, and could be wrapped in a later tidy."
+        ],
+        "summary": "The server-address hardening is complete and verified. Addresses containing spaces, tabs, newlines, other control characters or backslashes are now rejected before the URL parser sees them, so the parser can no longer quietly strip those characters and let a bad address through. Normal addresses such as https://example.com, http://127.0.0.1:8790, http://localhost:8790/ and http://[::1]:8790 behave exactly as before, and all the earlier restrictions on scheme, credentials, paths and ports are still in place. The frozen proof check passed and the independent review found no problems. One cosmetic note: the added line is longer than the project's lint limit, which does not affect behavior. This assessment covers only the address-validation half of your request; the phone-recognition change to the app manifest is a separate candidate being assessed on its own. Nothing has been merged: integration into main still waits for your explicit approval at the final gate."
+      },
+      "candidate": "09051632f452fd18e80695cfe79b76a9d896af8b",
+      "reason": "Independent review passed",
+      "session_ids": [
+        "8d4f48ff-f738-4e1b-8bde-2214176c44b7"
+      ]
+    },
+    {
+      "id": "attempt_108ecf5df0a1e0d4",
+      "task_id": "task_8898660876ac38bc",
+      "phase": "direct",
+      "state": "passed",
+      "provider": "codex",
+      "account": "Codex",
+      "model": "gpt-6-astra",
+      "effort": "max",
+      "seconds": 16.363,
+      "provider_started": 1793164905.266604,
+      "provider_ended": 1793164918.933263,
+      "usage": [
+        {
+          "cache_read": 12160,
+          "cache_write": 0,
+          "call": 1,
+          "input": 22428,
+          "input_includes_cache_read": true,
+          "model": "gpt-6-astra",
+          "model_source": "declared",
+          "not_applicable": [],
+          "output": 255,
+          "provider": "codex_cli",
+          "reasoning": 194,
+          "single_request": false,
+          "wall_time_s": null
+        }
+      ],
+      "checks": [],
+      "review": {
+        "approved": true,
+        "findings": [],
+        "summary": "The manifest adds the exact required description and lang value while preserving valid JSON and every existing field. The frozen check and independent review passed. This manifest task meets all acceptance criteria; server-address validation remains a separate task."
+      },
+      "candidate": "91096f650e72560ad781760efb7818dfefd2fab9",
+      "reason": "Independent review passed",
+      "session_ids": [
+        "01a180f5-0d43-7713-8c67-334725bdd7a9"
+      ]
+    }
+  ],
+  "providers_that_built": [
+    "codex",
+    "claude"
+  ],
+  "concurrent": true,
+  "publication": {
+    "branch": "main",
+    "expected_source": "0b1d3f9e6a5d349f28c565edc9484f89dbfeef04",
+    "reason": "Verified candidate integrated into local main",
+    "receipt": {
+      "approval_id": "approval_929eeda1b1b0b971",
+      "base": "0b1d3f9e6a5d349f28c565edc9484f89dbfeef04",
+      "branch": "main",
+      "candidate": "7821b1f10c820c656c0bb4459cb1d4a68f9ad264",
+      "checks": [
+        {
+          "argv": [
+            "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.venv/bin/python",
+            "acceptance/proof.py"
+          ],
+          "artifact": "integration-0.txt",
+          "exit_code": 0,
+          "name": "Frozen origin and manifest contracts",
+          "seconds": 0.107,
+          "sha256": "c9f54a82a53ff75959bce6fb75ee211078f1daeafecc7d938adb496aa33f756b",
+          "status": "PASS"
+        }
+      ],
+      "pushed": false,
+      "source": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.arena-control/proof-source-parallel",
+      "time": 1793165372.1001081
+    },
+    "requested": 1793165371.2300842,
+    "state": "integrated"
+  },
+  "integrated_commit": "7821b1f10c820c656c0bb4459cb1d4a68f9ad264",
+  "source_repo": "/Users/leonardaarons-ditson/Projects/agent-workflow-orchestrator/.arena-control/proof-source-parallel",
+  "browser_errors": [],
+  "ended": "2026-10-28T05:29:33.341Z"
+}
