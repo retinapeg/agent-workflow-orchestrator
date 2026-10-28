@@ -1697,34 +1697,217 @@ main {
   font-size: 13px;
   color: var(--muted);
 }
-.lanes {
-  display: grid;
-  gap: 16px;
-}
-.lane {
+/* Milestone tree: native <details> per milestone, nested by code (M2 > M2.1) ------ */
+.milestones {
   display: grid;
   gap: 10px;
-  padding-left: 14px;
-  border-left: 1px solid var(--line-2);
-  position: relative;
 }
-.lane::before {
+.milestone {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(8, 12, 21, 0.6);
+  min-width: 0;
+}
+.milestone.running {
+  border-color: rgba(111, 176, 255, 0.6);
+}
+.milestone.blocked {
+  border-color: rgba(255, 107, 122, 0.45);
+}
+.milestone.decision {
+  border-color: rgba(255, 191, 77, 0.45);
+}
+.milestone.nested {
+  background: rgba(8, 12, 21, 0.35);
+}
+.milestone > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 56px;
+  padding: 12px 14px;
+}
+.milestone > summary::-webkit-details-marker {
+  display: none;
+}
+.milestone > summary .status-glyph {
+  margin-top: 1px;
+}
+.ms-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.ms-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+  font-size: 14.5px;
+  line-height: 1.35;
+}
+.ms-code {
+  color: var(--electric-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  flex: none;
+}
+.ms-name {
+  font-weight: 650;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.ms-meta,
+.ms-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.ms-owner {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ms-meta .dep {
+  padding: 2px 8px;
+  gap: 4px;
+}
+.ms-count {
+  flex: none;
+  padding-top: 6px;
+}
+.ms-count:empty {
+  display: none;
+}
+.milestone > summary::after {
   content: '';
-  position: absolute;
-  left: -4px;
-  top: 6px;
   width: 7px;
   height: 7px;
-  border-radius: 50%;
-  background: var(--cobalt);
-  box-shadow: 0 0 8px var(--glow);
+  margin-top: 11px;
+  border-right: 1.5px solid var(--electric-2);
+  border-bottom: 1.5px solid var(--electric-2);
+  transform: rotate(-45deg);
+  transition: transform 0.2s;
+  flex: none;
 }
-.lane-head {
-  display: flex;
-  align-items: baseline;
+.milestone[open] > summary::after {
+  transform: rotate(45deg);
+}
+.ms-body {
+  display: grid;
   gap: 10px;
-  flex-wrap: wrap;
+  padding: 0 12px 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 12px;
 }
+.milestone.nested .ms-body {
+  padding-left: 10px;
+}
+.ms-note {
+  padding: 2px 4px;
+}
+
+/* New project: proposal and provisioning cards -------------------------------- */
+.hero-row.single {
+  grid-template-columns: minmax(0, 1fr);
+}
+.proposal h3,
+.provision h3 {
+  font-size: 17px;
+  overflow-wrap: anywhere;
+}
+.provision.blocked {
+  border-color: rgba(255, 107, 122, 0.45);
+}
+.provision.done {
+  border-color: rgba(79, 227, 161, 0.4);
+}
+.provision.running {
+  border-color: rgba(111, 176, 255, 0.6);
+}
+.path-line {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+.proposal .facts dd,
+.provision .facts dd {
+  text-align: left;
+}
+.proposal .facts > div,
+.provision .facts > div {
+  flex-direction: column;
+  gap: 4px;
+}
+.notes {
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+.steps {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.steps li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 4px 0;
+}
+.steps li .list-main b {
+  font-size: 14px;
+}
+.steps li.off .list-main b {
+  font-weight: 500;
+}
+.copy-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--bg-1);
+  min-width: 0;
+}
+.copy-line code {
+  flex: 1;
+  min-width: 0;
+}
+.copy-line .btn {
+  flex: none;
+  min-height: 44px;
+}
+.link {
+  color: var(--electric-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+a.btn {
+  text-decoration: none;
+}
+.new-projects {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
 .task-card {
   padding: 16px 18px;
   display: grid;
@@ -2352,6 +2535,9 @@ pre.code .d-file {
   .hero .segmented {
     display: none;
   }
+  .hero .segmented.kind {
+    display: grid;
+  }
   .hero-title {
     font-size: 20px;
   }
@@ -2547,8 +2733,11 @@ pre.code .d-file {
   .usage-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .lane {
-    padding-left: 12px;
+  .milestone > summary {
+    padding: 10px 12px;
+  }
+  .ms-body {
+    padding: 10px 8px 10px;
   }
   .build-head .field.inline {
     min-width: 0;

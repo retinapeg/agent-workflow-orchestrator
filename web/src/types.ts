@@ -11,6 +11,7 @@ export type Snapshot = {
   approvals: RecordData[];
   events: RecordData[];
   goals: RecordData[];
+  provisions?: RecordData[];
   paused: boolean;
   limit: number;
   revision: number;
@@ -173,31 +174,6 @@ export function goalView(goal: RecordData, snap: Snapshot): GoalView {
   return {goal, project, plan, children, tasks, tone, status, active};
 }
 
-// Dependency lanes: a task's lane is one deeper than the deepest task it waits on.
-export function lanes(tasks: RecordData[]): RecordData[][] {
-  const byId = new Map(tasks.map(t => [t.id, t]));
-  const depth = new Map<string, number>();
-  const visit = (t: RecordData, seen: Set<string>): number => {
-    if (depth.has(t.id)) return depth.get(t.id)!;
-    if (seen.has(t.id)) return 0;
-    seen.add(t.id);
-    let d = 0;
-    for (const id of t.dependencies || []) {
-      const dep = byId.get(id);
-      if (dep) d = Math.max(d, visit(dep, seen) + 1);
-    }
-    depth.set(t.id, d);
-    return d;
-  };
-  tasks.forEach(t => visit(t, new Set()));
-  const out: RecordData[][] = [];
-  for (const t of tasks) {
-    const d = depth.get(t.id) || 0;
-    (out[d] ||= []).push(t);
-  }
-  return out.filter(Boolean);
-}
-
 export type Usage = {calls: number; fields: [string, number][]};
 
 // Sum only what the CLI stream actually recorded. Index-like fields are not totals.
@@ -350,4 +326,249 @@ export function goalElapsed(view: GoalView, now: number): number {
   if (view.active) return now - start;
   const last = Math.max(start, ...view.tasks.map(t => (t.updated as number) || 0));
   return last - start;
+}
+
+// Milestone tree ----------------------------------------------------------------
+// The director labels each child task with a milestone such as "M2.1 — Frontend". The tree
+// groups tasks by that code, nests "M2.1" under "M2", and wraps the director's milestones
+// with the recorded pipeline around them: M0 (the plan task), Review (independent review of
+// every task) and Final (integration). Every state, owner and count below is read from the
+// recorded tasks, attempts and agents; nothing is estimated.
+
+export type MilestoneKind = 'plan' | 'milestone' | 'review' | 'final';
+export type Owner = {id: string; name: string; provider: string; active: boolean};
+export type MilestoneEvidence = {pass: number; fail: number; approved: number; rejected: number; findings: number; integrated: string[]};
+export type MilestoneNode = {
+  code: string;
+  title: string;
+  kind: MilestoneKind;
+  tasks: RecordData[];
+  children: MilestoneNode[];
+  all: RecordData[];
+  tone: Family;
+  status: string;
+  owners: Owner[];
+  waitsOn: string[];
+  evidence: MilestoneEvidence;
+  synthesised: boolean;
+};
+export type MilestoneTree = {nodes: MilestoneNode[]; milestones: MilestoneNode[]; done: number; total: number; has: boolean};
+
+const MILESTONE = /^\s*(M\d+(?:\.\d+)*)\s*[—–-]+\s*(.*?)\s*$/;
+
+export function parseMilestone(label: string | undefined | null): {code: string; title: string} | null {
+  const m = MILESTONE.exec(label || '');
+  return m ? {code: m[1], title: m[2]} : null;
+}
+
+const codeParts = (code: string) => code.replace(/^M/, '').split('.').map(Number);
+function compareCodes(a: string, b: string): number {
+  const x = codeParts(a);
+  const y = codeParts(b);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? -1) - (y[i] ?? -1);
+    if (d) return d;
+  }
+  return 0;
+}
+
+function taskTone(tasks: RecordData[]): {tone: Family; status: string} {
+  const states = tasks.map(t => t.state as string);
+  const live = tasks.filter(t => t.state !== 'cancelled');
+  if (!tasks.length) return {tone: 'off', status: 'No tasks'};
+  if (states.some(s => BLOCKED_TASK.includes(s))) return {tone: 'blocked', status: 'Needs attention'};
+  if (states.includes('awaiting_input')) return {tone: 'decision', status: 'Needs your answer'};
+  if (states.some(s => ACTIVE_TASK.includes(s) || s === 'integrating')) {
+    return {tone: 'running', status: states.includes('integrating') ? 'Integrating' : states.includes('verifying') ? 'Verifying' : states.includes('reviewing') ? 'In review' : 'Building'};
+  }
+  if (states.includes('ready_for_approval')) return {tone: 'decision', status: 'Ready for approval'};
+  if (live.length && live.every(t => t.state === 'completed')) return {tone: 'done', status: live.some(t => t.integrated_commit) ? 'Integrated' : 'Completed'};
+  if (states.some(s => QUEUED_TASK.includes(s))) {
+    const waiting = states.filter(s => QUEUED_TASK.includes(s));
+    return {tone: 'waiting', status: waiting.every(s => s === 'waiting_dependency') ? 'Waiting on dependency' : 'Queued'};
+  }
+  if (!live.length) return {tone: 'off', status: 'Cancelled'};
+  return {tone: 'off', status: 'Not started'};
+}
+
+// Latest attempt per task → account; the glyph lights only for attempts that are ACTIVE now.
+function ownersOf(tasks: RecordData[], snap: Snapshot): Owner[] {
+  const owners: Owner[] = [];
+  for (const t of tasks) {
+    const attempts = snap.attempts.filter(a => a.task_id === t.id).sort((a, b) => a.created - b.created);
+    const active = attempts.filter(a => ACTIVE_ATTEMPT.includes(a.state));
+    const latest = attempts[attempts.length - 1];
+    for (const a of active.length ? active : latest ? [latest] : []) {
+      const agent = snap.agents.find(x => x.id === a.account_id);
+      const id = a.account_id as string;
+      const on = ACTIVE_ATTEMPT.includes(a.state);
+      const seen = owners.find(o => o.id === id);
+      if (seen) seen.active = seen.active || on;
+      else owners.push({id, name: agent?.name || 'Worker', provider: agent?.provider || '', active: on});
+    }
+  }
+  return owners;
+}
+
+function evidenceOf(tasks: RecordData[], snap: Snapshot): MilestoneEvidence {
+  const ev: MilestoneEvidence = {pass: 0, fail: 0, approved: 0, rejected: 0, findings: 0, integrated: []};
+  for (const t of tasks) {
+    const attempts = snap.attempts.filter(a => a.task_id === t.id).sort((a, b) => a.created - b.created);
+    const build = [...attempts].reverse().find(a => a.phase === 'build' && Array.isArray(a.result?.checks) && a.result.checks.length);
+    for (const c of build?.result?.checks || []) {
+      if (c.status === 'PASS') ev.pass += 1;
+      else ev.fail += 1;
+    }
+    const review = [...attempts].reverse().find(a => a.phase === 'review' && a.result?.review);
+    if (review) {
+      if (review.result.review.approved) ev.approved += 1;
+      else ev.rejected += 1;
+      ev.findings += Array.isArray(review.result.review.findings) ? review.result.review.findings.length : 0;
+    }
+    if (t.integrated_commit) ev.integrated.push(shortSha(t.integrated_commit, 7));
+  }
+  return ev;
+}
+
+function reviewed(t: RecordData, snap: Snapshot): boolean {
+  if (t.review_attempt) return snap.attempts.find(a => a.id === t.review_attempt)?.state === 'passed';
+  return snap.attempts.some(a => a.task_id === t.id && a.phase === 'review' && a.state === 'passed');
+}
+
+export function milestoneTree(view: GoalView, snap: Snapshot): MilestoneTree {
+  const live = view.children.filter(t => t.state !== 'cancelled');
+  const byCode = new Map<string, MilestoneNode>();
+  const unlabelled: RecordData[] = [];
+  const blank = (code: string, title: string, kind: MilestoneKind, synthesised = false): MilestoneNode => ({
+    code,
+    title,
+    kind,
+    tasks: [],
+    children: [],
+    all: [],
+    tone: 'off',
+    status: '',
+    owners: [],
+    waitsOn: [],
+    evidence: {pass: 0, fail: 0, approved: 0, rejected: 0, findings: 0, integrated: []},
+    synthesised,
+  });
+  for (const t of view.children) {
+    const m = parseMilestone(t.milestone);
+    if (!m) {
+      unlabelled.push(t);
+      continue;
+    }
+    const node = byCode.get(m.code) || blank(m.code, m.title, 'milestone');
+    if (!node.title && m.title) node.title = m.title;
+    node.tasks.push(t);
+    byCode.set(m.code, node);
+  }
+  // Missing parents ("M2" for "M2.1") are created so the nesting stays complete.
+  for (const code of [...byCode.keys()]) {
+    const parts = code.split('.');
+    for (let i = parts.length - 1; i >= 1; i--) {
+      const parent = parts.slice(0, i).join('.');
+      if (!byCode.has(parent)) byCode.set(parent, blank(parent, `Milestone ${parent}`, 'milestone', true));
+    }
+  }
+  const taskNode = new Map<string, string>();
+  for (const node of byCode.values()) for (const t of node.tasks) taskNode.set(t.id, node.code);
+  const roots: MilestoneNode[] = [];
+  for (const node of byCode.values()) {
+    const parts = node.code.split('.');
+    const parent = parts.length > 1 ? byCode.get(parts.slice(0, -1).join('.')) : undefined;
+    (parent ? parent.children : roots).push(node);
+  }
+  const finish = (node: MilestoneNode): MilestoneNode => {
+    node.children.sort((a, b) => compareCodes(a.code, b.code));
+    node.children.forEach(finish);
+    node.tasks.sort((a, b) => a.created - b.created);
+    node.all = [...node.tasks, ...node.children.flatMap(c => c.all)];
+    const inside = new Set(node.all.map(t => t.id));
+    const codes = new Set<string>();
+    for (const t of node.all) for (const id of t.dependencies || []) {
+      if (inside.has(id)) continue;
+      const code = taskNode.get(id);
+      if (code && code !== node.code && !code.startsWith(node.code + '.') && !node.code.startsWith(code + '.')) codes.add(code);
+    }
+    node.waitsOn = [...codes].sort(compareCodes);
+    const {tone, status} = taskTone(node.all);
+    node.tone = tone;
+    node.status = status;
+    node.owners = ownersOf(node.all, snap);
+    node.evidence = evidenceOf(node.all, snap);
+    return node;
+  };
+  roots.sort((a, b) => compareCodes(a.code, b.code));
+  roots.forEach(finish);
+  if (unlabelled.length) {
+    const node = blank('Tasks', 'Tasks without a recorded milestone', 'milestone', true);
+    node.tasks = unlabelled;
+    roots.push(finish(node));
+  }
+
+  // M0: the director's plan task, with that task's own state.
+  const plan = blank('M0', 'Inspect and define scope', 'plan', true);
+  if (view.plan) {
+    plan.tasks = [view.plan];
+    plan.all = [view.plan];
+    const planDone = view.plan.state === 'completed' || view.children.length > 0;
+    plan.tone = planDone ? 'done' : family(view.plan.state);
+    plan.status = planDone ? 'Specification recorded' : stateLabel(view.plan.state);
+    plan.owners = ownersOf([view.plan], snap);
+  } else {
+    plan.status = 'No plan task';
+  }
+
+  // Review: independent review across every task. Waiting until a task reaches review.
+  const review = blank('Review', 'Independent review', 'review', true);
+  const reviewedTasks = live.filter(t => reviewed(t, snap));
+  const inReview = live.filter(t => t.state === 'reviewing' || snap.attempts.some(a => a.task_id === t.id && ACTIVE_ATTEMPT.includes(a.state) && (a.phase === 'review' || a.phase === 'direct')));
+  review.all = live;
+  if (live.length && reviewedTasks.length === live.length) {
+    review.tone = 'done';
+    review.status = `${reviewedTasks.length}/${live.length} reviewed`;
+  } else if (inReview.length) {
+    review.tone = 'running';
+    review.status = 'In review';
+  } else {
+    review.tone = 'waiting';
+    review.status = reviewedTasks.length ? `${reviewedTasks.length}/${live.length} reviewed` : 'Waiting for builds';
+  }
+  review.owners = ownersOf(inReview, snap).filter(o => o.active);
+  review.evidence = evidenceOf(live, snap);
+  review.evidence.pass = 0;
+  review.evidence.fail = 0;
+  review.evidence.integrated = [];
+
+  // Final: integration and delivery, from integrated commits and integrating/approval states.
+  const final = blank('Final', 'Integration and delivery', 'final', true);
+  const integrated = live.filter(t => t.integrated_commit);
+  final.all = live;
+  if (live.length && integrated.length === live.length) {
+    final.tone = 'done';
+    final.status = 'Integrated';
+  } else if (live.some(t => t.state === 'integrating')) {
+    final.tone = 'running';
+    final.status = 'Integrating';
+  } else if (live.some(t => t.state === 'ready_for_approval')) {
+    final.tone = 'decision';
+    final.status = 'Ready for approval';
+  } else {
+    final.tone = 'waiting';
+    final.status = integrated.length ? `${integrated.length}/${live.length} integrated` : 'Waiting for review';
+  }
+  final.evidence = {pass: 0, fail: 0, approved: 0, rejected: 0, findings: 0, integrated: integrated.map(t => shortSha(t.integrated_commit, 7))};
+
+  const flat = (nodes: MilestoneNode[]): MilestoneNode[] => nodes.flatMap(n => [n, ...flat(n.children)]);
+  const milestones = flat(roots).filter(n => n.tasks.length > 0);
+  const has = byCode.size > 0;
+  return {
+    nodes: [plan, ...roots, review, final],
+    milestones,
+    done: milestones.filter(n => n.tone === 'done').length,
+    total: milestones.length,
+    has,
+  };
 }

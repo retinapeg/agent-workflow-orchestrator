@@ -2,6 +2,7 @@ import React, {useEffect, useRef, useState} from 'react';
 import {useArena} from '../App';
 import {useSpeech} from '../speech';
 import {AUTO, ProjectAsk, askedFrom, type Asked} from './Dialogs';
+import {ProposalCard, ProvisionCard, type Proposal} from './Provision';
 import {
   ACTIVE_TASK,
   QUEUED_TASK,
@@ -14,6 +15,7 @@ import {
   goalElapsed,
   goalStatus,
   goalView,
+  milestoneTree,
   needsYou,
   providerGlyph,
   providersOf,
@@ -109,12 +111,17 @@ const MODES = [
 ];
 const PREFIX = /^(Build a new feature|Fix a bug|Improve Arena|Add to an existing project): ?/;
 
+type Kind = 'existing' | 'new';
+
 function TellArena() {
   const {data, post, notify, disabled, handoff, clearHandoff} = useArena();
   const [draft, setDraft] = useState(handoff);
   const [project, setProject] = useState(AUTO);
   const [asked, setAsked] = useState<Asked | null>(null);
   const [sending, setSending] = useState(false);
+  const [kind, setKind] = useState<Kind>('existing');
+  const [proposal, setProposal] = useState<Proposal | null>(null);
+  const [started, setStarted] = useState<RecordData | null>(null);
   const box = useRef<HTMLTextAreaElement>(null);
   const picker = useRef<HTMLSelectElement>(null);
   const speech = useSpeech(text => setDraft(d => (d.trim() ? d.replace(/\s+$/, '') + ' ' : '') + text));
@@ -164,6 +171,44 @@ function TellArena() {
     }
   };
 
+  // New project: names first (nothing is created), then the owner's explicit approval.
+  const propose = async (description: string) => {
+    const text = description.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const r = (await post('projects/proposals', {description: text})) as Proposal;
+      setProposal(r);
+      setStarted(null);
+    } catch (e) {
+      notify(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+  const approve = async () => {
+    if (!proposal || sending) return;
+    setSending(true);
+    try {
+      const r = await post('projects/provision', {proposal_id: proposal.id, revision: 0});
+      setStarted(r);
+      setProposal(null);
+      setDraft('');
+      notify(`Creating ${proposal.name} on the Mac and on GitHub.`);
+    } catch (e) {
+      notify(String(e));
+    } finally {
+      setSending(false);
+    }
+  };
+  const retry = (p: RecordData) => {
+    setStarted(null);
+    setProposal(null);
+    setDraft(p.description || '');
+    propose(p.description || '');
+  };
+  const provision = started ? (data.provisions || []).find(p => p.id === started.id) || started : null;
+
   const tapMic = () => {
     if (speech.supported) speech.toggle();
     else {
@@ -181,6 +226,32 @@ function TellArena() {
         </h1>
         <Eyebrow className="only-desk">{speech.supported ? 'Voice or text' : 'Text'}</Eyebrow>
       </div>
+      <div className="segmented kind" role="group" aria-label="Project">
+        {(
+          [
+            ['existing', 'Existing project'],
+            ['new', 'New project'],
+          ] as [Kind, string][]
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            type="button"
+            className={kind === k ? 'on' : ''}
+            aria-pressed={kind === k}
+            onClick={() => {
+              setKind(k);
+              setAsked(null);
+              if (k === 'existing') {
+                setProposal(null);
+                setStarted(null);
+              }
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {kind === 'existing' && (
       <div className="segmented" role="group" aria-label="Request type">
         {MODES.map(m => {
           const i = INTENTS.find(x => x.mode === m.key && !x.label.startsWith('Add to'))!;
@@ -191,6 +262,7 @@ function TellArena() {
           );
         })}
       </div>
+      )}
       <div className="mic-stage">
         <Waveform live={speech.listening} />
         <button type="button" className={'mic-big' + (speech.listening ? ' on' : '')} aria-pressed={speech.supported ? speech.listening : undefined} aria-label={speech.listening ? 'Stop listening' : 'Tap to speak'} onClick={tapMic}>
@@ -224,11 +296,25 @@ function TellArena() {
           value={draft}
           onChange={e => setDraft(e.target.value)}
           onKeyDown={e => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') submit(project);
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') (kind === 'new' ? propose(draft) : submit(project));
           }}
-          placeholder="Describe the feature, the bug, or paste the spec you finished in ChatGPT."
+          placeholder={kind === 'new' ? 'Describe the product you want…' : 'Describe the feature, the bug, or paste the spec you finished in ChatGPT.'}
         />
       </div>
+      {kind === 'new' ? (
+        <>
+          <div className="hero-row single">
+            <button type="button" className="btn primary" disabled={busy || !draft.trim()} onClick={() => propose(draft)}>
+              <Icon name="plus" size={16} />
+              Propose project
+            </button>
+          </div>
+          {proposal && <ProposalCard proposal={proposal} busy={busy} onApprove={approve} onChange={() => setProposal(null)} />}
+          {provision && <ProvisionCard provision={provision} onRetry={retry} />}
+          <p className="field-help hero-help">Arena proposes a name, a folder on the Mac and a private GitHub repository. Nothing is created until you approve.</p>
+        </>
+      ) : (
+        <>
       <div className="hero-row">
         <div className="field inline">
           <label htmlFor="tell-project">Build for</label>
@@ -267,6 +353,8 @@ function TellArena() {
       <p className="field-help hero-help">
         From ChatGPT: Share → Arena, or paste your spec here.{!enabled.length ? ' Enrol a project on the Mac first.' : ''}
       </p>
+        </>
+      )}
     </section>
   );
 }
@@ -303,6 +391,7 @@ function BuildRow({view}: {view: GoalView}) {
   const providers = providersOf(view, data);
   const live = view.tasks.find(t => ACTIVE_TASK.includes(t.state));
   const current = live?.title || view.children.find(t => t.state !== 'completed' && t.state !== 'cancelled')?.title || view.goal.request;
+  const tree = milestoneTree(view, data);
   return (
     <button className="build-row" onClick={() => openGoal(view.goal.id)}>
       <Glyph tone={status.tone} />
@@ -318,7 +407,15 @@ function BuildRow({view}: {view: GoalView}) {
         <span className="build-meta small">
           <Chip tone={status.tone}>{status.label}</Chip>
           <span className="num">{duration(goalElapsed(view, now))}</span>
-          {view.children.length ? <span className="muted num">{view.children.filter(t => t.state === 'completed').length}/{view.children.length} tasks</span> : null}
+          {tree.has ? (
+            <span className="muted num">
+              {tree.done}/{tree.total} milestones
+            </span>
+          ) : view.children.length ? (
+            <span className="muted num">
+              {view.children.filter(t => t.state === 'completed').length}/{view.children.length} tasks
+            </span>
+          ) : null}
         </span>
       </span>
       <span className="build-side">

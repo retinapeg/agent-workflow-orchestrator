@@ -2,6 +2,7 @@ import React, {useState} from 'react';
 import {useArena} from '../App';
 import {clock, family, goalClass, goalStatus, goalView, stateLabel, when} from '../types';
 import {Chip, Empty, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
+import {ProvisionCard} from './Provision';
 
 const basename = (repo: string) => (repo || '').replace(/\/+$/, '').split('/').pop() || repo;
 
@@ -10,6 +11,7 @@ export function Projects() {
   const [open, setOpen] = useState<string | null>(null);
   const q = search.trim().toLowerCase();
   const projects = data.projects.filter(p => !q || `${p.name} ${p.repo}`.toLowerCase().includes(q));
+  const provisions = (data.provisions || []).filter(p => !q || `${p.name} ${p.slug} ${p.github?.full_name || ''}`.toLowerCase().includes(q));
   return (
     <>
       <div className="page-head">
@@ -28,6 +30,17 @@ export function Projects() {
           </button>
         </div>
       </div>
+      {provisions.length > 0 && (
+        <section className="new-projects" aria-label="New projects">
+          <div className="row between wrap">
+            <Eyebrow>New projects</Eyebrow>
+            <span className="count num">{provisions.length}</span>
+          </div>
+          {provisions.map(p => (
+            <ProvisionCard key={p.id} provision={p} compact />
+          ))}
+        </section>
+      )}
       <section className="panel project-list">
         {projects.map(p => {
           const views = (data.goals || []).filter(g => g.project_id === p.id).map(g => goalView(g, data)).sort((a, b) => b.goal.created - a.goal.created);
@@ -51,6 +64,7 @@ export function Projects() {
                     </b>
                     <span className="small muted clamp1">
                       {basename(p.repo)} · {p.integration_policy === 'auto_local_main' ? 'integrates automatically' : 'you accept each change'}
+                      {p.github_url ? ' · GitHub' : ''}
                     </span>
                   </span>
                 </button>
@@ -88,6 +102,14 @@ export function Projects() {
                       ['Checks', p.checks.map((c: any) => c.name).join(', ') || 'None'],
                       ['Base → head', <span className="num">{<Sha value={p.base} n={7} />} → {<Sha value={p.head} n={7} />}</span>],
                       ['Main', p.integrated_head ? <Sha value={p.integrated_head} /> : 'No integration yet'],
+                      p.github_url
+                        ? [
+                            'GitHub',
+                            <a className="link" href={p.github_url} target="_blank" rel="noopener noreferrer">
+                              {String(p.github_url).replace(/^https?:\/\/(www\.)?github\.com\//, '')}
+                            </a>,
+                          ]
+                        : null,
                       ['Integration', p.integration_policy === 'auto_local_main' ? 'Automatic into local main after every gate passes' : 'Manual: you accept each verified change'],
                     ]}
                   />
@@ -105,6 +127,12 @@ export function Projects() {
                       <Icon name={p.enabled ? 'pause' : 'play'} size={14} />
                       {p.enabled ? 'Pause project' : 'Resume project'}
                     </button>
+                    {p.github_url && (
+                      <a className="btn" href={p.github_url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${p.name} on GitHub`}>
+                        <Icon name="git" size={14} />
+                        Open on GitHub
+                      </a>
+                    )}
                   </div>
 
                   <section className="sub">

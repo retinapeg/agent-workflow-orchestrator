@@ -14,7 +14,7 @@ import {
   goalClass,
   goalStatus,
   goalView,
-  lanes,
+  milestoneTree,
   providerGlyph,
   seconds,
   shortSha,
@@ -22,9 +22,10 @@ import {
   stateLabel,
   when,
   type GoalView,
+  type MilestoneNode,
   type RecordData,
 } from '../types';
-import {Chip, Empty, Eyebrow, Facts, Icon, LiveDot, Provider, Sha, StageBar} from '../ui';
+import {Chip, Empty, Eyebrow, Facts, Glyph, Icon, LiveDot, Provider, Sha, StageBar} from '../ui';
 import {BuildSteps} from './Overview';
 
 function last<T>(items: T[]): T | undefined {
@@ -222,6 +223,107 @@ function Director({view}: {view: GoalView}) {
   );
 }
 
+
+// Milestone tree. Each node is a native <details> (keyboard operable: Tab to the summary,
+// Enter or Space toggles). The summary shows the recorded state, the accounts that ran the
+// latest attempts (glyph lit only while an attempt is active now), what the milestone waits
+// on, and the recorded evidence. The body nests child milestones and then the task cards.
+function Milestone({node, all, depth = 0}: {node: MilestoneNode; all: RecordData[]; depth?: number}) {
+  const live = node.tone === 'running' || node.tone === 'blocked' || node.tone === 'decision';
+  const ev = node.evidence;
+  const active = node.owners.filter(o => o.active);
+  const names = node.owners.map(o => o.name).join(', ');
+  const summary = [
+    `${node.code} ${node.title}`,
+    node.status,
+    names ? `owner ${names}` : '',
+    node.waitsOn.length ? `waits on ${node.waitsOn.join(', ')}` : '',
+  ]
+    .filter(Boolean)
+    .join(' · ');
+  return (
+    <details className={`milestone ${node.kind} ${node.tone}` + (depth ? ' nested' : '')} open={live || undefined}>
+      <summary aria-label={summary}>
+        <Glyph tone={node.tone} size={30} />
+        <span className="ms-main">
+          <span className="ms-title">
+            <b className="ms-code num">{node.code}</b>
+            <span className="ms-name">{node.title}</span>
+            <Chip tone={node.tone}>{node.status}</Chip>
+          </span>
+          {(node.owners.length > 0 || node.waitsOn.length > 0) && (
+            <span className="ms-meta small muted">
+              {node.owners.length > 0 && (
+                <span className="ms-owner">
+                  {active.map(o => (
+                    <Provider key={o.id} glyph={providerGlyph(o.provider)} size="sm" on />
+                  ))}
+                  <span>{names}</span>
+                </span>
+              )}
+              {node.waitsOn.map(code => (
+                <span className="dep" key={code}>
+                  <Icon name="git" size={12} />
+                  waits on <b className="num">{code}</b>
+                </span>
+              ))}
+            </span>
+          )}
+          {(ev.pass + ev.fail > 0 || ev.approved + ev.rejected > 0 || ev.integrated.length > 0) && (
+            <span className="ms-evidence small">
+              {ev.pass + ev.fail > 0 && (
+                <Chip tone={ev.fail ? 'fail' : 'pass'}>
+                  checks {ev.pass} PASS{ev.fail ? ` · ${ev.fail} FAIL` : ''}
+                </Chip>
+              )}
+              {ev.approved + ev.rejected > 0 && (
+                <Chip tone={ev.rejected ? 'fail' : 'pass'}>
+                  review {ev.approved} approved{ev.rejected ? ` · ${ev.rejected} rejected` : ''} · {ev.findings} finding{ev.findings === 1 ? '' : 's'}
+                </Chip>
+              )}
+              {ev.integrated.map(sha => (
+                <Sha key={sha} value={sha} n={7} />
+              ))}
+            </span>
+          )}
+        </span>
+        <span className="ms-count num small muted">{node.kind === 'milestone' ? `${node.all.filter(t => t.state === 'completed').length}/${node.all.length}` : ''}</span>
+      </summary>
+      <div className="ms-body">
+        {node.children.map(c => (
+          <Milestone key={c.code} node={c} all={all} depth={depth + 1} />
+        ))}
+        {node.tasks.map(t => (
+          <TaskCard key={t.id} task={t} all={all} />
+        ))}
+        {node.kind !== 'milestone' && !node.tasks.length && (
+          <p className="small muted ms-note">
+            {node.kind === 'review' ? 'Independent review attempts are recorded on each task; open a task for its findings.' : 'Integration is recorded per task once a verified candidate is accepted.'}
+          </p>
+        )}
+        {node.kind === 'milestone' && !node.all.length && <p className="small muted ms-note">No tasks recorded under this milestone.</p>}
+      </div>
+    </details>
+  );
+}
+
+export function MilestoneTree({view}: {view: GoalView}) {
+  const {data} = useArena();
+  const tree = milestoneTree(view, data);
+  if (!view.children.length && !view.plan) return <Empty title="No tasks yet">The director has not produced tasks for this request.</Empty>;
+  return (
+    <section className="milestones" aria-label="Milestones">
+      <div className="row between wrap">
+        <Eyebrow>Milestones</Eyebrow>
+        <span className="count num">{tree.has ? `${tree.done}/${tree.total} done` : `${view.children.filter(t => t.state === 'completed').length}/${view.children.length} tasks`}</span>
+      </div>
+      {tree.nodes.map(n => (
+        <Milestone key={n.code} node={n} all={view.tasks} />
+      ))}
+    </section>
+  );
+}
+
 const TITLES: Record<string, string> = {active: 'Build in progress', needs: 'Build needs you', done: 'Build complete', history: 'Build history'};
 
 export function Build() {
@@ -269,7 +371,6 @@ export function Build() {
   const stoppable = selected.tasks.filter(t => !UNSTOPPABLE.includes(t.state) && t.state !== 'cancelled' && (ACTIVE_TASK.includes(t.state) || t.state === 'awaiting_input' || ['ready', 'waiting_capacity', 'waiting_dependency', 'cooldown', 'repair_queued'].includes(t.state)));
   const stopTarget = (current && stoppable.find(t => t.id === current.id)) || stoppable[0];
   const messageTarget = stopTarget || current;
-  const laneList = lanes(selected.children.length ? selected.children : selected.tasks);
   const completed = selected.children.filter(t => t.state === 'completed').length;
   const mine = data.attempts.filter(a => ids.has(a.task_id));
   const usage = usageTotals(mine);
@@ -463,20 +564,7 @@ export function Build() {
                 />
               </article>
               <Director view={selected} />
-              <div className="lanes">
-                {laneList.map((lane, i) => (
-                  <section className="lane" key={i}>
-                    <div className="lane-head">
-                      <Eyebrow>Stage {i + 1}</Eyebrow>
-                      <span className="small muted">{i === 0 ? (laneList.length > 1 ? 'No prerequisites · can run in parallel' : 'Independent tasks') : `Waits on stage ${i}`}</span>
-                    </div>
-                    {lane.map(t => (
-                      <TaskCard key={t.id} task={t} all={selected.tasks} />
-                    ))}
-                  </section>
-                ))}
-                {!laneList.length && <Empty title="No tasks yet">The director has not produced tasks for this request.</Empty>}
-              </div>
+              <MilestoneTree view={selected} />
             </div>
           </details>
         </div>
