@@ -163,8 +163,10 @@ class Engine:
             )
         scope = safe_scope(scope)
         protected = safe_scope(protected)
-        if overlap(scope, protected):
-            raise ValueError("Worker scope overlaps frozen acceptance files")
+        # Protected paths may sit inside the writable scope (they stay frozen: the worker
+        # rejects any change to them); a scope that is itself frozen makes no sense.
+        if any(within(path, protected) for path in scope):
+            raise ValueError("Worker scope lies inside frozen acceptance files")
         if not checks or any(
             not c.get("argv") or not all(isinstance(x, str) for x in c["argv"]) for c in checks
         ):
