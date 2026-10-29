@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import conversation, livetail, provisioning, views
+from . import conversation, livetail, provisioning, views, workspaces
 from .engine import ACTIVE, Engine, git
 from .intent import resolve_project
 from .store import Conflict, Store, encode
@@ -144,6 +144,9 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     # Bookkeeping only: a busy database must not stop the controller starting.
     with contextlib.suppress(Exception):
         director.recover()
+    # Attempt workspaces on disk, walked at most once per five minutes (GET /system only).
+    workspace_usage = workspaces.UsageCache(store)
+    app.state.workspace_usage = workspace_usage
 
     @app.exception_handler(ValueError)
     async def value_error(request, exc):
@@ -335,6 +338,12 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             }
             for r in rows
         ]
+
+    @app.get("/api/v1/system")
+    def system():
+        """Host facts for the Device dialog: attempt workspaces on the Mac (count, bytes and
+        what ``prune-workspaces`` would remove). Cached; never part of the polled overview."""
+        return {"workspaces": workspace_usage.get()}
 
     @app.post("/api/v1/devices/invite")
     def invite_device(body: Change, request: Request):

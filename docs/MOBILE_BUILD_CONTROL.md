@@ -46,6 +46,9 @@ launchctl kickstart -k gui/$(id -u)/local.agent-arena.control.1a6834e84b5a
 .venv/bin/python -m agent_arena.control --home .arena-control doctor
 # Re-check subscription logins; --probe validates Fable 5.1 (max) on Claude slots
 .venv/bin/python -m agent_arena.control --home .arena-control check-accounts --probe
+# Disk: list the workspaces of finished builds idle for 7+ days (a dry run; add --apply to
+# remove them). Transcripts, diffs and results in .arena-control/attempts are never touched.
+.venv/bin/python -m agent_arena.control --home .arena-control prune-workspaces
 # Logs
 tail -f .arena-control/service.log
 ```

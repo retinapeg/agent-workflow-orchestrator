@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import plistlib
 import shutil
@@ -208,12 +209,37 @@ def main(argv=None):
     sub.add_parser("create-sandbox")
     p = sub.add_parser("backup")
     p.add_argument("destination", type=Path)
+    p = sub.add_parser(
+        "prune-workspaces",
+        help="remove the workspaces of finished builds (a dry run unless --apply)",
+    )
+    p.add_argument(
+        "--days",
+        type=float,
+        default=7.0,
+        help="only workspaces idle for at least this many days (default 7)",
+    )
+    p.add_argument("--apply", action="store_true", help="remove them; without it nothing changes")
+    p.add_argument("--json", action="store_true", help="print the summary as JSON")
     p = sub.add_parser("service-plist")
     p.add_argument("destination", type=Path)
     p.add_argument("--port", type=int)
     p.add_argument("--origin")
     p.add_argument("--keep-awake", action="store_true")
     args = parser.parse_args(argv)
+    if args.command == "prune-workspaces":
+        if not (math.isfinite(args.days) and args.days >= 0):
+            parser.error("--days must be a number of days, zero or more")
+        # Before Store() would create an empty ledger: run from the wrong folder, a relative
+        # --home must say so instead of reporting an empty Mac.
+        ledger = args.home.expanduser().absolute() / "control.sqlite3"
+        if not ledger.is_file():
+            print(
+                f"No Arena control state at {ledger}; nothing was changed. Run this in the "
+                "Arena folder on the Mac, or pass --home with the full path of the control home.",
+                file=sys.stderr,
+            )
+            return 1
     connection_path = args.home.expanduser() / "connection.json"
     connection = json.loads(connection_path.read_text()) if connection_path.exists() else {}
     if hasattr(args, "port"):
@@ -490,6 +516,12 @@ def main(argv=None):
     elif args.command == "backup":
         store.backup(args.destination)
         print("SQLite online backup complete")
+    elif args.command == "prune-workspaces":
+        from .workspaces import prune, render
+
+        report = prune(store, days=args.days, apply=args.apply)
+        print(json.dumps(report, indent=2) if args.json else render(report))
+        return 1 if report["refused"] or report["errors"] else 0
     elif args.command == "service-plist":
         if args.destination.exists():
             raise ValueError("Destination exists; refusing to replace it")
