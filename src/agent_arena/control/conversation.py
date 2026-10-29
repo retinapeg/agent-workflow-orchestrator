@@ -55,10 +55,15 @@ PROGRESS_DEFAULTS = {
     "turn_repo": None,
     "commands": 0,
 }
-# A turn still "thinking" this long after it started has no live process behind it (Arena
-# restarted mid-turn): no turn runs longer than the CLI timeout plus its own bookkeeping.
+# Progress is written from the thread that drains the CLI's output, so a progress write
+# waits at most this long for another writer's lock and is otherwise skipped: a busy
+# database must never hold up reading the CLI (its final answer is in that pipe).
+STEP_LOCK_SECONDS = 0.2
+# A turn this controller started that is still "thinking" this long after it started, with
+# no thread answering it, is closed as a backstop: no turn runs longer than the CLI timeout
+# plus its own bookkeeping. A turn started before this controller is closed at once.
 STALE_TURN_SECONDS = TURN_TIMEOUT_SECONDS + 60
-INTERRUPTED = "The director was interrupted (Arena restarted). Tap Retry."
+INTERRUPTED = "The director was interrupted before it could answer. Tap Retry."
 
 
 class TurnError(Exception):
@@ -343,18 +348,27 @@ class Director:
         self.store, self.engine, self.run = store, engine, run
         self.runner = runner or ProcessRunner()
         self.catalog = catalog or Catalog(store, run=run, projects_dir=projects_dir)
-        self.busy = set()  # conversations this process is answering right now
+        # Only one controller process ever runs, so a turn that started before this one did
+        # has no thread left to answer it (see recover).
+        self.started = time.time()
+        # The turns this process is answering right now: conversation id → the token of
+        # the turn that owns it. A turn's thread releases only its own token.
+        self.busy = {}
+        self._busy_lock = threading.Lock()
 
     # -- public ---------------------------------------------------------------------
     def submit(self, conversation_id, text):
+        """Open a turn: the owner's message and the conversation turning "thinking" land in
+        one write transaction, so of two sends racing (two devices) exactly one is accepted
+        and the other is refused as still answering."""
         self.recover(conversation_id)  # a turn orphaned by a restart must not block the owner
-        conv = self.store.get("conversations", conversation_id)
-        if conv.get("status") == "thinking":
-            raise ValueError("Arena is still answering the previous message")
-        add_message(self.store, conversation_id, "user", text)
-        self.busy.add(conversation_id)
+        token = object()
         try:
             with self.store.transaction() as db:
+                live = self.store.get("conversations", conversation_id, db)
+                if live.get("status") == "thinking":
+                    raise ValueError("Arena is still answering the previous message")
+                _insert_message(self.store, db, conversation_id, "user", text, {})
                 live = self.store.get("conversations", conversation_id, db)
                 now = time.time()
                 live.update(
@@ -365,19 +379,26 @@ class Director:
                     turn_started=now,
                 )
                 _save(self.store, db, live)
+                # Owned before anyone can read it as thinking: recovery never closes it.
+                with self._busy_lock:
+                    self.busy[conversation_id] = token
             threading.Thread(
-                target=self._turn, args=(conversation_id, text), daemon=True, name="arena-chat"
+                target=self._turn,
+                args=(conversation_id, text, token),
+                daemon=True,
+                name="arena-chat",
             ).start()
         except BaseException:
-            self.busy.discard(conversation_id)  # no turn runs: recovery may close it later
+            self._release(conversation_id, token)  # no turn runs: recovery may close it later
             raise
 
     def recover(self, conversation_id=None, *, now=None):
-        """Close turns that no process is answering any more: a conversation still
-        "thinking" STALE_TURN_SECONDS after its turn started (Arena restarted mid-turn) gets
-        a plain-language error with Retry and is idle again. Runs when the controller
-        starts, before a new message and when the phone reads the conversation. Returns
-        the recovered conversation ids."""
+        """Close turns that no thread is answering any more with a plain-language error and
+        Retry, so the conversation is idle again. A conversation still "thinking" that this
+        process is not answering is orphaned when its turn started before this controller
+        did (Arena restarted mid-turn; only one controller ever runs) or, as a backstop,
+        STALE_TURN_SECONDS after it started. Runs when the controller starts, before a new
+        message and when the phone reads the conversation. Returns the recovered ids."""
         now = time.time() if now is None else now
 
         def stale(conv):
@@ -385,7 +406,7 @@ class Director:
             return (
                 conv.get("status") == "thinking"
                 and conv["id"] not in self.busy
-                and now - started > STALE_TURN_SECONDS
+                and (started < self.started or now - started > STALE_TURN_SECONDS)
             )
 
         rows = (
@@ -446,22 +467,25 @@ class Director:
         )
 
     def _step(self, conversation_id, step, detail="", **extra):
-        """Persist what the director is doing right now (only while the turn is open);
-        display only, it never fails a turn."""
+        """Persist what the director is doing right now (only while the turn is open).
+        Display only: it waits at most STEP_LOCK_SECONDS for the database and otherwise
+        skips this update (a later step or the answer lands instead); it never raises."""
         try:
-            with self.store.transaction() as db:
+            with self.store.transaction(timeout=STEP_LOCK_SECONDS) as db:
                 live = self.store.get("conversations", conversation_id, db)
                 if live.get("status") != "thinking":
                     return
                 live.update(step=step, step_detail=_clip(detail), step_since=time.time(), **extra)
                 _save(self.store, db, live)
-        except Exception:
+        except Exception:  # sqlite3.OperationalError "database is locked" above all
             pass
 
     def _progress(self, conversation_id, workspace, *, scratch=False):
         """An on_output callback: the CLI's streamed events (either provider) become the
-        persisted step: the command or file the director is on, and how many it ran. It
-        never raises, because it runs on the reader thread that drains the CLI's output."""
+        persisted step: the command or file the director is on, and how many it ran. The
+        model's own messages change nothing (Codex streams interim ones between commands);
+        "answering" is set once the CLI has finished. It never raises or waits long,
+        because it runs on the reader thread that drains the CLI's output."""
         from .livetail import parse_lines
 
         buffer = bytearray()
@@ -483,8 +507,6 @@ class Director:
                         state["commands"] += 1
                         detail = line["text"].removeprefix("$ ")
                         step = ("thinking" if scratch else "reading repository", detail)
-                    elif line["kind"] == "assistant":
-                        step = ("answering", "")
                 if step is None or (*step, state["commands"]) == state["written"]:
                     return
                 state["written"] = (*step, state["commands"])
@@ -552,11 +574,18 @@ class Director:
             git(scratch, "init", "-q", "-b", "main")
         return scratch
 
-    def _turn(self, conversation_id, text):
+    def _turn(self, conversation_id, text, token):
         try:
             self._answer(conversation_id, text)
         finally:
-            self.busy.discard(conversation_id)
+            self._release(conversation_id, token)
+
+    def _release(self, conversation_id, token):
+        """End this turn's ownership, never a newer turn's: once the answer has landed the
+        owner may already have sent the next message before this thread got here."""
+        with self._busy_lock:
+            if self.busy.get(conversation_id) is token:
+                del self.busy[conversation_id]
 
     def _answer(self, conversation_id, text):
         conv = self.store.get("conversations", conversation_id)
@@ -605,7 +634,8 @@ class Director:
                     "timeout",
                     f"The director took longer than {TURN_TIMEOUT_SECONDS // 60} minutes and "
                     "was stopped. Nothing was changed. Tap Retry to ask again.",
-                    redact((process.stderr or "")[-400:]),
+                    # Redact before cutting: a cut inside a secret would hide its prefix.
+                    redact(process.stderr or "")[-400:],
                 )
             parsed = (
                 parse_codex_stream(process.stdout, account["model"])
@@ -625,7 +655,7 @@ class Director:
                         else "finished without an answer"
                     )
                     + ". Nothing was changed. Tap Retry to ask again.",
-                    redact((process.stderr or "")[-400:]),
+                    redact(process.stderr or "")[-400:],
                 )
             self._step(conversation_id, "answering")
             try:
@@ -667,7 +697,13 @@ class Director:
             action = answer.get("action")
             explicit = bool(BUILD_INTENT.search(text))
             if action == "build" and explicit:
-                extra.update(self._launch(conversation_id))
+                try:
+                    extra.update(self._launch(conversation_id))
+                except ValueError as exc:
+                    # Refused by the project itself (archived, scope, Arena already busy
+                    # with itself): Retry would only be refused again, so say why instead.
+                    reason = redact(str(exc)).strip()[:300].rstrip(".")
+                    extra["launch_error"] = f"The build was not started: {reason}."
             elif action == "build" and not explicit:
                 extra["offer_build"] = True  # The owner has to say so in their own words.
             elif action == "clarify":

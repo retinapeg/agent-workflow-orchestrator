@@ -604,8 +604,10 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     @app.get("/api/v1/conversations/{ident}")
     def conversation_detail(ident: str):
         # The phone polls this while the director answers, so a turn whose process died
-        # (Arena restarted) turns into an error with Retry here once it is stale.
-        director.recover(ident)
+        # (Arena restarted) turns into an error with Retry here. Bookkeeping only: a busy
+        # database must not fail the read.
+        with contextlib.suppress(Exception):
+            director.recover(ident)
         conv = conversation.view(store.get("conversations", ident))
         project = store.get("projects", conv["project_id"]) if conv.get("project_id") else None
         return {

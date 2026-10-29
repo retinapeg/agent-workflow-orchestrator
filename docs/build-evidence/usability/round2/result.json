@@ -1,31 +1,21 @@
 {
-  "state": "/tmp/arena-real-fPoP5g",
+  "state": "/tmp/arena-real-9zGoud",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
-  "ran": "D",
+  "ran": "ABCD",
   "platform": "linux",
   "slices": {
     "A": {
-      "awaySince": 1793171733,
-      "rows": 11,
+      "awaySince": 1793188609.825794,
+      "rows": 1,
       "labels": [
-        "Completed",
-        "Completed",
-        "Completed",
-        "Completed",
-        "Integrated · 14b2aa7",
-        "Integrated · 993b9e2",
-        "Completed",
-        "Blocked",
-        "Blocked",
-        "Blocked",
         "Blocked"
       ],
       "seenAfterView": null,
       "opened": {
-        "row": "Arena: in the Device session dialog, add a Copy button next to the…",
-        "build": "Arena: in the Device session dialog, add a Copy button next to the… · Arena"
+        "row": "Add to an existing project: What repo are we in?",
+        "build": "Add to an existing project: What repo are we in? · Arena"
       }
     },
     "B": {
@@ -47,7 +37,7 @@
         "early": "Reading Arena Smoke 20261028 · 30s rg -n \"bell\" src/",
         "later": "Reading Arena Smoke 20261028 · 32s rg -n \"bell\" src/",
         "project": "Arena Smoke 20261028",
-        "still": "Still working · Reading Arena Smoke 20261028 · 1m 41s rg -n \"bell\" src/ A director turn can take a few minutes; you can leave and come back."
+        "still": "Still working · Reading Arena Smoke 20261028 · 1m 40s rg -n \"bell\" src/ A director turn can take a few minutes; you can leave and come back."
       },
       "error": {
         "text": "The director took longer than 4 minutes and was stopped. Nothing was changed. Tap Retry to ask again.",
@@ -62,9 +52,10 @@
         "buttons": 1
       },
       "recovered": {
-        "text": "The director was interrupted (Arena restarted). Tap Retry.",
+        "text": "The director was interrupted before it could answer. Tap Retry.",
         "retry": 1,
-        "thinking": 0
+        "thinking": 0,
+        "turnAge": 133
       }
     },
     "D": {
@@ -76,24 +67,38 @@
         "opened": "goal_a6faaa785f084d70"
       },
       "review": {
-        "goal": "goal_815db45a71e3a62d",
-        "task": "task_bd2af42e9557b61d",
-        "card": "Arena Add to an existing project: What repo are we in? Ready for approval 12h 18m Add a persistent eight-hour economical overnight queue mode Verified candidate staged for your decision Review Open the build",
+        "goal": "goal_0d05674ed212220e",
+        "task": "task_7ad9b20ab93aef0b",
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Ready for approval 5m 00s Queue requests overnight and run them economically Combined checks passed; exact staging commit awaits acceptance Review Open the build",
+        "review": 1,
         "dialog": {
-          "title": "Add a persistent eight-hour economical overnight queue mode",
+          "title": "Queue requests overnight and run them economically",
           "accept": 1,
           "candidate": 1
         }
       },
+      "auto": {
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Integrating… 5m 00s Queue requests overnight and run them economically Verified; integrating into local main under the project's policy Open the build",
+        "review": 0
+      },
+      "autoFailed": {
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Integration failed 5m 05s Queue requests overnight and run them economically Source main moved since the candidate was verified; nothing was changed Open the build",
+        "review": 0
+      },
       "live": {
-        "card": "Arena Add to an existing project: What repo are we in? Building 12h 18m Codex · gpt-6.1-sol · high · 1m 15s Codex · testing $ pytest -q tests/test_bell.py Watch the build",
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Building 5m 10s Codex · gpt-6.1-sol · high · 1m 19s Codex · testing $ pytest -q tests/test_bell.py Watch the build",
         "agent": "Codex",
         "review": 0,
-        "after": "Arena Add to an existing project: What repo are we in? Integrated · c0ffee0 12h 18m Open the build"
+        "watch": 1,
+        "after": "Arena Smoke 20261028 Add a persistent overnight queue mode Integrated · c0ffee0 5m 10s Open the build"
       },
       "newChat": {
-        "expected": "Arena",
-        "project": "Arena"
+        "expected": "Arena Smoke 20261028",
+        "project": "Arena Smoke 20261028",
+        "projectId": "project_3c47ef383f5bbb62",
+        "messages": 0,
+        "created": true,
+        "placeholder": "Message Arena about Arena Smoke 20261028…"
       }
     }
   },

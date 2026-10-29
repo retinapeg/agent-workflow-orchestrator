@@ -13,6 +13,11 @@ const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-real-'),port='8795',
 const output=process.env.ARENA_EVIDENCE||root+'/docs/build-evidence/usability/round2';mkdirSync(output,{recursive:true});
 const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const wanted=(process.env.ARENA_SLICES||'ABCDEF').toUpperCase();
+// The fixture's director starts after `spawned` and before the server first answers
+// (`ready`): a seeded turn that started before `spawned` was the previous controller's
+// (closed at once when read); one standing for a turn this controller is answering must
+// start after `ready`, so its elapsed time can be at most the server's uptime.
+const spawned=Date.now()/1000;let ready=0;
 const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.real_state_server:create_app','--factory','--host','127.0.0.1','--port',port],{cwd:root,env:{...process.env,ARENA_UI_STATE:state,ARENA_UI_PORT:port},stdio:'pipe'});
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
 let previous={};try{previous=JSON.parse(readFileSync(output+'/result.json','utf8'))}catch{}
@@ -20,6 +25,7 @@ let browser;const result={state,viewport:390,userAgent:ANDROID,dispatch:false,ra
 const nav=page=>page.getByRole('navigation',{name:'Primary'});
 const overflow=page=>page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const uptime=async s=>{const wait=(ready+s)*1000-Date.now();if(wait>0)await sleep(wait)};
 // The repository's Playwright (the Mac has its browsers); where only another Playwright
 // build has browsers installed (a container), that one: ARENA_PLAYWRIGHT names its module.
 async function launch(){
@@ -40,7 +46,8 @@ const api=(page,path)=>page.evaluate(async p=>{const r=await fetch('/api/v1/'+p,
 const openChat=async(page,id)=>{await page.evaluate(i=>localStorage.setItem('arena.conversation',i),id);await page.reload();await nav(page).waitFor();await nav(page).getByRole('button',{name:'Chat',exact:true}).click();await page.getByLabel('Message Arena').waitFor();};
 const flat=async loc=>(await loc.innerText()).replace(/\s+/g,' ').trim();
 try{
- for(let n=0;n<80;n++){if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+' (is port '+port+' free?)\n'+serverLog.slice(-800));try{if((await fetch(base)).ok)break}catch{}await sleep(250);}
+ for(let n=0;n<80;n++){if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+' (is port '+port+' free?)\n'+serverLog.slice(-800));try{if((await fetch(base)).ok){ready=Date.now()/1000;break}}catch{}await sleep(250);}
+ if(!ready)throw Error('Fixture server never answered\n'+serverLog.slice(-800));
  browser=await launch();
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:ANDROID,deviceScaleFactor:2});
  const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -50,10 +57,14 @@ try{
  await nav(page).waitFor();
 
  if(wanted.includes('A')){
-  // A. "Since you were away": the paired session was last seen 12 hours ago.
+  // A. "Since you were away": the paired session was last seen 12 hours ago, or before the
+  // copy's newest recorded activity if that is older (a copy ages), so the absence always
+  // spans something to report. The app is parked first so no request of its own (the chat
+  // it opens on first use, a poll) lands after the change and records the device as seen.
   const r={};
-  sql(`UPDATE sessions SET last_seen=strftime('%s','now')-43200`);
-  await page.reload();await nav(page).waitFor();
+  await page.goto('about:blank');await sleep(1500);
+  sql(`UPDATE sessions SET last_seen=MIN(strftime('%s','now')-43200,(SELECT MAX(json_extract(data,'$.updated')) FROM tasks)-600)`);
+  await page.goto(base);await nav(page).waitFor();
   const session=await api(page,'session');r.awaySince=session.away_since;
   if(typeof session.away_since!=='number')throw Error('Session does not report the absence: '+JSON.stringify(session));
   await nav(page).getByRole('button',{name:'Overview',exact:true}).click();
@@ -126,12 +137,15 @@ try{
   // C. Director turn visibility on conversations seeded in the copy: a turn in progress
   // (step, the command it is on, a live elapsed clock, "Still working" past 90 s), an
   // error with Retry that re-sends through the real send path, and a turn orphaned by a
-  // restart that is closed with Retry when the phone reads it.
+  // restart that is closed with Retry when the phone reads it. The turn in progress stands
+  // for one this controller is answering, so it starts after the controller did: the
+  // section waits until the server has been up longer than the elapsed time it shows.
   const r={};
   const snap=await api(page,'overview');
   const project=snap.projects.filter(p=>!p.archived&&p.enabled!==false).sort((a,b)=>(b.created||0)-(a.created||0))[0]||null;
   const secs=t=>{const m=/(?:(\d+)m )?(\d+)s\b/.exec(t);return m?Number(m[1]||0)*60+Number(m[2]):-1};
   const asked='Where is the bell sound played?';
+  await uptime(31);
   const thinkingId=seedChat({title:asked,project_id:project?.id||null,status:'thinking',step:'reading repository',step_detail:'rg -n "bell" src/',step_since:Date.now()/1000-4,turn_started:Date.now()/1000-30,turn_repo:'arena-smoke-20261028',commands:3},[['user',asked,{}]]);
   await openChat(page,thinkingId);
   const bubble=page.locator('.msg.thinking');await bubble.waitFor({timeout:15000});
@@ -141,8 +155,9 @@ try{
   if(!/^Reading /.test(early)||!early.includes('rg -n "bell" src/')||/Still working/.test(early))throw Error('Thinking bubble does not show the step and command: '+early);
   if(!(secs(later)>secs(early)&&secs(early)>=29))throw Error('Elapsed time is not live: '+early+' → '+later);
   // Past 90 s the bubble says it is still working (the host's turn start moves back 70 s).
+  await uptime(101);
   py(`db.execute("UPDATE conversations SET rev=rev+1,data=json_set(data,'$.turn_started',?) WHERE id=?",(time.time()-100,p["id"]))`,{id:thinkingId});
-  await page.waitForFunction(()=>/Still working/.test(document.querySelector('.msg.thinking')?.textContent||''),null,{timeout:10000});
+  await page.waitForFunction(()=>{const t=document.querySelector('.msg.thinking')?.innerText||'';const m=/(?:(\d+)m )?(\d+)s\b/.exec(t);return /Still working/.test(t)&&!!m&&Number(m[1]||0)*60+Number(m[2])>=100},null,{timeout:10000});
   r.thinking.still=await flat(bubble);
   if(!r.thinking.still.includes('rg -n "bell" src/')||secs(r.thinking.still)<100)throw Error('Still-working line lost the step: '+r.thinking.still);
   if(await overflow(page))throw Error('Horizontal overflow on Chat while thinking');
@@ -172,13 +187,164 @@ db.execute("DROP TABLE acceptance_accounts")`);
   await page.locator('.msg.arena.error').nth(1).waitFor({timeout:10000});
   r.retry.buttons=await page.getByRole('button',{name:'Retry',exact:true}).count();
   if(r.retry.buttons!==1)throw Error('Retry offered on '+r.retry.buttons+' messages; only the newest should offer it');
-  // A turn whose process died with a restart (started 400 s ago): reading it closes it.
-  const orphanId=seedChat({title:'Plan the export feature',project_id:project?.id||null,status:'thinking',step:'reading repository',step_detail:'git log -5',step_since:Date.now()/1000-390,turn_started:Date.now()/1000-400,commands:2},[['user','Plan the export feature',{}]]);
+  // A turn the previous controller was answering when Arena restarted, 30 s before this one
+  // started (a self-build activation): nothing can answer it any more, so reading it closes
+  // it at once, minutes before the stale-turn backstop would.
+  const orphanId=seedChat({title:'Plan the export feature',project_id:project?.id||null,status:'thinking',step:'reading repository',step_detail:'git log -5',step_since:spawned-25,turn_started:spawned-30,commands:2},[['user','Plan the export feature',{}]]);
   await openChat(page,orphanId);
   const closed=page.locator('.msg.arena.error').last();await closed.waitFor({timeout:15000});
-  r.recovered={text:await flat(closed.locator('.bubble')),retry:await closed.getByRole('button',{name:'Retry',exact:true}).count(),thinking:await page.locator('.msg.thinking').count()};
-  if(r.recovered.text!=='The director was interrupted (Arena restarted). Tap Retry.'||r.recovered.retry!==1||r.recovered.thinking)throw Error('Orphaned turn not closed: '+JSON.stringify(r.recovered));
+  r.recovered={text:await flat(closed.locator('.bubble')),retry:await closed.getByRole('button',{name:'Retry',exact:true}).count(),thinking:await page.locator('.msg.thinking').count(),turnAge:Math.round(Date.now()/1000-spawned+30)};
+  if(r.recovered.text!=='The director was interrupted before it could answer. Tap Retry.'||r.recovered.retry!==1||r.recovered.thinking)throw Error('Orphaned turn not closed: '+JSON.stringify(r.recovered));
   result.slices.C=r;console.log('C',JSON.stringify(r));
+ }
+
+ if(wanted.includes('D')){
+  // D. Chat as the front door. The reply that started a build is that build's card, kept
+  // current from the snapshot: "Integrated · sha" once on main; Review only where the owner
+  // decides (a pending approval on a project that integrates manually); "Integrating…" or
+  // "Integration failed" on a project that integrates automatically, never Review; live with
+  // the agent, model and its last line while an attempt runs. A build is seeded in the copy
+  // and moved through those states (cloned from the newest integrated build's records). And
+  // a new chat shows the project it starts on before anything is sent.
+  const r={};
+  const snap=await api(page,'overview');
+  const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
+  const isPlan=t=>t.director&&(t.phase==='plan'||t.phase==='replan');
+  const childrenOf=g=>snap.tasks.filter(t=>t.goal_id===g.id&&!isPlan(t));
+  const integrated=[...snap.goals].sort((a,b)=>b.created-a.created).find(g=>{const live=childrenOf(g).filter(t=>t.state!=='cancelled');return !archivedIds.has(g.project_id)&&live.length>0&&live.every(t=>t.state==='completed')&&live.some(t=>t.integrated_commit)});
+  if(!integrated)throw Error('The copy has no integrated build on an active project');
+  const project=snap.projects.find(p=>p.id===integrated.project_id);
+  const done=childrenOf(integrated).filter(t=>t.integrated_commit).sort((a,b)=>(b.updated||0)-(a.updated||0))[0];
+  const sha=String(done.integrated_commit).slice(0,7);
+  const card=()=>page.locator('.chat-build').last();
+  const reviews=()=>card().getByRole('button',{name:'Review',exact:true}).count();
+  // Waits for the card to say `text` (the snapshot is polled; the live tail every 2.5 s).
+  const cardSays=async(text,what)=>{try{await page.waitForFunction(t=>{const c=[...document.querySelectorAll('.chat-build')].pop();return !!c&&c.textContent.replace(/\s+/g,' ').includes(t)},text,{timeout:20000})}catch{throw Error(what+' · card: '+(await flat(card()).catch(()=>'(none)')))}};
+  const noOverflow=async where=>{if(await overflow(page))throw Error('Horizontal overflow on Chat with '+where)};
+
+  // 1. An integrated build: "Integrated · sha", no Review, one tap opens that build.
+  const builtChat=seedChat({title:'Add bell control',project_id:project.id},[['user','Build it.',{}],['assistant','Starting the build.',{build_started:true,goal_id:integrated.id,task_id:done.id,project:project.name}]]);
+  await openChat(page,builtChat);
+  await cardSays('Integrated · '+sha,'Integrated build');
+  r.integrated={goal:integrated.id,sha,card:await flat(card()),review:await reviews()};
+  if(r.integrated.review)throw Error('Review offered on an integrated build');
+  await noOverflow('an integrated build card');
+  await page.screenshot({path:output+'/d-chat-build-card-390.png'});
+  await card().getByRole('button',{name:'Open the build',exact:true}).click();
+  await page.locator('#goal-pick').waitFor();
+  r.integrated.opened=await page.locator('#goal-pick').inputValue();
+  if(r.integrated.opened!==integrated.id)throw Error('Open the build opened '+r.integrated.opened);
+
+  // A build of our own on the same project, cloned from the integrated one's records.
+  const hex=()=>randomBytes(8).toString('hex');
+  const plan=snap.tasks.find(t=>t.goal_id===integrated.id&&isPlan(t))||done;
+  const codex=snap.agents.find(a=>a.provider==='codex')||snap.agents[0];
+  const ids={goal:'goal_'+hex(),plan:'task_'+hex(),task:'task_'+hex(),approval:'approval_'+hex(),attempt:'attempt_'+hex(),project:project.id,policy:project.integration_policy||'manual',tplPlan:plan.id,tplTask:done.id,tplApproval:done.approval_id||null,tplAttempt:snap.attempts.find(a=>a.task_id===done.id)?.id||null,account:codex.id,candidate:'d15ea5e'+'0'.repeat(33),base:'ba5eba1'+'0'.repeat(33),title:'Add a persistent overnight queue mode',taskTitle:'Queue requests overnight and run them economically',artifact:state+'/acceptance-attempts/live'};
+  const PRELUDE=`now=time.time()
+row=lambda table,ident:json.loads(db.execute(f"SELECT data FROM {table} WHERE id=?",(ident,)).fetchone()[0]) if ident else {}
+def put(table,ident,data,state=None):
+    if state is None: db.execute(f"UPDATE {table} SET rev=rev+1,data=? WHERE id=?",(json.dumps(data),ident))
+    else: db.execute(f"UPDATE {table} SET rev=rev+1,state=?,data=? WHERE id=?",(state,json.dumps(data),ident))
+def policy(value):
+    project=row("projects",p["project"]);project["integration_policy"]=value;put("projects",p["project"],project)
+`;
+  const step=(code,extra={})=>py(PRELUDE+code,{...ids,...extra});
+  step(`plan={**row("tasks",p["tplPlan"]),"title":p["title"],"phase":"plan","director":True,"created":now-300,"updated":now-280,"reason":"Planned one task"}
+child={k:v for k,v in row("tasks",p["tplTask"]).items() if k not in ("integrated_commit","approval_id","staged","candidate","candidate_base","build_attempt","review_attempt","director_review_attempt","attempt_id")}
+child.update(title=p["taskTitle"],created=now-270,updated=now-30,reason="Queued",milestone="M1 — Overnight queue")
+db.execute("INSERT INTO goals(id,project_id,data) VALUES(?,?,?)",(p["goal"],p["project"],json.dumps({"title":p["title"],"request":p["title"],"created":now-300})))
+db.execute("INSERT INTO tasks(id,project_id,goal_id,state,data) VALUES(?,?,?,?,?)",(p["plan"],p["project"],p["goal"],"completed",json.dumps(plan)))
+db.execute("INSERT INTO tasks(id,project_id,goal_id,state,data) VALUES(?,?,?,?,?)",(p["task"],p["project"],p["goal"],"ready",json.dumps(child)))`);
+  const seededChat=seedChat({title:'Overnight queue',project_id:project.id},[['user','Build the overnight queue.',{}],['assistant','Starting the build.',{build_started:true,goal_id:ids.goal,task_id:ids.task,project:project.name}]]);
+
+  try{
+   // 2. Manual integration, a verified candidate waiting: Review opens that exact candidate.
+   step(`policy("manual")
+approval={k:v for k,v in row("approvals",p["tplApproval"]).items() if k not in ("decision","publication")}
+approval.update(candidate=p["candidate"],base=p["base"],covered_tasks=[p["task"]],created=now-20,operation="accept_staged_change")
+approval.setdefault("checks",[])
+db.execute("INSERT INTO approvals(id,task_id,state,data) VALUES(?,?,?,?)",(p["approval"],p["task"],"pending",json.dumps(approval)))
+task=row("tasks",p["task"]);task.update(reason="Combined checks passed; exact staging commit awaits acceptance",staged=p["candidate"],approval_id=p["approval"],updated=now-20)
+put("tasks",p["task"],task,"ready_for_approval")`);
+   await openChat(page,seededChat);
+   await cardSays('Ready for approval','Manual approval');
+   r.review={goal:ids.goal,task:ids.task,card:await flat(card()),review:await reviews()};
+   if(r.review.review!==1)throw Error('No Review on a build waiting for the owner: '+r.review.card);
+   await noOverflow('a build waiting for review');
+   await page.screenshot({path:output+'/d-chat-review-card-390.png'});
+   await card().getByRole('button',{name:'Review',exact:true}).click();
+   const dialog=page.getByRole('dialog');await dialog.waitFor();
+   r.review.dialog={title:await dialog.getByRole('heading',{level:2}).first().innerText(),accept:await dialog.getByRole('button',{name:'Accept staged change',exact:true}).count(),candidate:(await flat(dialog)).includes(ids.candidate.slice(0,10))?1:0};
+   if(r.review.dialog.title!==ids.taskTitle||r.review.dialog.accept!==1||!r.review.dialog.candidate)throw Error('Review dialog: '+JSON.stringify(r.review.dialog));
+   await dialog.getByRole('button',{name:'Close dialog'}).click();await dialog.waitFor({state:'hidden'});
+
+   // 3. Automatic integration: the policy already accepted the candidate and integration is
+   // queued. The task still reads "ready for approval", but nothing waits on the owner.
+   step(`policy("auto_local_main")
+approval=row("approvals",p["approval"])
+approval.update(decision={"decision":"accept","by":"integration_policy","policy":"auto_local_main","time":now},publication={"state":"queued","branch":"main","expected_source":p["base"],"requested":now,"automatic":True})
+put("approvals",p["approval"],approval,"accept")
+task=row("tasks",p["task"]);task.update(reason="Verified; integrating into local main under the project's policy",updated=now)
+put("tasks",p["task"],task)`);
+   await cardSays('Integrating…','Automatic integration');
+   r.auto={card:await flat(card()),review:await reviews()};
+   if(r.auto.review)throw Error('Review offered while integrating automatically: '+r.auto.card);
+   await page.screenshot({path:output+'/d-chat-integrating-card-390.png'});
+   // ...and when that integration fails, the card says so (still no Review).
+   step(`approval=row("approvals",p["approval"])
+approval["publication"].update(state="failed",reason="Source main moved since the candidate was verified; nothing was changed")
+put("approvals",p["approval"],approval)`);
+   await cardSays('Integration failed','Failed automatic integration');
+   r.autoFailed={card:await flat(card()),review:await reviews()};
+   if(r.autoFailed.review||!r.autoFailed.card.includes('Source main moved'))throw Error('Failed integration card: '+r.autoFailed.card);
+
+   // 4. Live: an attempt runs; the card shows the agent, model, elapsed and its last line.
+   mkdirSync(ids.artifact,{recursive:true});
+   writeFileSync(ids.artifact+'/transcript.jsonl',[{type:'thread.started',thread_id:'acceptance'},{type:'item.completed',item:{id:'i1',type:'agent_message',text:'Running the bell tests.'}},{type:'item.started',item:{id:'i2',type:'command_execution',command:"/bin/zsh -lc 'pytest -q tests/test_bell.py'",status:'in_progress'}}].map(x=>JSON.stringify(x)).join('\n')+'\n');
+   step(`approval=row("approvals",p["approval"]);put("approvals",p["approval"],approval,"superseded")
+task=row("tasks",p["task"]);task.update(reason="Building",updated=now,approval_id=None,staged=None)
+put("tasks",p["task"],task,"running")
+attempt={k:v for k,v in row("attempts",p["tplAttempt"]).items() if k not in ("result","ended","identity")}
+attempt.update(created=now-75,model="gpt-6.1-sol",effort="high",phase="build",artifact_dir=p["artifact"],identity=None,reason="Routed to Codex")
+db.execute("INSERT INTO attempts(id,task_id,account_id,token,state,data) VALUES(?,?,?,?,?,?)",(p["attempt"],p["task"],p["account"],0,"running",json.dumps(attempt)))`);
+   await cardSays('pytest -q tests/test_bell.py','Live build');
+   r.live={card:await flat(card()),agent:codex.name,review:await reviews(),watch:await card().getByRole('button',{name:'Watch the build',exact:true}).count()};
+   if(!r.live.card.includes(codex.name+' · gpt-6.1-sol · high')||r.live.review||r.live.watch!==1)throw Error('Live card: '+JSON.stringify(r.live));
+   await noOverflow('a live build card');
+   await page.screenshot({path:output+'/d-chat-live-card-390.png'});
+
+   // 5. Then it lands on main: the same card turns into "Integrated · sha".
+   step(`db.execute("UPDATE attempts SET state='passed',data=json_set(data,'$.ended',?) WHERE id=?",(now,p["attempt"]))
+task=row("tasks",p["task"]);task.update(reason="Verified candidate integrated into local main",integrated_commit="c0ffee0"+"1"*33,updated=now)
+put("tasks",p["task"],task,"completed")`);
+   await cardSays('Integrated · c0ffee0','Integrated after the live build');
+   r.live.after=await flat(card());
+   if(await reviews())throw Error('Review offered on an integrated build: '+r.live.after);
+  }finally{
+   step('policy(p["policy"])');  // the copy's project keeps its own integration policy
+  }
+
+  // 6. A new chat from the empty state shows the project the host starts it on before
+  // anything is sent, so the first message only goes to a project the owner saw.
+  const listed=await api(page,'conversations');
+  const fresh=await api(page,'overview');
+  const usable=new Set(fresh.projects.filter(p=>!p.archived&&p.enabled!==false).map(p=>p.id));
+  const expectedId=(listed.find(c=>usable.has(c.project_id))||[...fresh.goals].sort((a,b)=>(b.created||0)-(a.created||0)).find(g=>usable.has(g.project_id))||{}).project_id||null;
+  const expected=expectedId?fresh.projects.find(p=>p.id===expectedId).name:'No project selected';
+  const known=new Set(listed.map(c=>c.id));
+  await page.evaluate(()=>localStorage.removeItem('arena.conversation'));
+  await page.reload();await nav(page).waitFor();
+  await nav(page).getByRole('button',{name:'Chat',exact:true}).click();
+  try{await page.waitForFunction(()=>!!localStorage.getItem('arena.conversation'),null,{timeout:15000})}catch{throw Error('No chat was started from the empty state; the chip says: '+(await page.locator('.chat-project').innerText()).trim())}
+  await page.waitForFunction(n=>(document.querySelector('.chat-project')?.textContent||'').trim()===n,expected,{timeout:15000}).catch(()=>{});
+  const createdId=await page.evaluate(()=>localStorage.getItem('arena.conversation'));
+  const opened=await api(page,'conversations/'+createdId);
+  r.newChat={expected,project:(await page.locator('.chat-project').innerText()).trim(),projectId:opened.project_id,messages:opened.messages?.length,created:!known.has(createdId),placeholder:await page.getByLabel('Message Arena').getAttribute('placeholder')};
+  if(r.newChat.project!==expected||r.newChat.projectId!==expectedId||r.newChat.messages!==0||!r.newChat.created)throw Error('New chat: '+JSON.stringify(r.newChat));
+  if(expectedId&&r.newChat.placeholder!==`Message Arena about ${expected}…`)throw Error('The composer does not name the project: '+r.newChat.placeholder);
+  await noOverflow('a new chat');
+  await page.screenshot({path:output+'/d-new-chat-project-390.png'});
+  result.slices.D=r;console.log('D',JSON.stringify(r));
  }
 
  const after=await api(page,'overview');

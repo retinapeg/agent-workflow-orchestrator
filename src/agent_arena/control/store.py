@@ -139,16 +139,17 @@ class Store:
         self.path.chmod(0o600)
         archive_proof_projects(self)
 
-    def connect(self):
-        db = sqlite3.connect(self.path, timeout=10, isolation_level=None)
+    def connect(self, timeout=10.0):
+        """A connection that waits up to ``timeout`` seconds for another writer's lock."""
+        db = sqlite3.connect(self.path, timeout=timeout, isolation_level=None)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
-        db.execute("PRAGMA busy_timeout=10000")
+        db.execute(f"PRAGMA busy_timeout={int(timeout * 1000)}")
         return db
 
     @contextlib.contextmanager
-    def transaction(self):
-        db = self.connect()
+    def transaction(self, timeout=10.0):
+        db = self.connect(timeout)
         try:
             db.execute("BEGIN IMMEDIATE")
             yield db

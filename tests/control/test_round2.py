@@ -305,30 +305,35 @@ def thinking_since(store, conv_id, seconds_ago, **fields):
 def test_a_turn_orphaned_by_a_restart_is_closed_with_retry(setup, monkeypatch):
     store, engine, project, _ = setup
     stale = conversation.STALE_TURN_SECONDS + 5
-    old, fresh = conversation.new_conversation(store), conversation.new_conversation(store)
-    for conv in (old, fresh):
+    old, recent = conversation.new_conversation(store), conversation.new_conversation(store)
+    for conv in (old, recent):
         conversation.add_message(store, conv["id"], "user", "What is running right now?")
     thinking_since(store, old["id"], stale)
-    thinking_since(store, fresh["id"], 30)
-    # The controller starts: the stale turn is closed, the recent one is left to finish.
+    thinking_since(store, recent["id"], 30)  # Arena restarted 30 s into this turn
+    # The controller starts: only one ever runs, so every turn the previous one was
+    # answering is closed at once, however recent, with Retry.
     client, headers = paired_client(store)
-    closed = last_message(store, old["id"])
-    assert closed["text"] == conversation.INTERRUPTED and closed["error_kind"] == "interrupted"
-    assert closed["retry_text"] == "What is running right now?" and closed["error"] is True
-    assert store.get("conversations", old["id"])["status"] == "idle"
-    assert store.get("conversations", fresh["id"])["status"] == "thinking"
-    assert client.app.state.director.recover() == []  # idempotent
-    # Later, the phone reading the conversation closes it once it is stale too.
-    thinking_since(store, fresh["id"], stale)
-    body = client.get(f"/api/v1/conversations/{fresh['id']}").json()
+    for conv in (old, recent):
+        closed = last_message(store, conv["id"])
+        assert closed["text"] == conversation.INTERRUPTED and closed["error_kind"] == "interrupted"
+        assert closed["retry_text"] == "What is running right now?" and closed["error"] is True
+        assert store.get("conversations", conv["id"])["status"] == "idle"
+    director = client.app.state.director
+    assert director.recover() == []  # idempotent
+    # A turn this controller started with no thread answering it (it has been up a while)
+    # is left alone while recent; past STALE_TURN_SECONDS the phone reading it closes it.
+    director.started = time.time() - 2 * stale
+    thinking_since(store, recent["id"], 30)
+    assert client.get(f"/api/v1/conversations/{recent['id']}").json()["status"] == "thinking"
+    thinking_since(store, recent["id"], stale)
+    body = client.get(f"/api/v1/conversations/{recent['id']}").json()
     assert body["status"] == "idle" and body["step"] is None
     assert body["messages"][-1]["text"] == conversation.INTERRUPTED
     # A turn this process is answering is never closed under it, however long it runs.
-    director = client.app.state.director
     thinking_since(store, old["id"], stale)
-    director.busy.add(old["id"])
+    director.busy[old["id"]] = object()
     assert director.recover() == [] and director.recover(old["id"]) == []
-    director.busy.discard(old["id"])
+    del director.busy[old["id"]]
     # A new message never waits for a dead turn: it is closed first, then answered.
     ready_accounts(store)
     director.runner = FakeRunner(
@@ -354,6 +359,7 @@ def test_conversation_records_carry_the_director_progress(setup):
     idle = conversation.new_conversation(store)
     busy = conversation.new_conversation(store)
     thinking_since(store, busy["id"], 12, step_detail="rg -n " + "q" * 300, commands=4)
+    client.app.state.director.busy[busy["id"]] = object()  # this controller is answering it
     with store.transaction() as db:
         live = store.get("conversations", busy["id"], db)
         live["turn_repo"] = "arena-smoke-20261028"

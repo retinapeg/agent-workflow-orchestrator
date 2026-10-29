@@ -211,9 +211,10 @@ function Meta({m}: {m: ChatMessage}) {
 
 // The reply that started a build becomes that build's card, updated in place from the
 // snapshot: stage bar, the agent and model on it and its last live line while it runs; then
-// the outcome: Review when it waits for approval, "Integrated · sha" once on main, or the
-// state it stopped in, each one tap from the build. Until the snapshot carries the new
-// request the card says the build started.
+// the outcome: Review when it waits for the owner's decision, "Integrating…" (or
+// "Integration failed") while a project that integrates automatically puts it on main,
+// "Integrated · sha" once there, or the state it stopped in, each one tap from the build.
+// Until the snapshot carries the new request the card says the build started.
 function BuildCard({m}: {m: ChatMessage}) {
   const {data, openGoal} = useArena();
   const goal = m.goal_id ? (data.goals || []).find(g => g.id === m.goal_id) : undefined;
@@ -240,25 +241,37 @@ function LiveBuildCard({view}: {view: GoalView}) {
   const {status, stage, liveAttempt, currentTask, lastLine, agentLine} = useBuildProgress(view);
   const cls = goalClass(view);
   const sha = cls === 'done' ? integratedCommit(view) : '';
-  const label = sha ? `Integrated · ${shortSha(sha, 7)}` : status.label;
-  const awaiting = view.tasks.some(t => t.state === 'ready_for_approval');
-  const approval = awaiting ? pendingApprovals(view, data)[0] : undefined;
+  // Review only where the owner decides, as needsYou counts it: a pending approval on a
+  // project that integrates manually. Under automatic integration the policy has already
+  // accepted the verified candidate (its approval is "accept", the task "ready for
+  // approval" until it is on main), so once nothing else runs or asks the owner, the card
+  // says it is integrating, or that integration failed.
+  const manual = view.project?.integration_policy !== 'auto_local_main';
+  const approval = manual ? pendingApprovals(view, data)[0] : undefined;
+  const asksOwner = view.tasks.some(t => NEEDS_TASK.includes(t.state) && t.state !== 'ready_for_approval');
+  const verified = !manual && cls === 'needs' && !asksOwner ? view.tasks.find(t => t.state === 'ready_for_approval') : undefined;
+  const publication = verified
+    ? data.approvals.filter(a => a.task_id === verified.id || (a.covered_tasks || []).includes(verified.id)).sort((a, b) => (b.created || 0) - (a.created || 0))[0]?.publication
+    : undefined;
+  const failed = publication?.state === 'failed';
+  const label = sha ? `Integrated · ${shortSha(sha, 7)}` : verified ? (failed ? 'Integration failed' : 'Integrating…') : status.label;
+  const tone = verified ? (failed ? 'blocked' : 'running') : status.tone;
   // Running: the agent, model and elapsed, then its last live line. Queued: the task in front
   // and its state. Waiting on the owner or stopped: that task and the reason it records.
   const stopped = cls === 'history' || cls === 'needs';
   const focus = view.tasks.find(t => NEEDS_TASK.includes(t.state)) || currentTask;
   const what = liveAttempt || cls === 'active' ? agentLine : stopped ? focus?.title || '' : '';
-  const line = liveAttempt ? lastLine : stopped ? focus?.reason || '' : '';
+  const line = liveAttempt ? lastLine : failed ? publication?.reason || focus?.reason || '' : stopped ? focus?.reason || '' : '';
   return (
     <div className="build-card chat-build" role="group" aria-label={`Build: ${view.title}`}>
       <div className="row">
-        <Glyph tone={status.tone} size={24} />
+        <Glyph tone={tone} size={24} />
         <b className="clamp1">{view.project?.name || 'Project'}</b>
       </div>
       <span className="clamp2">{view.title}</span>
-      <StageBar stage={stage} total={STAGES.length} tone={status.tone} label={`Stage ${Math.min(stage + 1, STAGES.length)} of ${STAGES.length}: ${STAGES[Math.min(stage, STAGES.length - 1)]}`} />
+      <StageBar stage={stage} total={STAGES.length} tone={tone} label={`Stage ${Math.min(stage + 1, STAGES.length)} of ${STAGES.length}: ${STAGES[Math.min(stage, STAGES.length - 1)]}`} />
       <span className="build-meta small">
-        <Chip tone={status.tone}>{label}</Chip>
+        <Chip tone={tone}>{label}</Chip>
         <span className="num">{duration(goalElapsed(view, now))}</span>
       </span>
       {what && <span className="small muted clamp2 build-agent">{what}</span>}
@@ -268,8 +281,8 @@ function LiveBuildCard({view}: {view: GoalView}) {
         </span>
       )}
       <div className="msg-actions">
-        {awaiting && (
-          <button type="button" className="btn primary" onClick={() => (approval ? setModal({kind: 'review', id: approval.id}) : openGoal(view.goal.id))}>
+        {approval && (
+          <button type="button" className="btn primary" onClick={() => setModal({kind: 'review', id: approval.id})}>
             <Icon name="review" size={16} />
             Review
           </button>
@@ -340,6 +353,7 @@ export function Chat() {
   const [pending, setPending] = useState<ChatMessage | null>(null);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [starting, setStarting] = useState(false);
   const [picking, setPicking] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const end = useRef<HTMLDivElement>(null);
@@ -375,7 +389,7 @@ export function Chat() {
         remember(null);
         setId(null);
         setDetail(null);
-        notify('That conversation no longer exists on the host. Start a new chat.');
+        notify('That conversation no longer exists on the host, so a new chat was started.');
       }
     }
   };
@@ -412,7 +426,7 @@ export function Chat() {
     end.current.scrollIntoView({block: 'end', behavior: reduce ? 'auto' : 'smooth'});
   }, [messages.length, thinking]);
 
-  // Composer grows to six lines, then scrolls.
+  // Composer grows to six lines, then scrolls (also when the placeholder names a project).
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -420,17 +434,17 @@ export function Chat() {
     const line = parseFloat(getComputedStyle(el).lineHeight) || 24;
     const pad = 20;
     el.style.height = Math.min(el.scrollHeight, line * MAX_LINES + pad) + 'px';
-  }, [draft]);
+  }, [draft, project?.name]);
 
   useEffect(() => {
     if (picking && !picker.current?.open) picker.current?.showModal();
     if (!picking) picker.current?.close();
   }, [picking]);
 
-  const create = async (): Promise<ConversationDetail> => {
-    // The host starts a new chat on the owner's current project (the last one talked about,
-    // else the last one built); the chip shows it at once and can be changed.
-    const c = (await post('conversations', {revision: 0, text: ''})) as Conversation;
+  const create = async (choice?: {project_id: string | null}): Promise<ConversationDetail> => {
+    // Without a choice the host starts a new chat on the owner's current project (the last
+    // one talked about, else the last one built); the chip shows it at once and can be changed.
+    const c = (await post('conversations', {revision: 0, text: '', ...choice})) as Conversation;
     const p = c.project_id ? data.projects.find(x => x.id === c.project_id) : null;
     const d: ConversationDetail = {...c, project: p ? {id: p.id, name: p.name} : null, messages: []};
     seen.current = 0;
@@ -440,13 +454,31 @@ export function Chat() {
     return d;
   };
 
+  // With no thread open, Chat starts one at once (as New chat does), so the chip shows the
+  // project the host chose before anything can be sent: a first message only ever goes to
+  // a project the owner has seen on the chip. Sending waits until the thread exists.
+  const opening = useRef(false);
+  useEffect(() => {
+    if (id || !online || opening.current) return;
+    opening.current = true;
+    setStarting(true);
+    create()
+      .catch(e => notify(String(e)))
+      .finally(() => {
+        opening.current = false;
+        setStarting(false);
+      });
+  }, [id, online]);
+
   const send = async (raw: string) => {
     const text = raw.trim();
-    if (!text || sending || !online) return;
+    if (!text || sending || starting || !online) return;
     setSending(true);
     try {
       let cid = id;
-      if (!cid) cid = (await create()).id;
+      // No thread (starting one failed): this message starts one on no project, which is
+      // what the chip shows, never on a project the owner has not seen.
+      if (!cid) cid = (await create({project_id: null})).id;
       setPending({id: -1, time: now, role: 'user', text});
       setDraft('');
       await post(`conversations/${cid}/messages`, {text, revision: 0});
@@ -516,7 +548,7 @@ export function Chat() {
   const thinkingLine = !thinking ? '' : `${stillWorking ? 'Still working · ' : ''}${stepLabel[step] || 'Thinking'}`;
 
   const coarse = typeof window !== 'undefined' && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-  const canSend = !!draft.trim() && online;
+  const canSend = !!draft.trim() && online && !starting;
   const title = thread?.title || (id ? 'Conversation' : 'New conversation');
   const recent = conversations.filter(c => c.id !== id).slice(0, 12);
   const empty = !messages.length && !thinking;
@@ -528,15 +560,15 @@ export function Chat() {
         <h2 id="chat-title" className="chat-title" title={title}>
           {title}
         </h2>
-        <button type="button" className="btn" disabled={disabled || sending} onClick={fresh}>
+        <button type="button" className="btn" disabled={disabled || sending || starting} onClick={fresh}>
           <Icon name="plus" size={16} />
           New chat
         </button>
       </div>
       <div className="chat-bar">
-        <button type="button" className={'chip-btn chat-project' + (project ? ' on' : '')} aria-haspopup="dialog" aria-label={project ? `Project: ${project.name}. Change project` : 'No project selected. Choose a project'} onClick={() => setPicking(true)}>
+        <button type="button" className={'chip-btn chat-project' + (project ? ' on' : '')} aria-haspopup="dialog" aria-label={starting ? 'Starting a new chat' : project ? `Project: ${project.name}. Change project` : 'No project selected. Choose a project'} disabled={starting} onClick={() => setPicking(true)}>
           <Icon name="projects" size={16} />
-          <span className="clamp1">{project ? project.name : 'No project selected'}</span>
+          <span className="clamp1">{starting ? 'Starting a new chat…' : project ? project.name : 'No project selected'}</span>
         </button>
         {recent.length > 0 && (
           <details className="disclosure chat-recent">
