@@ -15,12 +15,8 @@ import {
   goalView,
   isLive,
   isMerging,
-  lastChange,
   liveAttemptOf,
   needsYouRows,
-  outcomeLine,
-  pickableProjects,
-  plainError,
   progressFraction,
   progressLabel,
   quietLine,
@@ -33,11 +29,11 @@ import {
   workProgress,
   type GoalStory,
   type GoalView,
+  type MacActivity,
   type NeedRow,
   type RecordData,
-  type Snapshot,
 } from '../types';
-import {Glyph, Icon, LiveDot, Panel, Progress} from '../ui';
+import {Glyph, Icon, LiveDot, Progress} from '../ui';
 
 // Per-build stepper. Every "done" comes from a recorded state or attempt result, never
 // from elapsed time: plan task completed → Plan; build attempt passed → Code; its frozen
@@ -132,100 +128,18 @@ export function useBuildProgress(view: GoalView, story: GoalStory | null) {
 }
 
 // Home ------------------------------------------------------------------------------
-// Only what matters: one box to talk to the director, what needs the owner, one row per
-// project that is building, the projects ready for work, and finished builds folded away
-// (where they can be ticked and archived). Archived builds and projects never appear here.
+// Only what matters, the same at every width: the box to talk to the director, one line about
+// what is running on the Mac, what needs the owner (only when something does), one row per
+// project with live work (or one calm line when nothing is building), and one line about work
+// that finished recently. Everything else (history, archive, settings) is in the ☰ menu.
 
-// One row of the away summary: a build, what became of it, a tap into it.
-type AwayGroup = 'finished' | 'needs' | 'stopped';
-type AwayRow = {key: string; group: AwayGroup; tone: 'done' | 'decision' | 'blocked'; label: string; title: string; sub: string; at: number; open: () => void};
-
-// "Since you were away": what finished, what needs the owner and what stopped since this
-// device was last seen by the host. Each build appears once, in one group: one that needs the
-// owner is listed for that alone; a finished one only when its blocks finished (a completed
-// plan is not a finished build) after the absence began; a stopped one when a block stopped
-// then. Builds still building are not listed. Plain English: no commits, no raw reasons (the
-// build's story explains a failure).
-export function awayRows(data: Snapshot, since: number, now: number, openGoal: (id: string) => void, openNeed: (r: NeedRow) => void): AwayRow[] {
-  const views = (data.goals || []).filter(g => !goalArchived(g, data)).map(g => goalView(g, data));
-  const needs = new Map<string, NeedRow>(); // the newest need of each build
-  const loose: NeedRow[] = [];
-  for (const r of needsYouRows(data)) {
-    if (r.at < since) continue;
-    if (!r.goalId) loose.push(r);
-    else if ((needs.get(r.goalId)?.at ?? -1) < r.at) needs.set(r.goalId, r);
-  }
-  const where = (v: GoalView) => (v.project ? ' · ' + v.project.name : '');
-  const rows: AwayRow[] = [...needs.values(), ...loose].map(r => ({key: 'need-' + r.id, group: 'needs', tone: r.tone, label: r.label, title: r.title, sub: `${ago(r.at, now)}${r.project ? ' · ' + r.project : ''} · ${r.sub}`, at: r.at, open: () => openNeed(r)}));
-  for (const v of views) {
-    if (needs.has(v.goal.id)) continue;
-    const cls = goalClass(v);
-    if (cls === 'done') {
-      const at = finishedAt(v);
-      if (at && at >= since) rows.push({key: 'done-' + v.goal.id, group: 'finished', tone: 'done', label: v.tasks.some(t => t.integrated_commit) ? 'Merged into main' : 'Finished', title: v.title, sub: `${ago(at, now)}${where(v)}`, at, open: () => openGoal(v.goal.id)});
-    } else if (cls === 'history') {
-      const at = stoppedAt(v);
-      if (at && at >= since) rows.push({key: 'stopped-' + v.goal.id, group: 'stopped', tone: 'blocked', label: 'Stopped', title: v.title, sub: `${ago(at, now)}${where(v)}`, at, open: () => openGoal(v.goal.id)});
-    }
-  }
-  const order: AwayGroup[] = ['finished', 'needs', 'stopped'];
-  return rows.sort((a, b) => order.indexOf(a.group) - order.indexOf(b.group) || b.at - a.at);
-}
-
-// The compact banner (a heading and one line of counts, which wraps rather than being cut
-// on a narrow phone), expandable into the rows above. Showing it marks the absence as seen
-// on the host; it stays until the owner leaves Home or says "Got it".
-function AwayBanner({since, openNeed}: {since: number; openNeed: (r: NeedRow) => void}) {
-  const {data, now, openGoal, markSeen} = useArena();
-  const [open, setOpen] = useState(false);
-  const [dismissed, setDismissed] = useState(false);
-  const rows = awayRows(data, since, now, openGoal, openNeed);
-  useEffect(() => {
-    markSeen(); // viewed: the host forgets the absence, the banner stays until Home is left
-  }, []);
-  if (dismissed || !rows.length) return null;
-  const count = (group: AwayGroup) => rows.filter(r => r.group === group).length;
-  const needs = count('needs');
-  const parts = [count('finished') && `${count('finished')} finished`, needs && `${needs} need${needs === 1 ? 's' : ''} you`, count('stopped') && `${count('stopped')} stopped`].filter(Boolean);
-  return (
-    <section className={'away-panel away-banner' + (open ? ' open' : '')} aria-label="Since you were away">
-      <div className="away-line">
-        <button type="button" className="away-toggle" aria-expanded={open} onClick={() => setOpen(o => !o)}>
-          <LiveDot tone="ok" />
-          <span className="away-text">
-            <b>Since you were away</b>
-            <span className="away-counts muted">{parts.join(' · ')}</span>
-          </span>
-          <Icon name="arrow" size={16} />
-        </button>
-        <button type="button" className="text-btn" onClick={() => setDismissed(true)}>
-          Got it
-        </button>
-      </div>
-      {open && (
-        <div className="away-rows">
-          <p className="small muted away-since">Last here {ago(since, now)}</p>
-          {rows.slice(0, 12).map(r => (
-            <button className="list-row press" key={r.key} onClick={r.open}>
-              <Glyph tone={r.tone} size={30} />
-              <span className="list-main">
-                <b className="clamp2">{r.title}</b>
-                <span className="small muted clamp2">
-                  <span className={'tone ' + r.tone}>{r.label}</span> · {r.sub}
-                </span>
-              </span>
-              <Icon name="arrow" size={18} />
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
+const DAY = 86400;
 
 // The conversational input: typing or dictating here talks to the director. Sending opens
 // Chat with the turn under way (in the current conversation, else a new one on the
-// project the host picks).
+// project the host picks). Asking a question never starts a build: only the director does
+// that, on an explicit request to build.
 function AskCard() {
   const {openChat, online} = useArena();
   const [text, setText] = useState('');
@@ -264,7 +178,7 @@ function AskCard() {
         </button>
       )}
       <label htmlFor="home-ask" className="sr-only">
-        Tell Arena what to build
+        Talk to Arena
       </label>
       <textarea
         id="home-ask"
@@ -277,7 +191,7 @@ function AskCard() {
           e.preventDefault();
           submit();
         }}
-        placeholder="Tell Arena what to build…"
+        placeholder="Talk to Arena…"
         enterKeyHint="send"
         autoComplete="off"
       />
@@ -290,6 +204,72 @@ function AskCard() {
         </p>
       )}
     </form>
+  );
+}
+
+// "2 Arena agents · 1 Claude Code session": what a look at the Mac found, counted from its
+// groups. Arena's own work first (an agent Arena records as running but whose process was not
+// found is counted apart, never as working), then what was discovered on the Mac, verified or
+// not. Nothing found: "nothing running".
+const NO_PROCESS = /no agent process was found/i;
+export function macCounts(look: MacActivity): string {
+  const groups = look.groups || {};
+  const managed = groups.managed || [];
+  const missing = managed.filter(a => NO_PROCESS.test(a.label || '')).length;
+  const found = [...(groups.external || []), ...(groups.unknown || [])];
+  const count = (kinds: string[]) => found.filter(a => kinds.includes(a.kind)).length;
+  const known = ['claude', 'codex', 'tests', 'dev_server'];
+  const parts = [
+    [managed.length - missing, 'Arena agent'],
+    [count(['claude']), 'Claude Code session'],
+    [count(['codex']), 'Codex session'],
+    [found.filter(a => !known.includes(a.kind)).length, 'other coding agent'],
+    [count(['tests']), 'test run'],
+    [count(['dev_server']), 'dev server'],
+  ] as [number, string][];
+  const out = parts.filter(([n]) => n > 0).map(([n, word]) => plural(n, word));
+  if (missing) out.push(`${plural(missing, 'Arena agent')} not found`);
+  return out.join(' · ') || 'nothing running';
+}
+
+// One small line about the Mac, from a fresh read-only look when Home opens and when the app
+// comes back to the foreground (never polled). A tap opens the full view; a failed look says
+// so and a tap tries again.
+function MacLine() {
+  const {get, setTab} = useArena();
+  const getRef = useRef(get);
+  getRef.current = get;
+  const [look, setLook] = useState<{data: MacActivity | null; failed: boolean; busy: boolean}>({data: null, failed: false, busy: true});
+  const inflight = useRef(false);
+  const load = useCallback(async () => {
+    if (inflight.current) return;
+    inflight.current = true;
+    setLook(l => ({...l, busy: true}));
+    try {
+      const data = (await getRef.current('mac-activity')) as MacActivity;
+      setLook({data, failed: false, busy: false});
+    } catch {
+      setLook({data: null, failed: true, busy: false});
+    } finally {
+      inflight.current = false;
+    }
+  }, []);
+  useEffect(() => {
+    if (document.visibilityState !== 'hidden') load();
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') load();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [load]);
+  const retry = look.failed && !look.busy;
+  const text = look.data ? macCounts(look.data) : retry ? "couldn't check — tap to retry" : 'checking…';
+  return (
+    <button type="button" className={'mac-line' + (retry ? ' failed' : '')} aria-busy={look.busy} onClick={() => (retry ? load() : setTab('mac'))}>
+      <Icon name={retry ? 'refresh' : 'mac'} size={16} />
+      <span className="mac-line-text">On your Mac: {text}</span>
+      {!retry && <Icon name="arrow" size={14} />}
+    </button>
   );
 }
 
@@ -369,352 +349,136 @@ function useStories(ids: string[], signal: string): Record<string, GoalStory> {
   return stories;
 }
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
-
-// A section heading in the reference's style: spaced capitals and a count pill. A
-// collapsible one is a disclosure button inside the heading that says whether it is open.
-function SectionHead({title, count, open, onToggle, children}: {title: string; count: number; open?: boolean; onToggle?: () => void; children?: React.ReactNode}) {
-  const inner = (
-    <>
-      <span className="section-name">{title}</span>
-      <span className="count-pill num">{count}</span>
-      {onToggle && <Icon name="arrow" size={16} />}
-    </>
-  );
-  return (
-    <div className="section-head">
-      <h2 className="section-label">
-        {onToggle ? (
-          <button type="button" className={'section-toggle' + (open ? ' open' : '')} aria-expanded={open} onClick={onToggle}>
-            {inner}
-          </button>
-        ) : (
-          inner
-        )}
-      </h2>
-      {children}
-    </div>
-  );
+// Work that ended in the last 24 hours, in one line: builds whose blocks all finished, and
+// builds that stopped (a part blocked or failed to merge). Archived builds are not counted;
+// cancelled ones were the owner's own decision and are not news.
+export function recentLine(views: GoalView[], now: number): string {
+  const since = now - DAY;
+  const ended = views.filter(v => !isLive(v));
+  const finished = ended.filter(v => goalClass(v) === 'done' && finishedAt(v) >= since).length;
+  const stopped = ended.filter(v => goalClass(v) === 'history' && stoppedAt(v) >= since).length;
+  return `Finished recently: ${finished ? plural(finished, 'build') : 'none'}${stopped ? ` · ${stopped} stopped` : ''}`;
 }
 
 type ProjectBuild = {project: RecordData; views: GoalView[]};
 
 export function Overview() {
-  const {data, now, openGoal, openChat, setModal, search, awaySince, post, notify, disabled} = useArena();
-  // Captured per absence: marking it seen must not remove the banner mid-read, and coming
-  // back to the app while Home is open shows the new absence.
-  const [away, setAway] = useState(awaySince);
-  useEffect(() => {
-    if (awaySince !== null) setAway(awaySince);
-  }, [awaySince]);
-  const [readyOpen, setReadyOpen] = useState(true);
-  const [finishedOpen, setFinishedOpen] = useState(false);
-  const [selecting, setSelecting] = useState(false);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [archiving, setArchiving] = useState(false);
-  const q = search.trim().toLowerCase();
-  const matches = (text: string) => !q || text.toLowerCase().includes(q);
-
+  const {data, now, openGoal, setModal, setTab} = useArena();
   const views = (data.goals || [])
     .filter(g => !goalArchived(g, data))
     .map(g => goalView(g, data))
     .sort((a, b) => b.goal.created - a.goal.created);
-  const projects = pickableProjects(data);
 
   // One row per project with live work: its newest live build is the one a tap opens.
+  // Finished, stopped and older work never appears here.
   const building: ProjectBuild[] = [];
   for (const v of views.filter(isLive)) {
     const row = building.find(b => b.project.id === v.goal.project_id);
     if (row) row.views.push(v);
     else if (v.project) building.push({project: v.project, views: [v]});
   }
-  const shownBuilding = building.filter(b => matches(`${b.project.name} ${b.views.map(v => v.title).join(' ')}`));
-  const buildingIds = new Set(building.map(b => b.project.id));
-  const ready = projects.filter(p => !buildingIds.has(p.id) && matches(p.name));
-  const finished = views.filter(v => !isLive(v) && ['done', 'history'].includes(goalClass(v)) && matches(`${v.title} ${v.project?.name || ''}`)).sort((a, b) => lastChange(b) - lastChange(a));
   const stories = useStories(
     building.map(b => b.views[0].goal.id),
     building.map(b => goalSignal(b.views[0], data)).join('/'),
   );
 
-  // What a Select can act on now: finished builds and Ready projects on screen. A ticked row
-  // that starts building, or leaves the screen, drops out of the selection.
-  const selectable = [...finished.map(v => 'g:' + v.goal.id), ...ready.map(p => 'p:' + p.id)];
-  const selectableKey = selectable.join(',');
-  useEffect(() => {
-    const keep = new Set(selectable);
-    setPicked(s => ([...s].every(k => keep.has(k)) ? s : new Set([...s].filter(k => keep.has(k)))));
-  }, [selectableKey]);
-  const chosen = [...picked].filter(k => selectable.includes(k));
-
-  // The shared list (archived builds and projects never ask for anything).
+  // What waits on the owner (archived builds and projects never ask for anything), newest
+  // first: one tap opens the decision, the question or the build that needs a sign-in.
   const needRows = needsYouRows(data);
-  const stale = (t: number) => t < now - 86400;
-  const fresh = needRows.filter(r => !stale(r.at));
-  const earlier = needRows.filter(r => stale(r.at));
   const openNeed = (r: NeedRow) => {
     if (r.kind === 'review') setModal({kind: 'review', id: r.id});
     else if (r.goalId) openGoal(r.goalId);
     else setModal({kind: 'task', id: r.id});
   };
-  const needRow = (r: NeedRow) => (
-    <button className="list-row press" key={r.id} onClick={() => openNeed(r)}>
-      <Glyph tone={r.tone} size={32} />
-      <span className="list-main">
-        <b className="clamp2">{r.title}</b>
-        <span className="small muted clamp2">
-          <span className={'tone ' + r.tone}>{r.label}</span> · {ago(r.at, now)}
-          {r.project ? ` · ${r.project}` : ''} · {r.sub}
-        </span>
-      </span>
-      <Icon name="arrow" size={18} />
-    </button>
-  );
-
-  const toggle = (key: string) =>
-    setPicked(s => {
-      const next = new Set(s);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  const startSelecting = () => {
-    setSelecting(true);
-    setFinishedOpen(true);
-    setReadyOpen(true);
-  };
-  const stopSelecting = () => {
-    setSelecting(false);
-    setPicked(new Set());
-  };
-  const selectAll = () => setPicked(s => new Set([...s, ...finished.map(v => 'g:' + v.goal.id)]));
-  const archiveSelected = async () => {
-    if (archiving || !chosen.length) return;
-    setArchiving(true);
-    const goalIds = chosen.filter(k => k.startsWith('g:')).map(k => k.slice(2));
-    const projectIds = chosen.filter(k => k.startsWith('p:')).map(k => k.slice(2));
-    let builds = 0;
-    let projectsDone = 0;
-    const left: string[] = [];
-    try {
-      if (goalIds.length) {
-        const r = await post('goals/archive', {ids: goalIds});
-        builds = (r?.archived || []).length;
-        const reasons = new Map<string, number>();
-        for (const s of r?.skipped || []) reasons.set(s.reason || 'skipped', (reasons.get(s.reason || 'skipped') || 0) + 1);
-        for (const [reason, n] of reasons) left.push(`${plural(n, 'build')} ${reason}`);
-      }
-      for (const id of projectIds) {
-        const p = data.projects.find(x => x.id === id);
-        if (!p) continue;
-        try {
-          await post(`projects/${id}/archive`, {revision: p.rev});
-          projectsDone += 1;
-        } catch (e) {
-          const why = plainError(e).replace(/\.$/, '');
-          left.push(`${p.name} (${why[0].toLowerCase()}${why.slice(1)})`);
-        }
-      }
-      const done = [builds && plural(builds, 'build'), projectsDone && plural(projectsDone, 'project')].filter(Boolean).join(' and ');
-      notify(`${done ? `Archived ${done}. Restore from Archived in the menu.` : 'Nothing was archived.'}${left.length ? ` Left alone: ${left.join('; ')}.` : ''}`);
-      stopSelecting();
-    } catch (e) {
-      notify(plainError(e));
-    } finally {
-      setArchiving(false);
-    }
-  };
-
-  // The newest build of a project (on Home), its plain outcome, and where a tap lands.
-  const latestOf = (projectId: string) => views.find(v => v.goal.project_id === projectId);
-  const readySub = (p: RecordData) => {
-    const v = latestOf(p.id);
-    const paused = p.enabled === false ? 'Paused · ' : '';
-    if (!v) return paused + 'No builds yet';
-    return paused + outcomeLine(v, now).label;
-  };
 
   return (
     <div className="home-screen">
       <AskCard />
-
-      {away !== null && <AwayBanner key={away} since={away} openNeed={openNeed} />}
+      <MacLine />
 
       {needRows.length > 0 && (
-        <Panel title="Needs you" aside={<span className="count num">{needRows.length}</span>} className="accent-amber home-needs">
-          {fresh.map(needRow)}
-          {earlier.length > 0 && (
-            <details className="earlier" open={!fresh.length || undefined}>
-              <summary>
-                Earlier <span className="count num">{earlier.length}</span>
-              </summary>
-              {earlier.map(needRow)}
-            </details>
-          )}
-        </Panel>
+        <section className="home-needs" aria-label="Needs you">
+          {needRows.map(r => (
+            <button type="button" className="need-row" key={r.id} onClick={() => openNeed(r)}>
+              <Glyph tone={r.tone} size={30} />
+              <span className="need-main">
+                <b className="clamp2">{r.title}</b>
+                <span className="small muted clamp2">
+                  <span className={'tone ' + r.tone}>{r.label}</span> · {ago(r.at, now)}
+                  {r.project ? ` · ${r.project}` : ''} · {r.sub}
+                </span>
+              </span>
+              <Icon name="arrow" size={18} />
+            </button>
+          ))}
+        </section>
       )}
 
-      <section className="home-section" aria-label="Active builds">
-        <SectionHead title="Active builds" count={shownBuilding.length} />
-        {shownBuilding.map(({project, views: live}) => {
-          const v = live[0];
-          const story = stories[v.goal.id];
-          const progress = storyProgress(story, workProgress(v, data));
-          // Agents at work, counted as the story counts them (not one still starting).
-          const agents = agentsWorking(new Set(live.flatMap(x => x.tasks.map(t => t.id as string))), data);
-          // An agent the host calls stalled is quiet, not working (its story says how long).
-          const quiet = (story?.blocks || []).filter(b => b.stalled && b.state === 'running');
-          const working = Math.max(0, agents - quiet.length);
-          const quietFor = quiet.length ? `quiet for ${Math.max(...quiet.map(b => quietMinutes(b, data.attempts, now)))} min` : '';
-          const doing = working
-            ? `${plural(working, 'agent')} working${quiet.length ? ` · ${quiet.length} ${quietFor}` : ''}`
-            : quiet.length
-              ? `${plural(quiet.length, 'agent')} ${quietFor}`
-              : live.some(isMerging)
-                ? 'Merging into main'
-                : 'Waiting for an agent';
-          const started = `Started ${ago(v.goal.created, now)}`;
-          return (
-            <div className="home-row-wrap" key={project.id}>
-              {selecting && (
-                <span className="check-slot">
-                  <input type="checkbox" disabled aria-label={`Building ${project.name} is running and cannot be archived`} />
-                  <span className="small muted">running</span>
-                </span>
-              )}
-              <button type="button" className="home-row active-row" onClick={() => openGoal(v.goal.id)}>
-                <span className="tile-icon" aria-hidden="true">
-                  <Icon name="build" size={22} />
-                </span>
-                <span className="home-row-main">
-                  <b className="clamp2">Building {project.name}</b>
-                  <span className="small row-meta">
-                    <LiveDot tone={working ? 'ok' : quiet.length ? 'warn' : 'off'} />
-                    <span className="clamp2">
-                      {doing} · {started}
-                      {live.length > 1 ? ` · ${live.length} builds` : ''}
-                    </span>
-                  </span>
-                  {progress.total > 0 ? (
-                    <>
-                      <span aria-hidden="true">
-                        <Progress done={progress.done} total={progress.total} fraction={progressFraction(progress)} label="" />
-                      </span>
-                      <span className="sr-only">{progressLabel(progress)}</span>
-                    </>
-                  ) : (
-                    <span className="small muted">Planning the work</span>
-                  )}
-                </span>
-                <Icon name="arrow" size={20} />
-              </button>
-            </div>
-          );
-        })}
-        {!shownBuilding.length && <p className="home-empty small muted">{q ? 'No active build matches the search.' : 'Nothing is building right now. Tell Arena what to build above.'}</p>}
-      </section>
-
-      <section className="home-section" aria-label="Ready">
-        <SectionHead title="Ready" count={ready.length} open={readyOpen} onToggle={() => setReadyOpen(o => !o)} />
-        {readyOpen && (
+      {building.length > 0 ? (
+        <section className="home-active" aria-labelledby="home-active-label">
+          <h2 className="tiny-label" id="home-active-label">
+            Active
+          </h2>
           <div className="home-list">
-            {ready.map(p => {
-              const latest = latestOf(p.id);
-              const key = 'p:' + p.id;
+            {building.map(({project, views: live}) => {
+              const v = live[0];
+              const story = stories[v.goal.id];
+              const progress = storyProgress(story, workProgress(v, data));
+              // Agents at work, counted as the story counts them (not one still starting).
+              const agents = agentsWorking(new Set(live.flatMap(x => x.tasks.map(t => t.id as string))), data);
+              // An agent the host calls stalled is quiet, not working (its story says how long).
+              const quiet = (story?.blocks || []).filter(b => b.stalled && b.state === 'running');
+              const working = Math.max(0, agents - quiet.length);
+              const quietFor = quiet.length ? `quiet for ${Math.max(...quiet.map(b => quietMinutes(b, data.attempts, now)))} min` : '';
+              const doing = working
+                ? `${plural(working, 'agent')} working${quiet.length ? ` · ${quiet.length} ${quietFor}` : ''}`
+                : quiet.length
+                  ? `${plural(quiet.length, 'agent')} ${quietFor}`
+                  : live.some(isMerging)
+                    ? 'Merging into main'
+                    : 'Waiting for an agent';
               return (
-                <div className="home-row-wrap" key={p.id}>
-                  {selecting ? (
-                    <label className="home-row ready-row selectable">
-                      <input type="checkbox" checked={picked.has(key)} onChange={() => toggle(key)} aria-label={`Select project ${p.name}`} />
-                      <span className="tile-icon sm" aria-hidden="true">
-                        <Icon name="build" size={18} />
-                      </span>
-                      <span className="home-row-main">
-                        <b className="clamp1">{p.name}</b>
-                        <span className="small muted clamp1">{readySub(p)}</span>
-                      </span>
-                    </label>
-                  ) : (
-                    <>
-                      <button type="button" className="home-row ready-row" onClick={() => (latest ? openGoal(latest.goal.id) : openChat({projectId: p.id}))}>
-                        <span className="tile-icon sm" aria-hidden="true">
-                          <Icon name="build" size={18} />
-                        </span>
-                        <span className="home-row-main">
-                          <b className="clamp1">{p.name}</b>
-                          <span className="small muted clamp1">{readySub(p)}</span>
-                        </span>
-                      </button>
-                      <button type="button" className="play-btn" aria-label={`Chat about ${p.name}`} onClick={() => openChat({projectId: p.id})}>
-                        <Icon name="play" size={18} />
-                      </button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-            {!ready.length && <p className="home-empty small muted">{q ? 'No project matches the search.' : projects.length ? 'Every project is building.' : 'No projects are enrolled on the Mac yet.'}</p>}
-          </div>
-        )}
-      </section>
-
-      <section className="home-section" aria-label="Finished">
-        <SectionHead title="Finished" count={finished.length} open={finishedOpen} onToggle={() => setFinishedOpen(o => !o)}>
-          {(finished.length > 0 || ready.length > 0) && (
-            <button type="button" className="text-btn" onClick={selecting ? stopSelecting : startSelecting}>
-              {selecting ? 'Cancel' : 'Select'}
-            </button>
-          )}
-        </SectionHead>
-        {finishedOpen && (
-          <div className="home-list">
-            {finished.slice(0, 40).map(v => {
-              const out = outcomeLine(v, now);
-              const key = 'g:' + v.goal.id;
-              const body = (
-                <>
-                  <Glyph tone={out.tone} size={30} />
+                <button type="button" className="home-row active-row" key={project.id} onClick={() => openGoal(v.goal.id)}>
+                  <span className="tile-icon" aria-hidden="true">
+                    <Icon name="build" size={22} />
+                  </span>
                   <span className="home-row-main">
-                    <b className="clamp2">{v.title}</b>
-                    <span className="small muted clamp2">
-                      {v.project ? `${v.project.name} · ` : ''}
-                      <span className={'tone ' + out.tone}>{out.label}</span>
+                    <b className="clamp2">Building {project.name}</b>
+                    <span className="small row-meta">
+                      <LiveDot tone={working ? 'ok' : quiet.length ? 'warn' : 'off'} />
+                      <span className="clamp2">
+                        {doing} · <span className="nowrap">Started {ago(v.goal.created, now)}</span>
+                        {live.length > 1 ? ` · ${live.length} builds` : ''}
+                      </span>
                     </span>
+                    {progress.total > 0 ? (
+                      <>
+                        <span aria-hidden="true">
+                          <Progress done={progress.done} total={progress.total} fraction={progressFraction(progress)} label="" />
+                        </span>
+                        <span className="sr-only">{progressLabel(progress)}</span>
+                      </>
+                    ) : (
+                      <span className="small muted">Planning the work</span>
+                    )}
                   </span>
-                </>
-              );
-              return (
-                <div className="home-row-wrap" key={v.goal.id}>
-                  {selecting ? (
-                    <label className="home-row finished-row selectable">
-                      <input type="checkbox" checked={picked.has(key)} onChange={() => toggle(key)} aria-label={`Select ${v.title}`} />
-                      {body}
-                    </label>
-                  ) : (
-                    <button type="button" className="home-row finished-row" onClick={() => openGoal(v.goal.id)}>
-                      {body}
-                      <Icon name="arrow" size={18} />
-                    </button>
-                  )}
-                </div>
+                  <Icon name="arrow" size={20} />
+                </button>
               );
             })}
-            {!finished.length && <p className="home-empty small muted">Finished and stopped builds collect here.</p>}
           </div>
-        )}
-      </section>
-
-      {selecting && (
-        <div className="select-bar" role="group" aria-label="Archive selection">
-          <button type="button" className="btn" onClick={selectAll} disabled={!finished.length}>
-            Select all
-          </button>
-          <button type="button" className="btn primary" disabled={disabled || archiving || !chosen.length} onClick={archiveSelected}>
-            <Icon name="archive" size={16} />
-            Archive selected ({chosen.length})
-          </button>
+        </section>
+      ) : (
+        <div className="home-idle">
+          <p className="idle-line">Nothing is building right now.</p>
+          <p className="idle-hint">Tell Arena what to build.</p>
         </div>
       )}
+
+      <button type="button" className="finished-line" onClick={() => setTab('builds')}>
+        <span>{recentLine(views, now)}</span>
+        <Icon name="arrow" size={14} />
+      </button>
     </div>
   );
 }

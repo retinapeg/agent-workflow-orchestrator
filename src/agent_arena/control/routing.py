@@ -3,8 +3,14 @@
 Speed preferences are policy, not latency promises. Measured successful durations
 replace the initial preference only when at least three comparable samples exist.
 No Fast mode, API fallback, authentication changes or new account slots.
+
+Auto (the default) routes each task by need. The owner may pin a provider's model and
+effort from the phone (meta ``routing_override``); a pinned provider then runs every
+attempt it is routed (build, review and director phases) on exactly that pair, while
+which provider takes which phase, and every check, retry and review rule, stay as they are.
 """
 
+import contextlib
 import json
 import statistics
 import time
@@ -12,6 +18,10 @@ from pathlib import Path
 
 EFFORTS = ["low", "medium", "high", "xhigh", "max"]
 FAMILIES = ["gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol", "gpt-6.1-terra", "gpt-6-astra"]
+PROVIDERS = ("codex", "claude")
+# What Claude may be pinned to. Claude Code takes every --effort level for these models
+# (and lowers one a model cannot use itself); Codex choices come from its catalog.
+CLAUDE_CHOICES = ("sonnet", "claude-opus-5-5", "claude-fable-5-1")
 
 
 def capabilities(account):
@@ -34,6 +44,66 @@ def capabilities(account):
     # Claude's generic --effort help does not establish per-model support.
     # Keep the enrolled model and provider defaults unless validated metadata exists.
     return account.get("model_capabilities", {})
+
+
+def normalize_override(value):
+    """The owner's pins as {"codex": pin | None, "claude": pin | None}, a pin being
+    {"model", "effort"}; a provider absent, null or malformed is Auto."""
+    value = value if isinstance(value, dict) else {}
+    out = {}
+    for provider in PROVIDERS:
+        pin = value.get(provider)
+        model = pin.get("model") if isinstance(pin, dict) else None
+        effort = pin.get("effort") if isinstance(pin, dict) else None
+        valid = isinstance(model, str) and model and isinstance(effort, str) and effort
+        out[provider] = {"model": model, "effort": effort} if valid else None
+    return out
+
+
+def load_override(db):
+    """The stored pins (meta ``routing_override``), read in the caller's transaction."""
+    row = db.execute("SELECT value FROM meta WHERE key='routing_override'").fetchone()
+    try:
+        return normalize_override(json.loads(row[0]) if row else None)
+    except ValueError:
+        return normalize_override(None)
+
+
+def stored_override(store):
+    """The stored pins, read on a connection of its own (for arena_status)."""
+    with contextlib.closing(store.connect()) as db:
+        return load_override(db)
+
+
+def routing_options(accounts):
+    """What the owner can pin each provider to: Codex models and efforts exactly as its
+    catalog advertises them (models without a known effort level are left out), and
+    Claude's fixed choices with every effort level."""
+    codex = {}
+    for account in accounts:
+        if account.get("provider") == "codex":
+            for slug, levels in capabilities(account).items():
+                codex.setdefault(slug, set()).update(levels)
+    return {
+        "codex": {
+            "models": [
+                {"slug": slug, "efforts": [e for e in EFFORTS if e in levels]}
+                for slug, levels in codex.items()
+                if levels
+            ]
+        },
+        "claude": {"models": [{"slug": slug, "efforts": list(EFFORTS)} for slug in CLAUDE_CHOICES]},
+    }
+
+
+def unavailable(account, model, attempts):
+    """The CLI reported this model unavailable on this slot recently (model_unavailable)."""
+    return any(
+        a.get("model") == model
+        and a["account_id"] == account["id"]
+        and a["state"] == "model_unavailable"
+        for a in attempts[-100:]
+    )
 
 
 def classify(task):
@@ -65,7 +135,10 @@ def director_tier(task, repair):
     return ("mid", "high") if light else ("astra", "high")
 
 
-def select_route(task, accounts, attempts):
+def select_route(task, accounts, attempts, override=None):
+    """The best (account, route) for this task, or None. ``override`` holds the owner's
+    pins (normalize_override); None, or a provider pinned to nothing, routes on Auto."""
+    pins = normalize_override(override)
     complexity, risk = classify(task)
     director = task.get("director") and task["phase"] in {"plan", "direct", "replan"}
     previous = [
@@ -120,6 +193,15 @@ def select_route(task, accounts, attempts):
             models = [m for m in suitable if m in available]
         else:
             models = [account["model"]]
+        # The owner's pin replaces the model and effort for every attempt routed to this
+        # provider. A pinned model the CLI reported unavailable on this slot falls back to
+        # Auto for the attempt, and the route records the pin it could not use.
+        pin = pins.get(account["provider"])
+        skipped = pin if pin and unavailable(account, pin["model"], attempts) else None
+        if skipped:
+            pin = None
+        if pin:
+            models = [pin["model"]]
         for index, model in enumerate(models):
             history = [
                 a
@@ -131,12 +213,7 @@ def select_route(task, accounts, attempts):
                 and a.get("routing", {}).get("risk") == risk
                 and a.get("routing", {}).get("complexity") == complexity
             ][-20:]
-            if any(
-                a.get("model") == model
-                and a["account_id"] == account["id"]
-                and a["state"] == "model_unavailable"
-                for a in attempts[-100:]
-            ):
+            if unavailable(account, model, attempts):
                 continue
             desired = (
                 director_tier(task, repair)[1]
@@ -159,6 +236,8 @@ def select_route(task, accounts, attempts):
                 if supported
                 else None
             )
+            if pin:
+                effort = pin["effort"]
             successes = [a for a in history if a["state"] == "passed"]
             failure_rate = (len(history) - len(successes)) / len(history) if history else 0
             duration = (
@@ -190,6 +269,8 @@ def select_route(task, accounts, attempts):
                 if task.get("retries") and not repair
                 else "switch_provider"
                 if failure and not same_failed_provider
+                else "owner_override"
+                if pin
                 else "increase_effort"
                 if repair and effort
                 else "provider_defaults"
@@ -217,6 +298,13 @@ def select_route(task, accounts, attempts):
                 if complexity == "simple" and risk == "low"
                 else f"Standard: {complexity}, {risk} risk → {model} at {shown}"
             )
+            if pin:
+                reason = f"Owner override: {model} at {effort}"
+            elif skipped:
+                reason = (
+                    f"Owner override unavailable ({skipped['model']} at {skipped['effort']}); "
+                    f"Auto: {reason}"
+                )
             options.append(
                 (
                     score,
@@ -233,12 +321,15 @@ def select_route(task, accounts, attempts):
                         "history_samples": len(history),
                         "successful_samples": len(successes),
                         "median_seconds": duration,
-                        "capability_source": "advertised_cli_catalog"
+                        "capability_source": "owner_override"
+                        if pin
+                        else "advertised_cli_catalog"
                         if available and account["provider"] == "codex"
                         else "validated_probe"
                         if available
                         else "enrolled_model_provider_defaults",
                         "failure_attempt": failure["id"] if failure else None,
+                        **({"override_unavailable": dict(skipped)} if skipped else {}),
                     },
                 )
             )

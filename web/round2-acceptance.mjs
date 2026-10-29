@@ -4,9 +4,10 @@
 // service on 8791 are never touched. ARENA_SLICES=A,B limits the sections that run (the
 // other slices keep their last recorded result in result.json); ARENA_REAL_DB names the
 // database to copy (default .arena-control/control.sqlite3); ARENA_EVIDENCE redirects the
-// output (a trial run that must not replace the recorded evidence). Round 3: navigation is the
-// owner's ☰ Menu (no bottom navigation); a build opens as its plain-English story, and its
-// technical view (#goal-pick) is one step further, under the story's ⋯ → Advanced.
+// output (a trial run that must not replace the recorded evidence). Round 4: navigation is the
+// owner's ☰ menu at every width (no sidebar, no bottom navigation); a build opens as its
+// plain-English story, and its technical view (#goal-pick) is an Advanced mode screen, under
+// the story's ⋯ → Technical build view once Advanced mode is on.
 import {spawn, spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -24,12 +25,18 @@ const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.real_
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
 let previous={};try{previous=JSON.parse(readFileSync(output+'/result.json','utf8'))}catch{}
 let browser;const result={state,viewport:390,userAgent:ANDROID,dispatch:false,ran:wanted,platform:process.platform,slices:{...(previous.slices||{})}};
-// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(['Projects','Agents','Review'].includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
+// Advanced mode on or off from the ☰ menu's switch (remembered on this device).
+const advancedMode=async(page,on)=>{await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),sw=sheet.getByRole('switch',{name:'Advanced mode'});if(await sw.getAttribute('aria-checked')!==String(on))await sw.click();await page.keyboard.press('Escape');await sheet.waitFor({state:'hidden'});};
 // The app is up (paired, snapshot read): its menu button is on screen.
 const appUp=page=>page.getByRole('button',{name:/^Menu\b/}).waitFor();
-// The technical view of a build opened as a story: ⋯ → Advanced.
-const advanced=async page=>{await page.getByRole('button',{name:'Build options',exact:true}).click();await page.getByRole('menuitem',{name:'Advanced',exact:true}).click();await page.locator('#goal-pick').waitFor();};
+// The technical view of a build opened as a story (Advanced mode): ⋯ → Technical build view.
+const advanced=async page=>{await advancedMode(page,true);await page.getByRole('button',{name:'Build options',exact:true}).click();await page.getByRole('menuitem',{name:'Technical build view',exact:true}).click();await page.locator('#goal-pick').waitFor();};
+// The technical build view from Build history (Advanced mode).
+const technical=async page=>{await advancedMode(page,true);await go(page,'Build history');await page.getByRole('button',{name:'Technical build view',exact:true}).click();await page.locator('#goal-pick').waitFor();};
 const overflow=page=>page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const uptime=async s=>{const wait=(ready+s)*1000-Date.now();if(wait>0)await sleep(wait)};
@@ -52,6 +59,25 @@ const api=(page,path)=>page.evaluate(async p=>{const r=await fetch('/api/v1/'+p,
 // Open one conversation in Chat the way the app does: the remembered thread on this device.
 const openChat=async(page,id)=>{await page.evaluate(i=>localStorage.setItem('arena.conversation',i),id);await page.reload();await appUp(page);await go(page,'Chats');await page.getByLabel('Message Arena').waitFor();};
 const flat=async loc=>(await loc.innerText()).replace(/\s+/g,' ').trim();
+// The director's plan task, by the host's rule (story.is_plan_task).
+const planTask=t=>!t.planner_attempt&&(t.phase==='plan'||t.phase==='replan'||'planned_tasks' in t);
+// Home's "Finished recently" line as the host's records tell it: in the last 24 hours, builds
+// (not archived, nor their project) whose work all finished, and builds that stopped.
+const recentFromRecords=async page=>{
+ const snap=await api(page,'overview');const since=snap.server_time-86400;
+ const shelved=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
+ let finished=0,stopped=0;
+ for(const g of snap.goals.filter(g=>!g.archived&&!shelved.has(g.project_id))){
+  const s=await api(page,'goals/'+g.id+'/story');
+  const work=snap.tasks.filter(t=>t.goal_id===g.id&&!planTask(t));
+  if(s.status==='completed'&&Math.max(0,...work.filter(t=>t.state==='completed').map(t=>t.updated||0))>=since)finished++;
+  if(s.status==='blocked'&&Math.max(0,...(s.blocks||[]).filter(b=>b.state==='blocked').map(b=>b.updated||0))>=since)stopped++;
+ }
+ return `Finished recently: ${finished?`${finished} build${finished===1?'':'s'}`:'none'}${stopped?` · ${stopped} stopped`:''}`;
+};
+// Home's line agrees with the records read just before or just after it (a build can cross the
+// 24-hour mark in between).
+const recentOnHome=async page=>{const before=await recentFromRecords(page);const shown=await flat(page.locator('.finished-line'));const after=await recentFromRecords(page);return {shown,expected:before===after?before:[before,after],ok:shown===before||shown===after}};
 // Round 3: Chat's default view is plain English. No commit hash, file name, path, exit code or
 // shell command ("$ …", "pytest …") outside a disclosure the owner opens.
 const MACHINERY=[[/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/,'a commit hash'],[/\b[\w-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|sh|md|css|html)\b/,'a file name'],[/(?:^|\s)(?:~|\.{0,2})\/[\w.-]+\/[\w./-]+/,'a path'],[/Traceback|exit=-?\d+|exit code|timeout=True|stderr/i,'terminal output'],[/(?:^|\s)\$ |\bpytest\b|\brg -n\b|\bgit log\b/,'a shell command']];
@@ -68,42 +94,39 @@ try{
  await appUp(page);
 
  if(wanted.includes('A')){
-  // A. "Since you were away": the paired session was last seen 12 hours ago, or before the
-  // copy's newest recorded activity if that is older (a copy ages), so the absence always
-  // spans something to report. The app is parked first so no request of its own (the chat
-  // it opens on first use, a poll) lands after the change and records the device as seen.
+  // A. Back after time away (Round 4: Home has no "Since you were away" banner). The paired
+  // session was last seen 12 hours ago, or before the copy's newest recorded activity if that is
+  // older (a copy ages), so the absence spans something. Home shows what it always shows: one
+  // line, "Finished recently: …", counted from the host's records for the last 24 hours, which
+  // opens Build history, where one tap opens a build. The app is parked first so no request of
+  // its own lands after the change and records the device as seen.
   const r={};
   await page.goto('about:blank');await sleep(1500);
   sql(`UPDATE sessions SET last_seen=MIN(strftime('%s','now')-43200,(SELECT MAX(json_extract(data,'$.updated')) FROM tasks)-600)`);
-  // Home is the screen the app opens on, and showing the summary marks the absence seen, so
-  // the host is asked first (same device cookie, before the app loads).
   const session=await (await page.request.get(base+'/api/v1/session')).json();r.awaySince=session.away_since;
   if(typeof session.away_since!=='number')throw Error('Session does not report the absence: '+JSON.stringify(session));
   await page.goto(base);await appUp(page);
   await go(page,'Home');
-  // Round 3: a compact one-line banner that expands into the same rows.
-  const panel=page.locator('.away-panel');await panel.waitFor({timeout:10000});
-  r.line=(await panel.locator('.away-toggle').innerText()).replace(/\s+/g,' ').trim();
-  await panel.getByRole('button',{name:/Since you were away/}).click();
-  const rows=panel.locator('.list-row');await rows.first().waitFor();r.rows=await rows.count();
-  r.labels=(await rows.locator('.tone').allInnerTexts()).slice(0,12);
-  if(!r.rows)throw Error('Away panel has no rows');
-  if(await overflow(page))throw Error('Horizontal overflow on Home with the away panel');
-  await page.screenshot({path:output+'/a-since-away-390.png'});
-  // Viewing marks it seen on the host; the panel stays until the owner leaves Home.
-  await sleep(800);
-  r.seenAfterView=(await api(page,'session')).away_since;
-  if(r.seenAfterView!==null)throw Error('Absence not marked seen after viewing');
-  if(!(await panel.isVisible()))throw Error('Panel vanished while being read');
-  // One tap opens the build.
-  const first=await rows.first().locator('b').innerText();
-  await rows.first().click();
+  await page.getByLabel('Talk to Arena').waitFor();
+  r.banner=await page.locator('.away-panel, .away-banner').count()+await page.getByText(/Since you were away/i).count();
+  if(r.banner)throw Error('Home shows an away banner');
+  r.lines=await page.locator('.finished-line').count();
+  if(r.lines!==1)throw Error('Home has '+r.lines+' "Finished recently" lines');
+  r.recent=await recentOnHome(page);
+  if(!r.recent.ok)throw Error('Home says "'+r.recent.shown+'"; the records say '+JSON.stringify(r.recent.expected));
+  if(await overflow(page))throw Error('Horizontal overflow on Home after an absence');
+  await page.screenshot({path:output+'/a-home-after-away-390.png'});
+  // The line opens Build history; one tap there opens the build.
+  await page.locator('.finished-line').click();
+  await page.getByRole('heading',{name:'Build history',exact:true}).waitFor();
+  r.sections=await page.locator('.history .home-section').evaluateAll(s=>s.map(x=>x.getAttribute('aria-label')));
+  await page.screenshot({path:output+'/a-build-history-390.png'});
+  const row=page.locator('.history .finished-row').first();
+  const first=await row.locator('b').innerText();
+  await row.click();
   await page.locator('.screen.story .story-title').waitFor();
   r.opened={row:first,build:await page.locator('.screen.story .story-title').innerText()};
   await page.screenshot({path:output+'/a-tap-into-build-390.png'});
-  await go(page,'Home');
-  await page.getByLabel('Tell Arena what to build').waitFor();
-  if(await page.locator('.away-panel').count())throw Error('Away panel shown again after it was seen');
   result.slices.A=r;console.log('A',JSON.stringify(r));
  }
 
@@ -114,11 +137,8 @@ try{
   const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
   const goals=[...snap.goals].sort((a,b)=>b.created-a.created);
   const integrated=goals.find(g=>!archivedIds.has(g.project_id)&&snap.tasks.some(t=>t.goal_id===g.id&&t.integrated_commit));
-  // The technical view, from Builds → Advanced (the build's record lives there).
-  await go(page,'Builds');
-  await page.locator('details.advanced > summary').click();
-  await page.getByRole('button',{name:'Technical view',exact:true}).click();
-  await page.locator('#goal-pick').waitFor();
+  // The technical view (Advanced mode), from Build history (the build's record lives there).
+  await technical(page);
   await page.locator('#goal-pick').selectOption(integrated.id);
   // The first row of the Agent stack is the first non-cancelled child task (by creation).
   const children=snap.tasks.filter(t=>t.goal_id===integrated.id&&!(t.director&&(t.phase==='plan'||t.phase==='replan'))).sort((a,b)=>a.created-b.created).filter(t=>t.state!=='cancelled');

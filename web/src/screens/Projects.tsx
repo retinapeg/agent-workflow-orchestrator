@@ -221,13 +221,11 @@ function ProjectRow({p, expanded, onToggle}: {p: RecordData; expanded: boolean; 
 }
 
 export function Projects() {
-  const {data, disabled, setModal, search} = useArena();
+  const {data, disabled, setModal} = useArena();
   const [open, setOpen] = useState<string | null>(null);
-  const q = search.trim().toLowerCase();
-  const matching = data.projects.filter(p => !q || `${p.name} ${p.repo}`.toLowerCase().includes(q));
-  const projects = matching.filter(p => !isArchived(p));
-  const archived = matching.filter(p => isArchived(p));
-  const provisions = (data.provisions || []).filter(p => !q || `${p.name} ${p.slug} ${p.github?.full_name || ''}`.toLowerCase().includes(q));
+  const projects = data.projects.filter(p => !isArchived(p));
+  const archived = data.projects.filter(p => isArchived(p));
+  const provisions = data.provisions || [];
   const toggle = (id: string) => setOpen(cur => (cur === id ? null : id));
   return (
     <>
@@ -264,12 +262,8 @@ export function Projects() {
         ))}
         {!projects.length && (
           <div className="panel-body">
-            <Empty title={q ? 'No projects match' : archived.length ? 'Every project is archived' : 'No enrolled projects'}>
-              {q
-                ? 'Clear the search to see every project.'
-                : archived.length
-                  ? 'Unarchive one below, or enrol a repository on the host.'
-                  : 'Enroll a repository on the host with a reviewed project manifest. Requests can only touch enrolled paths and run their frozen checks.'}
+            <Empty title={archived.length ? 'Every project is archived' : 'No enrolled projects'}>
+              {archived.length ? 'Unarchive one below, or enrol a repository on the host.' : 'Enroll a repository on the host with a reviewed project manifest. Requests can only touch enrolled paths and run their frozen checks.'}
             </Empty>
           </div>
         )}

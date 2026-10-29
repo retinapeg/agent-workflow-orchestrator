@@ -37,7 +37,9 @@
   --radius-lg: 20px;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
-  --side: 248px;
+  /* One centred column at every width (the old dashboards, in Advanced mode, keep a wide one). */
+  --col: 560px;
+  --gutter: 16px;
   font-family: var(--font);
   font-size: 15px;
   line-height: 1.5;
@@ -253,14 +255,6 @@ pre,
   font-size: 40px;
   letter-spacing: 0.3em;
   margin-top: 8px;
-}
-.brand-sub {
-  display: block;
-  font-size: 10px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-top: 5px;
 }
 .tagline {
   display: block;
@@ -840,172 +834,44 @@ details.disclosure > summary .muted {
 }
 
 /* Shell ---------------------------------------------------------------- */
+/* One top bar and one centred column at every width: no sidebar, no permanent navigation. */
 .shell {
   min-height: 100vh;
 }
-.sidebar {
-  width: var(--side);
-  position: fixed;
-  inset: 0 auto 0 0;
-  border-right: 1px solid var(--line-2);
-  padding: 22px 14px 18px;
-  background: linear-gradient(180deg, #0a1020 0%, #070b14 100%);
-  box-shadow: inset -1px 0 0 rgba(43, 123, 255, 0.12), 8px 0 40px -30px var(--glow);
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  z-index: 10;
+.shell.wide {
+  --col: 1180px;
+}
+.topbar,
+main {
+  width: 100%;
+  max-width: calc(var(--col) + 2 * var(--gutter));
+  margin: 0 auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+  min-width: 0;
+}
+main {
+  padding-bottom: calc(48px + env(safe-area-inset-bottom));
 }
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.side-brand {
-  padding: 0 8px;
-}
-.nav {
-  display: grid;
-  gap: 6px;
-}
-.nav-btn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border: 1px solid transparent;
-  background: transparent;
-  min-height: 46px;
-  text-align: left;
-  padding: 0 12px;
-  border-radius: 12px;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
-  position: relative;
-}
-.nav-btn:hover {
-  color: var(--ink);
-}
-.nav-icon {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
-  flex: none;
-}
-.nav-btn.active {
-  background: linear-gradient(180deg, rgba(43, 123, 255, 0.28), rgba(43, 123, 255, 0.1));
-  border-color: rgba(111, 176, 255, 0.55);
-  color: var(--ice);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 0 18px -6px var(--glow);
-}
-.nav-btn.active .nav-icon {
-  color: var(--ice);
-  text-shadow: 0 0 10px var(--electric);
-}
-.nav-btn.active .nav-icon svg {
-  filter: drop-shadow(0 0 6px rgba(79, 163, 255, 0.9));
-}
-.nav-label {
-  flex: 1;
-}
-.nav-count {
-  font-size: 11px;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  background: var(--cobalt-face);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow: 0 0 10px var(--glow);
-}
-.side-status {
-  margin-top: auto;
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, var(--bg-3), var(--bg-1));
-  box-shadow: inset 0 1px 0 var(--bevel), 0 0 16px -8px var(--glow);
-  padding: 12px 14px;
-  display: grid;
-  gap: 6px;
-  text-align: left;
-  color: var(--ink-2);
-}
-.side-status .k {
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
-  font-size: 10px;
-  font-weight: 700;
-}
-.side-status .v {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 13px;
-}
-.side-status .v.small {
-  font-size: 12px;
-  color: var(--muted);
-  font-weight: 500;
-}
-main {
-  margin-left: var(--side);
-  padding: 0 32px 48px;
-  max-width: 1600px;
-  min-width: 0;
-}
 .topbar {
-  min-height: 72px;
+  min-height: 76px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 20px;
-}
-.search {
-  flex: 1;
-  max-width: 460px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0 14px;
-  border-radius: 22px;
-  border: 1px solid var(--line-2);
-  background: var(--bg-1);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(43, 123, 255, 0.08);
-  color: var(--muted);
-}
-.search:focus-within {
-  border-color: var(--electric);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6), 0 0 16px -4px var(--glow);
-}
-.search input {
-  flex: 1;
-  min-width: 0;
-  border: 0;
-  background: transparent;
-  color: var(--ink);
-  font-size: 14px;
-  outline: none;
-}
-.search input::placeholder {
-  color: var(--dim);
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-top: env(safe-area-inset-top);
 }
 .topbar-actions {
   display: flex;
   align-items: center;
   gap: 10px;
-}
-.mobile-brand {
-  display: none;
+  flex: none;
 }
 .instrument {
   display: flex;
@@ -2642,8 +2508,8 @@ pre.code .d-file {
 /* Round 3: the personal engineering director --------------------------------------
    Home, the ☰ menu, build stories, block detail, Mac activity, history and archive. */
 
-/* Top bar: lion + wordmark on the left, one menu button on the right (phones). */
-.mobile-brand {
+/* Top bar: lion + wordmark (Home) on the left, one menu button on the right, at every width. */
+.home-brand {
   border: 0;
   background: none;
   padding: 0;
@@ -2651,13 +2517,14 @@ pre.code .d-file {
   text-align: left;
   min-height: 44px;
   gap: 14px;
+  min-width: 0;
 }
-.mobile-brand .wordmark {
+.home-brand .wordmark {
   font-size: 21px;
   letter-spacing: 0.46em;
 }
 .menu-btn {
-  display: none;
+  display: grid;
   width: 50px;
   height: 50px;
   flex: none;
@@ -2683,71 +2550,229 @@ pre.code .d-file {
   background: var(--amber);
   box-shadow: 0 0 8px rgba(255, 191, 77, 0.8);
 }
-.nav-hint {
-  color: var(--dim);
-  font-weight: 500;
-  font-size: 12px;
-}
-.nav-rule {
-  display: block;
-  height: 1px;
-  margin: 6px 6px;
-  background: var(--line);
-}
-.nav-btn.paused {
+/* Advanced mode is on: a small label beside ☰ says so. */
+.mode-badge {
+  flex: none;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 191, 77, 0.55);
+  background: var(--amber-bg);
   color: var(--amber);
-}
-.nav-btn:disabled {
-  opacity: 0.5;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-/* The menu sheet: a panel under the menu button, every item one tap. */
+/* Advanced mode and a pinned model: small labels beside ☰, side by side (stacked on a phone
+   when both show). */
+.mode-badges {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mode-badge.pinned-badge {
+  border-color: rgba(111, 176, 255, 0.6);
+  background: rgba(43, 123, 255, 0.14);
+  color: var(--ice);
+}
+@media (max-width: 420px) {
+  .mode-badges:has(.mode-badge + .mode-badge) {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+  }
+  .mode-badges:has(.mode-badge + .mode-badge) .mode-badge {
+    padding: 1px 7px;
+    font-size: 10px;
+  }
+}
+
+/* The Models sheet: a small dialog (a bottom sheet on a phone); per agent, Auto or a pinned
+   model and effort. */
+dialog.small-sheet {
+  width: min(460px, calc(100vw - 24px));
+}
+@media (max-width: 520px) {
+  dialog.small-sheet {
+    margin: auto 12px calc(12px + env(safe-area-inset-bottom));
+    max-height: 88dvh;
+  }
+}
+.models-sheet {
+  display: grid;
+  gap: 12px;
+}
+.models-sheet .note {
+  margin: 0;
+}
+.model-choice {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border: 1px solid var(--line-2);
+  border-radius: 16px;
+  background: var(--bg-1);
+}
+.model-choice .section-title {
+  margin: 0;
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  color: var(--ink-2);
+  font-weight: 600;
+  cursor: pointer;
+}
+.check-row input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex: none;
+  accent-color: var(--electric);
+}
+.model-pickers {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  .model-pickers {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The ☰ menu: a compact dropdown anchored under the button (App places it), every item one
+   tap. Backdrop taps, Escape and the back gesture close it. */
 dialog.menu-sheet {
-  padding: 0;
-  width: min(340px, calc(100vw - 24px));
+  padding: 6px;
+  width: min(300px, calc(100vw - 24px));
   max-width: calc(100vw - 24px);
-  max-height: calc(100dvh - 24px);
-  margin: calc(12px + env(safe-area-inset-top)) 12px auto auto;
-  border-radius: var(--radius-lg);
-  border-bottom: 1px solid var(--line-2);
+  max-height: calc(100dvh - var(--menu-top, 72px) - 12px);
+  margin: var(--menu-top, 72px) var(--menu-right, 16px) auto auto;
+  border-radius: 18px;
+  border: 1px solid var(--line-2);
   overflow: auto;
   overscroll-behavior: contain;
 }
 dialog.menu-sheet::backdrop {
-  background: rgba(2, 5, 12, 0.7);
-}
-.menu-inner {
-  padding: 10px;
-  display: grid;
-  gap: 4px;
-}
-.menu-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 2px 2px 6px 12px;
+  background: rgba(2, 5, 12, 0.55);
 }
 .menu-items {
   display: grid;
   gap: 2px;
 }
-.menu-items .nav-btn {
+.menu-item {
   width: 100%;
-  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
   color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
 }
-.menu-items .nav-btn.active {
+/* Hover only where there is a pointer that hovers: a tap on a phone leaves no sticky highlight. */
+@media (hover: hover) {
+  .menu-item:hover {
+    color: var(--ink);
+    background: rgba(43, 123, 255, 0.08);
+  }
+}
+.menu-item.active {
+  background: linear-gradient(180deg, rgba(43, 123, 255, 0.28), rgba(43, 123, 255, 0.1));
+  border-color: rgba(111, 176, 255, 0.55);
   color: var(--ice);
 }
+.menu-item.paused {
+  color: var(--amber);
+}
+.menu-item:disabled {
+  opacity: 0.5;
+}
+.menu-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+}
+.menu-label {
+  flex: 1;
+  min-width: 0;
+}
+.menu-count {
+  font-size: 11px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--cobalt-face);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+.menu-rule {
+  display: block;
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--line);
+}
+.menu-hint {
+  display: block;
+  color: var(--dim);
+  font-weight: 500;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.mode-switch {
+  min-height: 52px;
+  padding-left: 12px;
+}
+.switch-track {
+  flex: none;
+  width: 38px;
+  height: 22px;
+  border-radius: 11px;
+  border: 1px solid var(--line-2);
+  background: var(--bg-1);
+  position: relative;
+  transition: background 0.15s;
+}
+.switch-track i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition: transform 0.15s;
+}
+.mode-switch.on .switch-track {
+  background: var(--cobalt-face);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.mode-switch.on .switch-track i {
+  transform: translateX(16px);
+  background: #fff;
+}
 
-/* Shared screen frame for Home, story, block, Mac, history and archive. */
+/* Shared screen frame: one column filling the centred main column. */
 .home-screen,
 .screen {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 18px;
-  max-width: 760px;
-  margin: 0 auto;
   min-width: 0;
 }
 .screen-head {
@@ -2888,64 +2913,122 @@ dialog.menu-sheet::backdrop {
   color: var(--amber);
 }
 
-/* Home: the compact "Since you were away" line. */
-.away-banner {
-  border: 1px solid rgba(79, 163, 255, 0.45);
-  border-radius: 16px;
-  background: rgba(43, 123, 255, 0.07);
-  overflow: hidden;
-}
-.away-line {
-  display: flex;
+/* Home: one small line about the Mac and one about recently finished work. Both wrap rather
+   than being cut, and are one tap each (the Mac view; Build history). */
+.mac-line,
+.finished-line {
+  justify-self: start;
+  max-width: 100%;
+  display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding-right: 8px;
-}
-.away-toggle {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 48px;
-  padding: 0 12px;
+  gap: 8px;
+  min-height: 40px;
+  padding: 4px 6px;
+  margin: -6px 0 -4px;
   border: 0;
+  border-radius: 10px;
   background: none;
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.4;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.mac-line:hover,
+.finished-line:hover {
+  color: var(--ink-2);
+  background: rgba(43, 123, 255, 0.07);
+}
+.mac-line > svg:first-child {
+  color: var(--electric-2);
+}
+.mac-line > svg:last-child,
+.finished-line > svg {
+  color: var(--dim);
+}
+.mac-line.failed {
+  color: var(--amber);
+}
+.mac-line.failed > svg {
+  color: var(--amber);
+}
+.mac-line-text {
+  min-width: 0;
+}
+.finished-line {
+  margin-top: -2px;
+}
+
+/* Home: what needs the owner, one compact row each (only when something does). */
+.home-needs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.need-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 56px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 191, 77, 0.45);
+  background: linear-gradient(180deg, rgba(255, 191, 77, 0.1), rgba(255, 191, 77, 0.03));
   color: var(--ink);
   text-align: left;
-  font-size: 14px;
+  font: inherit;
 }
-.away-text {
+.need-row:hover {
+  border-color: rgba(255, 191, 77, 0.7);
+}
+.need-row > svg {
+  color: var(--amber);
+}
+.need-main {
   flex: 1;
   min-width: 0;
   display: grid;
-  gap: 1px;
-  padding: 8px 0;
-  line-height: 1.35;
+  gap: 2px;
+}
+.need-main b {
+  font-size: 15px;
+  font-weight: 650;
   overflow-wrap: anywhere;
 }
-.away-counts {
-  font-size: 13px;
+
+/* Home: the projects building now, under one tiny label; or one calm line when idle. */
+.home-active {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
 }
-.away-toggle svg {
+.tiny-label {
+  margin: 0 2px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
   color: var(--electric-2);
-  transition: transform 0.2s;
+  text-shadow: 0 0 10px rgba(79, 163, 255, 0.35);
 }
-.away-banner.open .away-toggle svg {
-  transform: rotate(90deg);
+.home-idle {
+  display: grid;
+  gap: 2px;
+  padding: 14px 4px 6px;
 }
-.away-rows {
-  border-top: 1px solid var(--line);
+.idle-line {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink-2);
 }
-.away-rows .list-row {
-  padding-left: 12px;
-  padding-right: 12px;
-}
-.away-since {
-  padding: 8px 12px 0;
+.idle-hint {
+  font-size: 14px;
+  color: var(--muted);
 }
 
-/* Home: sections, rows, selection. */
+/* Build history and Archived: sections, rows, selection. */
 .home-section {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -2972,30 +3055,6 @@ dialog.menu-sheet::backdrop {
   text-transform: uppercase;
   color: var(--electric-2);
   text-shadow: 0 0 10px rgba(79, 163, 255, 0.35);
-}
-.section-toggle {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  text-align: left;
-  text-shadow: inherit;
-}
-.section-toggle svg {
-  flex: none;
-  transition: transform 0.2s;
-}
-.section-toggle.open svg {
-  transform: rotate(90deg);
 }
 .section-name {
   min-width: 0;
@@ -3065,7 +3124,8 @@ dialog.menu-sheet::backdrop {
   overflow-wrap: anywhere;
 }
 .active-row {
-  padding: 16px 14px 16px 16px;
+  gap: 12px;
+  padding: 14px 12px 14px 14px;
   border-color: rgba(111, 176, 255, 0.62);
   box-shadow: inset 0 1px 0 rgba(173, 210, 255, 0.26), 0 0 0 1px rgba(3, 6, 12, 0.9), 0 0 24px -8px var(--glow);
 }
@@ -3075,9 +3135,14 @@ dialog.menu-sheet::backdrop {
 .row-meta {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: 6px;
   color: var(--ink-2);
   min-width: 0;
+}
+/* The size of the Mac line, also on phones (where small text is 14px): "2 agents working ·
+   Started 25m ago" keeps to one line on a 390 px screen. */
+.active-row .row-meta {
+  font-size: 13.5px;
 }
 .row-meta .live-dot {
   flex: none;
@@ -3097,7 +3162,7 @@ dialog.menu-sheet::backdrop {
   height: 38px;
   border-radius: 11px;
 }
-.play-btn {
+.open-btn {
   flex: none;
   width: 54px;
   display: grid;
@@ -3107,37 +3172,37 @@ dialog.menu-sheet::backdrop {
   background: linear-gradient(180deg, var(--bg-3), var(--bg-1));
   color: var(--electric-2);
 }
-.play-btn:hover {
+.open-btn:hover {
   border-color: var(--edge);
 }
 .selectable {
   cursor: pointer;
 }
 .selectable input[type='checkbox'],
-.check-slot input[type='checkbox'] {
+.unselectable input[type='checkbox'] {
   width: 22px;
   height: 22px;
   margin: 0;
   flex: none;
   accent-color: var(--electric);
 }
-.check-slot input[type='checkbox']:disabled {
-  opacity: 0.4;
+.unselectable {
+  opacity: 0.6;
+}
+.unselectable input[type='checkbox']:disabled {
   cursor: not-allowed;
 }
 .selectable:has(input:checked) {
   border-color: rgba(111, 176, 255, 0.75);
   background: linear-gradient(180deg, rgba(43, 123, 255, 0.2), rgba(43, 123, 255, 0.05));
 }
-.check-slot {
+.head-action {
   flex: none;
-  width: 56px;
-  display: grid;
-  justify-items: center;
-  align-content: center;
-  gap: 2px;
-  border-radius: 16px;
-  border: 1px dashed var(--line-2);
+  min-height: 44px;
+  padding: 0 6px;
+}
+.technical-link {
+  justify-self: start;
 }
 .home-empty {
   padding: 2px 4px;
@@ -3168,9 +3233,6 @@ dialog.menu-sheet::backdrop {
   color: var(--muted);
   text-shadow: none;
   box-shadow: none;
-}
-.home-needs .list-row {
-  min-height: 64px;
 }
 
 /* Progress: work done of work planned. */
@@ -3923,9 +3985,6 @@ dialog.menu-sheet::backdrop {
 }
 
 @media (max-width: 860px) {
-  .menu-btn {
-    display: grid;
-  }
   .screen-title {
     font-size: 20px;
   }
@@ -3933,8 +3992,20 @@ dialog.menu-sheet::backdrop {
     padding-left: 12px;
   }
 }
+/* Phones: the active row gives its words the room (one line for "N agents working · Started X
+   ago" where it fits). */
+@media (max-width: 420px) {
+  .active-row {
+    gap: 10px;
+    padding: 12px 10px 12px 12px;
+  }
+  .active-row .tile-icon {
+    width: 44px;
+    height: 44px;
+  }
+}
 @media (max-width: 380px) {
-  .mobile-brand .wordmark {
+  .home-brand .wordmark {
     font-size: 18px;
     letter-spacing: 0.36em;
   }
@@ -3982,12 +4053,12 @@ dialog.menu-sheet::backdrop {
     max-width: 420px;
   }
 }
-@media (max-width: 1180px) {
-  main {
-    padding-left: 24px;
-    padding-right: 24px;
+@media (min-width: 861px) {
+  :root {
+    --gutter: 24px;
   }
-  
+}
+@media (max-width: 1180px) {
   .build-grid,
   .cards.two {
     grid-template-columns: minmax(0, 1fr);
@@ -4000,27 +4071,8 @@ dialog.menu-sheet::backdrop {
   }
 }
 @media (max-width: 860px) {
-  :root {
-    --side: 0px;
-  }
-  /* Phones have no bottom navigation: the ☰ menu sheet lists every item. */
-  .sidebar {
-    display: none;
-  }
   main {
-    margin-left: 0;
-    padding: 0 16px calc(28px + env(safe-area-inset-bottom));
-  }
-  .mobile-brand {
-    display: flex;
-  }
-  .search {
-    display: none;
-  }
-  .topbar {
-    min-height: 76px;
-    margin-bottom: 14px;
-    border-bottom: 0;
+    padding-bottom: calc(28px + env(safe-area-inset-bottom));
   }
   .page-head {
     flex-direction: column;

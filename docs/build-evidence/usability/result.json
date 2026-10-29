@@ -1,10 +1,10 @@
 {
-  "state": "/tmp/arena-real-P8WZON",
+  "state": "/tmp/arena-real-vzWuj2",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
   "checks": {
-    "overviewBytes": 194137,
+    "overviewBytes": 194185,
     "overviewBudget": 244600,
     "overviewRecords": {
       "attempts": 76,
@@ -55,7 +55,7 @@
       "Chats": false,
       "Home": false,
       "Projects": false,
-      "Builds": false,
+      "Build history": false,
       "Agents": false,
       "Review": false,
       "What's running on my Mac": false,

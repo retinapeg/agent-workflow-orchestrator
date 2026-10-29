@@ -11,8 +11,9 @@ import {BlockDetail, BuildStory} from './screens/Story';
 import {MacScreen} from './screens/Mac';
 import {Archived, Builds} from './screens/History';
 import {DialogBody} from './screens/Dialogs';
+import {modelsSummary, pins, routingOverride} from './screens/Models';
 
-export type Modal = {kind: 'goal' | 'task' | 'review' | 'device' | 'account' | 'enrol'; id?: string} | null;
+export type Modal = {kind: 'goal' | 'task' | 'review' | 'device' | 'account' | 'enrol' | 'models'; id?: string} | null;
 export type Evidence = {label: string; text: string; kind: 'diff' | 'text'; warn?: string} | null;
 export type Link = 'live' | 'polling' | 'reconnecting';
 // An SSE `update` whose kind is conversation.* names the thread it touched, so the Chat
@@ -29,14 +30,27 @@ export type ChatIntent = {n: number; text?: string; about?: {task_id: string} | 
 export type Screen = {tab: Tab; goal: string | null; task: string | null; depth: number};
 const HOME: Screen = {tab: 'overview', goal: null, task: null, depth: 0};
 const TABS: Tab[] = ['overview', 'chat', 'story', 'block', 'mac', 'builds', 'build', 'projects', 'agents', 'review', 'archived'];
+// The old dashboards: listed, and reachable, only while this device is in Advanced mode.
+const ADVANCED_TABS: Tab[] = ['projects', 'agents', 'review', 'build'];
+// Advanced mode is a per-device choice, off until the owner opts in from the menu.
+const ADVANCED_KEY = 'arena.advanced';
+function readAdvanced(): boolean {
+  try {
+    return window.localStorage.getItem(ADVANCED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+function screenFrom(s: any, advanced: boolean): Screen {
+  if (!s || !TABS.includes(s.tab) || (!advanced && ADVANCED_TABS.includes(s.tab))) return HOME;
+  return {tab: s.tab, goal: s.goal ?? null, task: s.task ?? null, depth: Number(s.depth) || 0};
+}
 function restored(): Screen {
   try {
-    const s = window.history.state?.arena;
-    if (s && TABS.includes(s.tab)) return {tab: s.tab, goal: s.goal ?? null, task: s.task ?? null, depth: Number(s.depth) || 0};
+    return screenFrom(window.history.state?.arena, readAdvanced());
   } catch {
-    /* no history state: start at Home */
+    return HOME; // no history state: start at Home
   }
-  return HOME;
 }
 
 export type Ctx = {
@@ -76,30 +90,32 @@ export type Ctx = {
   unpair: () => Promise<void>;
   handoff: string;
   clearHandoff: () => void;
-  search: string;
-  setSearch: (s: string) => void;
-  // When this device was last seen by the host before the current visit (null: not away).
-  awaySince: number | null;
-  markSeen: () => Promise<void>;
+  // Advanced mode (per device, off by default): the old dashboards and technical views.
+  advanced: boolean;
 };
 
 const ArenaContext = createContext<Ctx>(null!);
 export const useArena = () => useContext(ArenaContext);
 
-// The one menu: the ☰ sheet on phones and the sidebar on wide screens list the same items.
-// Accessible names are the visible labels; counts are announced as a description.
-const MENU: {tab: Tab; label: string; icon: string; hint?: string}[] = [
-  {tab: 'overview', label: 'Home', icon: 'overview'},
+// The ☰ menu, the only navigation at every width. Home is the brand in the top bar, so it is
+// not listed. The everyday items always show; Projects, Agents and Review only in Advanced
+// mode. Accessible names are the visible labels; counts are announced as a description.
+type MenuItem = {tab: Tab; label: string; icon: string};
+const MENU: MenuItem[] = [
   {tab: 'chat', label: 'Chats', icon: 'chat'},
   {tab: 'mac', label: "What's running on my Mac", icon: 'mac'},
-  {tab: 'builds', label: 'Builds', icon: 'build', hint: 'history'},
+  {tab: 'builds', label: 'Build history', icon: 'build'},
+  {tab: 'archived', label: 'Archived', icon: 'archive'},
+];
+const ADVANCED_MENU: MenuItem[] = [
   {tab: 'projects', label: 'Projects', icon: 'projects'},
   {tab: 'agents', label: 'Agents', icon: 'agents'},
   {tab: 'review', label: 'Review', icon: 'review'},
-  {tab: 'archived', label: 'Archived', icon: 'archive'},
 ];
 // Screens reached from a list highlight that list's menu item.
 const SECTION: Partial<Record<Tab, Tab>> = {story: 'builds', block: 'builds', build: 'builds'};
+// The old dashboards keep their wide layout; every other screen is one centred column.
+const WIDE: Tab[] = ['projects', 'agents', 'review', 'build'];
 
 const RESTARTING = 'Arena is restarting — reconnecting…';
 
@@ -138,49 +154,74 @@ function Splash({children}: {children: React.ReactNode}) {
   );
 }
 
-// The menu's items, shared by the phone sheet and the desktop sidebar. `onPick` runs after
-// the item's own action (the sheet closes itself there).
-function MenuItems({where, current, counts, onPick}: {where: 'side' | 'sheet'; current: Tab; counts: Partial<Record<Tab, number>>; onPick: () => void}) {
-  const {data, setTab, setModal, action, disabled} = useArena();
+// The ☰ dropdown's items. `onPick` closes the menu before an item acts; the Advanced mode
+// switch leaves it open so the owner sees what it adds or hides. Models says which model each
+// agent uses ("Auto", or what is pinned) and opens the sheet that changes it.
+function MenuItems({current, counts, onPick, setAdvanced}: {current: Tab; counts: Partial<Record<Tab, number>>; onPick: () => void; setAdvanced: (on: boolean) => void}) {
+  const {data, setTab, setModal, action, disabled, advanced} = useArena();
   const section = SECTION[current] || current;
+  const item = ({tab, label, icon}: MenuItem) => {
+    const count = counts[tab];
+    const countId = `menu-count-${tab}`;
+    return (
+      <button
+        key={tab}
+        type="button"
+        className={'menu-item' + (section === tab ? ' active' : '')}
+        aria-label={label}
+        aria-current={section === tab ? 'page' : undefined}
+        aria-describedby={count ? countId : undefined}
+        onClick={() => {
+          onPick();
+          setTab(tab);
+        }}
+      >
+        <span className="menu-icon">
+          <Icon name={icon} />
+        </span>
+        <span className="menu-label" aria-hidden="true">
+          {label}
+        </span>
+        {count ? (
+          <b className="menu-count num" id={countId}>
+            {count}
+            <span className="sr-only"> waiting</span>
+          </b>
+        ) : null}
+      </button>
+    );
+  };
   return (
     <>
-      {MENU.map(item => {
-        const count = counts[item.tab];
-        const countId = `${where}-count-${item.tab}`;
-        return (
-          <button
-            key={item.tab}
-            type="button"
-            className={'nav-btn' + (section === item.tab ? ' active' : '')}
-            aria-label={item.label}
-            aria-current={section === item.tab ? 'page' : undefined}
-            aria-describedby={count ? countId : undefined}
-            onClick={() => {
-              onPick();
-              setTab(item.tab);
-            }}
-          >
-            <span className="nav-icon">
-              <Icon name={item.icon} />
-            </span>
-            <span className="nav-label" aria-hidden="true">
-              {item.label}
-              {item.hint && <span className="nav-hint"> {item.hint}</span>}
-            </span>
-            {count ? (
-              <b className="nav-count num" id={countId}>
-                {count}
-                <span className="sr-only"> waiting</span>
-              </b>
-            ) : null}
-          </button>
-        );
-      })}
-      <span className="nav-rule" aria-hidden="true" />
+      {MENU.map(item)}
+      {advanced && (
+        <>
+          <span className="menu-rule" aria-hidden="true" />
+          {ADVANCED_MENU.map(item)}
+        </>
+      )}
+      <span className="menu-rule" aria-hidden="true" />
       <button
         type="button"
-        className={'nav-btn' + (data.paused ? ' paused' : '')}
+        className="menu-item models-item"
+        aria-label="Models"
+        aria-describedby="models-summary"
+        onClick={() => {
+          onPick();
+          setModal({kind: 'models'});
+        }}
+      >
+        <span className="menu-icon">
+          <Icon name="settings" />
+        </span>
+        <span className="menu-label">
+          <span aria-hidden="true">Models: </span>
+          <span id="models-summary">{modelsSummary(routingOverride(data))}</span>
+        </span>
+      </button>
+      <button
+        type="button"
+        className={'menu-item' + (data.paused ? ' paused' : '')}
         disabled={disabled}
         aria-label={data.paused ? 'Resume queue' : 'Pause queue'}
         onClick={() => {
@@ -188,27 +229,39 @@ function MenuItems({where, current, counts, onPick}: {where: 'side' | 'sheet'; c
           action('control/' + (data.paused ? 'resume-dispatch' : 'pause-dispatch'), {revision: data.revision}, data.paused ? 'Dispatch resumed' : 'New dispatch paused; current work continues');
         }}
       >
-        <span className="nav-icon">
+        <span className="menu-icon">
           <Icon name={data.paused ? 'play' : 'pause'} />
         </span>
-        <span className="nav-label" aria-hidden="true">
+        <span className="menu-label" aria-hidden="true">
           {data.paused ? 'Resume queue' : 'Pause queue'}
         </span>
       </button>
       <button
         type="button"
-        className="nav-btn"
+        className="menu-item"
         aria-label="Device session"
         onClick={() => {
           onPick();
           setModal({kind: 'device'});
         }}
       >
-        <span className="nav-icon">
+        <span className="menu-icon">
           <Icon name="user" />
         </span>
-        <span className="nav-label" aria-hidden="true">
+        <span className="menu-label" aria-hidden="true">
           Device session
+        </span>
+      </button>
+      <span className="menu-rule" aria-hidden="true" />
+      <button type="button" role="switch" aria-checked={advanced} className={'menu-item mode-switch' + (advanced ? ' on' : '')} aria-label="Advanced mode" aria-describedby="advanced-mode-hint" onClick={() => setAdvanced(!advanced)}>
+        <span className="menu-label" aria-hidden="true">
+          Advanced mode
+          <span className="menu-hint" id="advanced-mode-hint">
+            Projects, agents, review and technical views
+          </span>
+        </span>
+        <span className="switch-track" aria-hidden="true">
+          <i />
         </span>
       </button>
     </>
@@ -229,10 +282,11 @@ export function App() {
   const [evidence, setEvidence] = useState<Evidence>(null);
   const [busy, setBusy] = useState(false);
   const [handoff, setHandoff] = useState(readHandoff);
-  const [search, setSearch] = useState('');
   const [chatPing, setChatPing] = useState<ChatPing>({id: '', n: 0});
   const [chatIntent, setChatIntent] = useState<ChatIntent>(null);
-  const [awaySince, setAwaySince] = useState<number | null>(null);
+  const [advanced, setAdvancedState] = useState(readAdvanced);
+  const advancedRef = useRef(advanced);
+  advancedRef.current = advanced;
   const [, setTick] = useState(0);
   const dialog = useRef<HTMLDialogElement>(null);
   const menuSheet = useRef<HTMLDialogElement>(null);
@@ -314,7 +368,6 @@ export function App() {
         if (!r.ok) throw Error(`Host answered ${r.status}`);
         const s = await r.json();
         setCsrf(s.csrf);
-        setAwaySince(typeof s.away_since === 'number' ? s.away_since : null);
         setBootError('');
         setPaired(true);
       } catch (e) {
@@ -368,28 +421,17 @@ export function App() {
     };
   }, [paired]);
 
-  // Coming back to a backgrounded app: ask the host whether this device was away long
-  // enough for Home to summarise what happened meanwhile, and refresh at once.
+  // Coming back to a backgrounded app: refresh at once.
   useEffect(() => {
     if (!paired) return;
-    const onVisible = async () => {
-      if (document.visibilityState !== 'visible') return;
-      scheduleRefresh();
-      try {
-        const r = await fetch('/api/v1/session', {cache: 'no-store'});
-        if (!r.ok) return;
-        const s = await r.json();
-        if (typeof s.away_since === 'number') setAwaySince(s.away_since);
-      } catch {
-        /* the next snapshot poll reports the link state */
-      }
-    };
+    const onVisible = () => document.visibilityState === 'visible' && scheduleRefresh();
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [paired]);
 
   // History: the current screen is the current entry's state, so back/forward (Android's
-  // back gesture included) and a reload restore it. Overlays close on any history move.
+  // back gesture included) and a reload restore it. Overlays close on any history move. An
+  // entry for an Advanced-mode screen lands on Home once Advanced mode is off.
   useEffect(() => {
     try {
       window.history.replaceState({...(window.history.state || {}), arena: screenRef.current}, '');
@@ -397,8 +439,7 @@ export function App() {
       /* a sandboxed frame without history: navigation still works in memory */
     }
     const onPop = (e: PopStateEvent) => {
-      const s = e.state?.arena;
-      setScreen(s && TABS.includes(s.tab) ? {tab: s.tab, goal: s.goal ?? null, task: s.task ?? null, depth: Number(s.depth) || 0} : HOME);
+      setScreen(screenFrom(e.state?.arena, advancedRef.current));
       setMenu(false);
       setModal(null);
     };
@@ -411,13 +452,28 @@ export function App() {
     if (data && handoff) setModal({kind: 'goal'});
   }, [!!data, handoff]);
 
-  // The menu closes before a dialog it opened (Device session) takes the focus.
+  // The menu is a compact dropdown anchored under ☰ at every width (it follows the button when
+  // the window changes size). It closes before a dialog it opened (Device session) takes the
+  // focus.
   useEffect(() => {
-    if (menu && !menuSheet.current?.open) menuSheet.current?.showModal();
+    const place = () => {
+      const b = menuButton.current?.getBoundingClientRect();
+      const sheet = menuSheet.current;
+      if (!b || !sheet) return;
+      sheet.style.setProperty('--menu-top', Math.round(b.bottom + 8) + 'px');
+      sheet.style.setProperty('--menu-right', Math.max(8, Math.round(document.documentElement.clientWidth - b.right)) + 'px');
+    };
+    if (menu && !menuSheet.current?.open) {
+      place();
+      menuSheet.current?.showModal();
+    }
     if (!menu && menuSheet.current?.open) {
       menuSheet.current.close();
       menuButton.current?.focus({preventScroll: true});
     }
+    if (!menu) return;
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
   }, [menu]);
 
   useEffect(() => {
@@ -525,15 +581,6 @@ export function App() {
     setModal(null);
   }
 
-  async function markSeen() {
-    setAwaySince(null);
-    try {
-      await post('session/seen', {revision: 0});
-    } catch {
-      /* bookkeeping only; the summary is shown regardless */
-    }
-  }
-
   // Navigate: a new history entry for a new screen; `replace` rewrites the current one (the
   // technical view's request picker). The page lands on its head, not where the last was.
   const go = (next: Omit<Screen, 'depth'>, replace = false) => {
@@ -570,17 +617,33 @@ export function App() {
     setChatIntent(intent ? {...intent, n: Date.now()} : null);
     go({tab: 'chat', goal: null, task: null});
   };
-  // The global "Needs you" line: one item opens itself, several open the Review list.
+  // The global "Needs you" line: one item opens itself, several open Home, which lists them.
   const openNeed = (rows: NeedRow[]) => {
     const r = rows[0];
     if (!r) return;
     if (rows.length > 1) {
-      setTab('review');
+      setTab('overview');
       return;
     }
     if (r.kind === 'review') setModal({kind: 'review', id: r.id});
     else if (r.goalId) openGoal(r.goalId);
     else setModal({kind: 'task', id: r.id});
+  };
+  // Advanced mode on or off, remembered on this device. Turning it off while on one of its
+  // screens goes Home (and closes the menu): nothing it hides stays on show.
+  const setAdvanced = (on: boolean) => {
+    setAdvancedState(on);
+    advancedRef.current = on;
+    try {
+      if (on) window.localStorage.setItem(ADVANCED_KEY, '1');
+      else window.localStorage.removeItem(ADVANCED_KEY);
+    } catch {
+      /* storage blocked: the choice lasts for this visit */
+    }
+    if (!on && ADVANCED_TABS.includes(screenRef.current.tab)) {
+      setMenu(false);
+      go({tab: 'overview', goal: null, task: null}, true);
+    }
   };
 
   if (paired === null)
@@ -667,12 +730,11 @@ export function App() {
   const needRows = needsYouRows(data);
   const attention = needRows.length;
   const counts: Partial<Record<Tab, number>> = {review: attention};
-  const heartbeatAge = data.heartbeat ? data.server_time - data.heartbeat : null;
-  const scheduler =
-    heartbeatAge === null ? {tone: 'off' as const, text: 'Scheduler off'} : heartbeatAge > 30 ? {tone: 'warn' as const, text: `Stale · ${Math.round(heartbeatAge)}s`} : {tone: 'ok' as const, text: 'Online'};
-  const linkTone = link === 'live' ? 'live' : link === 'polling' ? 'ok' : 'warn';
-  const ready = data.agents.filter(a => a.enabled && a.health === 'ready').length;
-  const busyAgents = data.agents.filter(a => data.attempts.some(x => x.account_id === a.id && ACTIVE_ATTEMPT.includes(x.state))).length;
+  // The ☰ points at waiting items only when its menu lists them (Review, in Advanced mode);
+  // otherwise Home's rows and the band under the top bar say what needs the owner.
+  const menuAttention = advanced ? attention : 0;
+  // A model pinned for an agent (instead of Auto) shows as a small label beside ☰.
+  const pinned = pins(routingOverride(data)).length > 0;
 
   const ctx: Ctx = {
     data,
@@ -709,70 +771,50 @@ export function App() {
     unpair,
     handoff,
     clearHandoff: () => setHandoff(''),
-    search,
-    setSearch,
-    awaySince,
-    markSeen,
+    advanced,
   };
 
+  // One top bar at every width: the lion and wordmark (Home) on the left, ☰ on the right.
+  // There is no sidebar or other permanent navigation; everything secondary is in the menu.
   return (
     <ArenaContext.Provider value={ctx}>
-      <div className={'shell tab-' + tab}>
-        <aside className="sidebar">
-          <div className="brand side-brand">
+      <div className={'shell tab-' + tab + (WIDE.includes(tab) ? ' wide' : '')}>
+        <header className="topbar">
+          <button type="button" className="brand home-brand" aria-label="Arena home" onClick={() => setTab('overview')}>
             <Mark size={44} />
-            <div>
-              <Wordmark />
-              <span className="brand-sub">Your director</span>
-            </div>
-          </div>
-          <nav className="nav" aria-label="Primary">
-            <MenuItems where="side" current={tab} counts={counts} onPick={() => {}} />
-          </nav>
-          <button className="side-status" onClick={() => setModal({kind: 'device'})} aria-label="System status">
-            <span className="k">System</span>
-            <span className="v">
-              <LiveDot tone={link === 'reconnecting' ? 'warn' : scheduler.tone === 'ok' ? 'ok' : scheduler.tone} />
-              {link === 'reconnecting' ? 'Reconnecting' : scheduler.text}
-            </span>
-            <span className="v">
-              <LiveDot tone={busyAgents ? 'live' : ready ? 'ok' : 'off'} />
-              <span className="num">
-                {busyAgents ? `${busyAgents} busy · ` : ''}
-                {ready}/{data.agents.length || 0} agents
-              </span>
-            </span>
-            <span className="v small">
-              <LiveDot tone={linkTone} />
-              {link === 'live' ? 'Live link' : link === 'polling' ? 'Polling' : 'Read-only'}
-              {data.paused ? ' · Dispatch paused' : ''}
-            </span>
+            <Wordmark />
           </button>
-        </aside>
-
-        <main>
-          <header className="topbar">
-            <button type="button" className="brand mobile-brand" aria-label="Arena home" onClick={() => setTab('overview')}>
-              <Mark size={44} />
-              <Wordmark />
-            </button>
-            <label className="search">
-              <Icon name="search" size={18} />
-              <input type="search" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search builds and projects…" aria-label="Search builds and projects" />
-            </label>
+          <div className="topbar-actions">
+            {(advanced || pinned) && (
+              <span className="mode-badges">
+                {advanced && (
+                  <span className="mode-badge" title="Advanced mode is on. Turn it off in the menu.">
+                    Advanced
+                  </span>
+                )}
+                {pinned && (
+                  <span className="mode-badge pinned-badge" title="A model is pinned. Change it under Models in the menu.">
+                    Pinned
+                  </span>
+                )}
+              </span>
+            )}
             <button
               ref={menuButton}
               type="button"
-              className={'menu-btn' + (attention ? ' attention' : '')}
-              aria-label={attention ? `Menu, ${attention} item${attention === 1 ? '' : 's'} need${attention === 1 ? 's' : ''} you` : 'Menu'}
+              className={'menu-btn' + (menuAttention ? ' attention' : '')}
+              aria-label={menuAttention ? `Menu, ${menuAttention} item${menuAttention === 1 ? '' : 's'} need${menuAttention === 1 ? 's' : ''} you` : 'Menu'}
               aria-haspopup="dialog"
+              aria-controls="arena-menu"
               aria-expanded={menu}
               onClick={() => setMenu(true)}
             >
               <Icon name="menu" size={22} />
             </button>
-          </header>
+          </div>
+        </header>
 
+        <main>
           {link === 'reconnecting' && (
             <div className="instrument reconnecting" role="status">
               <LiveDot tone="warn" />
@@ -813,19 +855,12 @@ export function App() {
           {tab === 'archived' && <Archived />}
         </main>
 
-        {/* A tap on the backdrop lands on the dialog itself (the content fills it). */}
-        <dialog ref={menuSheet} className="menu-sheet" aria-label="Menu" onCancel={() => setMenu(false)} onClose={() => menu && setMenu(false)} onClick={e => e.target === e.currentTarget && setMenu(false)}>
-          <div className="menu-inner">
-            <div className="menu-head">
-              <span className="eyebrow">Menu</span>
-              <button type="button" className="close" aria-label="Close menu" onClick={() => setMenu(false)}>
-                <Icon name="x" size={18} />
-              </button>
-            </div>
-            <div className="menu-items">{menu && <MenuItems where="sheet" current={tab} counts={counts} onPick={() => setMenu(false)} />}</div>
-          </div>
+        {/* A tap on the backdrop lands on the dialog itself (the content fills it); Escape and
+            Android's back gesture close it too. */}
+        <dialog ref={menuSheet} id="arena-menu" className="menu-sheet" aria-label="Menu" onCancel={() => setMenu(false)} onClose={() => menu && setMenu(false)} onClick={e => e.target === e.currentTarget && setMenu(false)}>
+          <div className="menu-items">{menu && <MenuItems current={tab} counts={counts} onPick={() => setMenu(false)} setAdvanced={setAdvanced} />}</div>
         </dialog>
-        <dialog ref={dialog} aria-labelledby="dialog-title" onCancel={() => setModal(null)} onClose={() => modal && setModal(null)}>
+        <dialog ref={dialog} className={modal?.kind === 'models' ? 'small-sheet' : undefined} aria-labelledby="dialog-title" onCancel={() => setModal(null)} onClose={() => modal && setModal(null)}>
           {modal && <DialogBody key={modal.kind + (modal.id || '')} />}
         </dialog>
         {toast && (

@@ -1188,3 +1188,15 @@ export function plainError(e: unknown): string {
   if (status === 409) return 'Something changed on your Mac meanwhile — try again.';
   return 'Something went wrong — try again.';
 }
+
+// A local repository on the Mac that the owner wants to build in but has not let Arena into
+// (a director reply's `offer_enroll`, from a read-only check on the Mac). One tap enrols it
+// when it is ready (`clean`, no `reason`); when only unsaved work on main is in the way
+// (`can_checkpoint`) a second, explicit tap saves it as a commit first.
+export type EnrollOffer = {name: string; repo_name: string; clean: boolean; branch: string | null; reason: string | null; can_checkpoint?: boolean};
+// POST /api/v1/projects/enroll-local
+export type EnrollResult = {ok: boolean; project_id: string; name: string; already: boolean; checkpoint?: {sha: string; files: number} | null};
+export const enrollOffer = (m: ChatMessage): EnrollOffer | null => (m as ChatMessage & {offer_enroll?: EnrollOffer | null}).offer_enroll || null;
+// Whether a non-archived project already builds in the repository with this folder name.
+export const enrolledRepo = (snap: Snapshot, folder: string): boolean =>
+  snap.projects.some(p => !isArchived(p) && String(p.repo || '').replace(/\/+$/, '').split('/').pop()?.toLowerCase() === folder.toLowerCase());

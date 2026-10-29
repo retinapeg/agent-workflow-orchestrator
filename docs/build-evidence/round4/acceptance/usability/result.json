@@ -1,0 +1,68 @@
+{
+  "state": "/tmp/arena-real-B7LLyg",
+  "viewport": 390,
+  "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
+  "dispatch": false,
+  "checks": {
+    "overviewBytes": 194137,
+    "overviewBudget": 244600,
+    "overviewRecords": {
+      "attempts": 76,
+      "tasks": 28,
+      "goals": 13
+    },
+    "proofProjects": [
+      {
+        "name": "Orchestrator live proof",
+        "archived": true
+      },
+      {
+        "name": "Orchestrator live proof parallel",
+        "archived": true
+      },
+      {
+        "name": "Orchestrator live proof parallel2",
+        "archived": true
+      },
+      {
+        "name": "Orchestrator live proof final",
+        "archived": true
+      }
+    ],
+    "requestPicker": [
+      "Let Arena decide",
+      "Arena (this app)",
+      "Arena Smoke 20261028"
+    ],
+    "chatPicker": [
+      "Arena (this app)",
+      "Arena Smoke 20261028",
+      "None"
+    ],
+    "buildsDefault": {
+      "expected": "goal_815db45a71e3a62d",
+      "selected": "goal_815db45a71e3a62d",
+      "rule": "newest",
+      "title": "Arena can run its queued builds unattended overnight in a bounded…"
+    },
+    "liveOutput": {
+      "goal": "goal_a6faaa785f084d70",
+      "title": "Add optional silent completion, a Pomodoro: countdown prefix and a…",
+      "lines": 41,
+      "first": "[10:56:17] Document bell control, prefixed output and quiet mode · Running · Bounded worker started"
+    },
+    "overflow": {
+      "Chats": false,
+      "Home": false,
+      "Projects": false,
+      "Build history": false,
+      "Agents": false,
+      "Review": false,
+      "What's running on my Mac": false,
+      "Archived": false,
+      "Technical view": false
+    }
+  },
+  "passed": true,
+  "errors": []
+}

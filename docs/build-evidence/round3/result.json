@@ -1,10 +1,246 @@
 {
-  "state": "/tmp/arena-r3-tqqmO6",
+  "state": "/tmp/arena-r3-wVEu7i",
   "viewport": 390,
+  "desktop": 1440,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
   "platform": "linux",
   "checks": {
+    "idle": {
+      "desktop-1440": {
+        "top": {
+          "brand": true,
+          "menu": true
+        },
+        "landmarks": [],
+        "nav": [],
+        "idle": [
+          true,
+          true
+        ],
+        "mac": "On your Mac: 1 Arena agent · 1 Claude Code session · 1 Codex session · 1 dev server",
+        "recent": {
+          "shown": "Finished recently: none",
+          "expected": "Finished recently: none",
+          "ok": true
+        },
+        "extra": 0,
+        "column": {
+          "left": 416,
+          "right": 416,
+          "width": 608
+        },
+        "menu": [
+          "Chats",
+          "What's running on my Mac",
+          "Build history",
+          "Archived",
+          "Models",
+          "Pause queue",
+          "Device session",
+          "Advanced mode"
+        ],
+        "switch": "false",
+        "navOpen": [
+          "Build history"
+        ],
+        "anchor": {
+          "gap": 8,
+          "right": 0
+        },
+        "advanced": [
+          "Chats",
+          "What's running on my Mac",
+          "Build history",
+          "Archived",
+          "Projects",
+          "Agents",
+          "Review",
+          "Models",
+          "Pause queue",
+          "Device session",
+          "Advanced mode"
+        ],
+        "badge": true,
+        "navAdvanced": [],
+        "afterReload": {
+          "badge": true,
+          "menu": [
+            "Chats",
+            "What's running on my Mac",
+            "Build history",
+            "Archived",
+            "Projects",
+            "Agents",
+            "Review",
+            "Models",
+            "Pause queue",
+            "Device session",
+            "Advanced mode"
+          ]
+        },
+        "offAfterReload": {
+          "badge": 0,
+          "menu": [
+            "Chats",
+            "What's running on my Mac",
+            "Build history",
+            "Archived",
+            "Models",
+            "Pause queue",
+            "Device session",
+            "Advanced mode"
+          ]
+        }
+      },
+      "android-390": {
+        "top": {
+          "brand": true,
+          "menu": true
+        },
+        "landmarks": [],
+        "nav": [],
+        "idle": [
+          true,
+          true
+        ],
+        "mac": "On your Mac: 1 Arena agent · 1 Claude Code session · 1 Codex session · 1 dev server",
+        "recent": {
+          "shown": "Finished recently: none",
+          "expected": "Finished recently: none",
+          "ok": true
+        },
+        "extra": 0,
+        "column": {
+          "left": 0,
+          "right": 0,
+          "width": 390
+        },
+        "menu": [
+          "Chats",
+          "What's running on my Mac",
+          "Build history",
+          "Archived",
+          "Models",
+          "Pause queue",
+          "Device session",
+          "Advanced mode"
+        ],
+        "switch": "false",
+        "navOpen": [
+          "Build history"
+        ],
+        "anchor": {
+          "gap": 8,
+          "right": 0
+        },
+        "advanced": [
+          "Chats",
+          "What's running on my Mac",
+          "Build history",
+          "Archived",
+          "Projects",
+          "Agents",
+          "Review",
+          "Models",
+          "Pause queue",
+          "Device session",
+          "Advanced mode"
+        ],
+        "badge": true,
+        "navAdvanced": [],
+        "afterReload": {
+          "badge": true,
+          "menu": [
+            "Chats",
+            "What's running on my Mac",
+            "Build history",
+            "Archived",
+            "Projects",
+            "Agents",
+            "Review",
+            "Models",
+            "Pause queue",
+            "Device session",
+            "Advanced mode"
+          ]
+        },
+        "offAfterReload": {
+          "badge": 0,
+          "menu": [
+            "Chats",
+            "What's running on my Mac",
+            "Build history",
+            "Archived",
+            "Models",
+            "Pause queue",
+            "Device session",
+            "Advanced mode"
+          ]
+        }
+      }
+    },
+    "models": {
+      "older": {
+        "row": "Models: Auto",
+        "pinned": 0
+      },
+      "real": {
+        "pinned": {
+          "codex": null,
+          "claude": {
+            "model": "claude-opus-5-5",
+            "effort": "max"
+          }
+        },
+        "row": "Models: Claude → Opus · max",
+        "cleared": {
+          "codex": null,
+          "claude": null
+        }
+      },
+      "start": {
+        "codexAuto": true,
+        "claudeAuto": true,
+        "pickers": 0,
+        "saveDisabled": true
+      },
+      "first": [
+        {
+          "provider": "codex",
+          "model": "gpt-6-astra",
+          "effort": "low",
+          "revision": 2
+        }
+      ],
+      "pinnedRow": "Models: Codex → Astra · low",
+      "labels": [
+        "ADVANCED",
+        "PINNED"
+      ],
+      "reopened": {
+        "codexAuto": false,
+        "model": "gpt-6-astra",
+        "effort": "low"
+      },
+      "second": [
+        {
+          "provider": "codex",
+          "model": null,
+          "effort": null,
+          "revision": 2
+        },
+        {
+          "provider": "claude",
+          "model": "claude-fable-5-1",
+          "effort": "max",
+          "revision": 2
+        }
+      ],
+      "claudeRow": "Models: Claude → Fable · max",
+      "autoRow": "Models: Auto",
+      "posted": 4
+    },
     "home": {
       "archivedProjects": [
         "Orchestrator live proof",
@@ -20,8 +256,14 @@
       "rows": [
         "Building Arena Smoke 20261028 2 agents working · Started 25m ago 0 of 3 done · 2 under way · 1 waiting"
       ],
-      "ready": [
-        "Arena"
+      "earlierNamed": [],
+      "recent": {
+        "shown": "Finished recently: none",
+        "expected": "Finished recently: none",
+        "ok": true
+      },
+      "headings": [
+        "ACTIVE"
       ],
       "progress": {
         "done": 0,
@@ -36,6 +278,21 @@
       "bar": {
         "width": "20%",
         "label": "0 of 3 done · 2 under way · 1 waiting"
+      },
+      "nav": [],
+      "landmarks": [],
+      "desktop": {
+        "rows": [
+          "Building Arena Smoke 20261028 2 agents working · Started 25m ago 0 of 3 done · 2 under way · 1 waiting"
+        ],
+        "column": {
+          "left": 416,
+          "right": 416,
+          "width": 608
+        },
+        "nav": [],
+        "landmarks": [],
+        "bar": "20%"
       }
     },
     "story": {
@@ -94,9 +351,18 @@
         "width": "20%",
         "label": "0 of 3 done · 2 under way · 1 waiting"
       },
-      "confirm": "Stop this build? The agents stop now. Work so far is kept, and you can ask for it again later. Yes, stop the build Keep building"
+      "options": [
+        "Stop build"
+      ],
+      "confirm": "Stop this build? The agents stop now. Work so far is kept, and you can ask for it again later. Yes, stop the build Keep building",
+      "optionsAdvanced": [
+        "Stop build",
+        "Technical build view"
+      ],
+      "technical": "goal_47c05082f943814e"
     },
     "block": {
+      "blockOptions": 0,
       "what": "Durable queue storage. Claude is building it now.",
       "why": "Keeps queued builds safe when the Mac restarts, so overnight work is never lost.",
       "connects": "When it is done, “Morning summary of queued work” starts.",
@@ -124,7 +390,7 @@
       ],
       "updates": [
         {
-          "t": 1793244835.3010285,
+          "t": 1793280801.1515598,
           "text": "Started building",
           "tone": "neutral"
         }
@@ -140,6 +406,9 @@
       "live": 1,
       "advancedOpen": false,
       "nowShown": "Now Editing code",
+      "blockOptionsAdvanced": [
+        "Technical build view"
+      ],
       "advanced": "Advanced ATTEMPTS build · Claude sonnet running CHECKS No checks recorded. SCOPE README.md Transcripts and evidence",
       "question": "Why does this block need its own storage?",
       "chat": {
@@ -148,20 +417,21 @@
       }
     },
     "mac": {
+      "homeLine": "On your Mac: 1 Arena agent · 1 Claude Code session · 1 Codex session · 1 dev server",
       "managed": {
         "title": "Managed by Arena",
         "rows": 1,
-        "text": "MANAGED BY ARENA 1 Arena build: Overnight queue in Arena Smoke 20261028 · active just now · started 24m ago · in the background Advanced · how Arena knows Open"
+        "text": "MANAGED BY ARENA 1 Arena build: Overnight queue in Arena Smoke 20261028 · active just now · started 25m ago · in the background Advanced · how Arena knows Open"
       },
       "external": {
         "title": "Discovered on your Mac",
         "rows": 2,
-        "text": "DISCOVERED ON YOUR MAC 2 Cl Claude Code in LeoOS · active 2 min ago · started 59m ago Advanced · how Arena knows Vite development server in agent-exchange · no recent activity recorded · started 1h ago · port 5173 · in the background Advanced · how Arena knows"
+        "text": "DISCOVERED ON YOUR MAC 2 Cl Claude Code in LeoOS · active 2 min ago · started 1h ago Advanced · how Arena knows Vite development server in agent-exchange · no recent activity recorded · started 2h ago · port 5173 · in the background Advanced · how Arena knows"
       },
       "unknown": {
         "title": "Couldn't verify",
         "rows": 1,
-        "text": "COULDN'T VERIFY 1 Cx Codex working folder unknown · no recent activity recorded · started 14m ago · in the background Advanced · how Arena knows"
+        "text": "COULDN'T VERIFY 1 Cx Codex working folder unknown · no recent activity recorded · started 15m ago · in the background Advanced · how Arena knows"
       },
       "summary": [
         "Arena is building Arena Smoke 20261028: 2 agents.",
@@ -179,7 +449,7 @@
         "groups": {
           "managed": 2,
           "external": 1,
-          "unknown": 3
+          "unknown": 1
         },
         "managed": [
           "Arena records this as running, but no agent process was found",
@@ -189,9 +459,7 @@
           "Arena records a build of Arena Smoke 20261028 as running, but no agent process was found.",
           "Arena records a build of Arena Smoke 20261028 as running, but no agent process was found.",
           "Tests are running in arena-live (pytest).",
-          "A Claude Code session is open in claude, a folder Arena does not inspect, so its repository is unknown.",
-          "An Arena worker of another Arena session is open in arena-live, a folder Arena does not inspect, so its repository is unknown.",
-          "An Arena worker of another Arena session is open in arena-live, a folder Arena does not inspect, so its repository is unknown."
+          "A Claude Code session is open in claude, a folder Arena does not inspect, so its repository is unknown."
         ],
         "limitations": [
           "Only your own processes were inspected; other users' processes are not visible to Arena.",
@@ -217,12 +485,12 @@
       },
       "runningDisabled": true,
       "archived": true,
-      "goneFromHome": true,
+      "goneFromHistory": true,
       "refused": {
         "archived": [],
         "skipped": [
           {
-            "id": "goal_ad2cef418b79a0e6",
+            "id": "goal_47c05082f943814e",
             "reason": "still running"
           }
         ]
@@ -248,7 +516,8 @@
           "attempt_fec4c853c689edaa:failed"
         ]
       },
-      "projectArchived": true,
+      "project": "Arena",
+      "projectBuildsLeft": [],
       "projectRestored": true
     },
     "failure": {
@@ -281,9 +550,9 @@
       "afterReload": {
         "screen": {
           "tab": "story",
-          "goal": "goal_ad2cef418b79a0e6",
+          "goal": "goal_47c05082f943814e",
           "task": null,
-          "depth": 13
+          "depth": 16
         },
         "running": 2
       },
@@ -297,31 +566,18 @@
       "reply": "Every agent slot is switched off, so the director cannot answer. Turn one on in Agents, then tap Retry."
     },
     "away": {
-      "since": 1793173748.1389472,
-      "expected": {
-        "finished": 2,
-        "needs": 0,
-        "stopped": 4
+      "moved": {
+        "id": "goal_a6faaa785f084d70",
+        "title": "Add optional silent completion, a Pomodoro: countdown prefix and a…"
       },
-      "line": "2 finished · 4 stopped",
-      "toggle390": "Since you were away 2 finished · 4 stopped",
-      "toggle360": "Since you were away 2 finished · 4 stopped",
-      "rows": [
-        "Add optional silent completion, a Pomodoro: countdown prefix and a…",
-        "Provide an installable Python command-line Pomodoro timer that…",
-        "Arena can run its queued builds unattended overnight in a bounded…",
-        "The owner can copy the displayed device pairing code with one tap in…",
-        "Copy the displayed device invitation code with one tap from the Device…",
-        "Copy the pairing code shown after 'Add another device' with one tap on…"
-      ],
-      "labels": [
-        "Merged into main",
-        "Merged into main",
-        "Stopped",
-        "Stopped",
-        "Stopped",
-        "Stopped"
-      ]
+      "since": 1793209718.1754615,
+      "banner": 0,
+      "recent": {
+        "shown": "Finished recently: 1 build",
+        "expected": "Finished recently: 1 build",
+        "ok": true
+      },
+      "first": "Add optional silent completion, a Pomodoro: countdown prefix and a…"
     },
     "cancelled": {
       "goal": "goal_7a5db32a3a62aeba",
@@ -330,20 +586,20 @@
         "status": "cancelled",
         "label": "Stopped"
       },
-      "home": "The Device session dialog lets the owner copy the displayed invitation… Arena · Cancelled 19h ago",
+      "history": "The Device session dialog lets the owner copy the displayed invitation… Arena · Cancelled 29h ago",
       "glyph": "status-glyph off",
       "builds": [
         "Stopped"
       ],
-      "head": "Arena Stopped Cancelled 19h ago"
+      "head": "Arena Stopped Cancelled 29h ago"
     },
     "mergeFailed": {
       "project": "Arena",
       "policy": "auto_local_main",
+      "history": "Show the device name in the session list Arena · Stopped just now",
       "active": [
         "Building Arena Smoke 20261028"
       ],
-      "home": "Show the device name in the session list Arena · Stopped just now",
       "story": {
         "status": "blocked",
         "what": "Show the device name in the session list: Arena could not merge the verified change into the project."
@@ -374,13 +630,13 @@
     },
     "chat": {
       "cards": [
-        "Arena Smoke 20261028 Add an overnight queue that survives restarts Building 25m 17s Codex · gpt-6-sol · high · 10m 17s Running the tests Watch the build",
+        "Arena Smoke 20261028 Add an overnight queue that survives restarts Building 25m 22s Codex · gpt-6-sol · high · 10m 22s Running the tests Watch the build",
         "Arena Arena can run its queued builds unattended overnight in a bounded… Blocked 57m 21s Add a persistent eight-hour economical overnight queue mode: The agent ran out of time before it finished. Open the build",
-        "Arena Smoke 20261028 Add optional silent completion, a Pomodoro: countdown prefix and a… Merged into main 9m 35s Open the build"
+        "Arena Smoke 20261028 Add optional silent completion, a Pomodoro: countdown prefix and a… Merged into main 23h 54m Open the build"
       ],
       "code": 0,
-      "tooltip": "Commit f1707f8 on main",
-      "thinking": "Reading the code in Arena Smoke 20261028 · 17s Details",
+      "tooltip": "Commit 993b9e2 on main",
+      "thinking": "Reading the code in Arena Smoke 20261028 · 29s Details",
       "details": "Details rg -n \"overnight\" src/agent_arena/control/engine.py"
     },
     "needs": {
@@ -390,74 +646,84 @@
         "home": 1,
         "label": "Menu, 1 item needs you",
         "dot": true,
+        "menu": 1,
         "band": "Needs you: 1 item. Needs sign-in: Add a persistent eight-hour economical overnight queue mode",
-        "review": 1,
-        "sidebar": 1
+        "review": 1
       },
       "archivedBy": "host",
       "buildArchived": {
         "home": 0,
         "label": "Menu",
         "dot": false,
+        "menu": 0,
         "band": null,
-        "review": 0,
-        "sidebar": 0
+        "review": 0
       },
       "projectArchived": {
         "home": 0,
         "label": "Menu",
         "dot": false,
+        "menu": 0,
         "band": null,
-        "review": 0,
-        "sidebar": 0
+        "review": 0
       },
       "restored": {
         "home": 1,
         "label": "Menu, 1 item needs you",
         "dot": true,
+        "menu": 1,
         "band": "Needs you: 1 item. Needs sign-in: Add a persistent eight-hour economical overnight queue mode",
-        "review": 1,
-        "sidebar": 1
+        "review": 1
+      },
+      "plain": {
+        "label": "Menu",
+        "dot": false,
+        "home": 1
       }
     },
     "layout": {
       "360": "no overflow",
       "390": "no overflow",
-      "menu": [
-        "Home",
-        "Chats",
-        "What's running on my Mac",
-        "Builds",
-        "Projects",
-        "Agents",
-        "Review",
-        "Archived",
-        "Pause queue",
-        "Device session"
-      ],
-      "sidebar": [
-        "Home",
-        "Chats",
-        "What's running on my Mac",
-        "Builds",
-        "Projects",
-        "Agents",
-        "Review",
-        "Archived",
-        "Pause queue",
-        "Device session"
-      ],
+      "1440": "no overflow",
+      "menu": {
+        "phone": [
+          "Chats",
+          "What's running on my Mac",
+          "Build history",
+          "Archived",
+          "Projects",
+          "Agents",
+          "Review",
+          "Models",
+          "Pause queue",
+          "Device session",
+          "Advanced mode"
+        ],
+        "desktop": [
+          "Chats",
+          "What's running on my Mac",
+          "Build history",
+          "Archived",
+          "Projects",
+          "Agents",
+          "Review",
+          "Models",
+          "Pause queue",
+          "Device session",
+          "Advanced mode"
+        ]
+      },
       "reducedMotion": "none",
       "motion": "drift"
     }
   },
   "seeded": {
-    "goal": "goal_ad2cef418b79a0e6",
+    "goal": "goal_47c05082f943814e",
     "project": "Arena Smoke 20261028",
     "blocks": [
-      "task_89a45f9b15b0c62e",
-      "task_cc05ea1697179b6c",
-      "task_d02ed9bf56db69ee"
+      "task_7d793f0560fda1a5",
+      "task_d0d26921b7949dc3",
+      "task_ce9e90c1f003585f"
     ]
   },
   "passed": true,

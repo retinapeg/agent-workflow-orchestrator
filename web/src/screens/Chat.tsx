@@ -10,6 +10,8 @@ import {
   buildPhrase,
   clock,
   duration,
+  enrollOffer,
+  enrolledRepo,
   goalClass,
   goalElapsed,
   goalSignal,
@@ -25,6 +27,8 @@ import {
   type ChatMessage,
   type Conversation,
   type ConversationDetail,
+  type EnrollOffer,
+  type EnrollResult,
   type GoalStory,
   type GoalView,
   type PlanMilestone,
@@ -335,8 +339,63 @@ function LiveBuildCard({view}: {view: GoalView}) {
   );
 }
 
+// The director offered to let Arena build in a local repository on the Mac. One tap enrols it
+// (the host finds it by folder name; nothing builds until the owner then says "build it").
+// When only unsaved work on main is in the way, a second, explicit tap saves it as a commit
+// first. Anything else in the way, and any refusal, is shown in the host's plain words.
+function EnrollCard({o, busy, onEnroll}: {o: EnrollOffer; busy: boolean; onEnroll: (o: EnrollOffer, checkpoint: boolean) => Promise<EnrollResult>}) {
+  const {data} = useArena();
+  const [working, setWorking] = useState<'' | 'enroll' | 'save'>('');
+  const [refused, setRefused] = useState('');
+  if (enrolledRepo(data, o.repo_name))
+    return (
+      <span className="msg-meta">
+        <Chip tone="done">Arena can build in {o.name}</Chip>
+      </span>
+    );
+  const ready = o.clean && !o.reason;
+  const go = async (checkpoint: boolean) => {
+    setWorking(checkpoint ? 'save' : 'enroll');
+    setRefused('');
+    try {
+      await onEnroll(o, checkpoint);
+    } catch (e) {
+      const err = e as {status?: number; message?: string};
+      setRefused(err.status === 409 && err.message ? err.message : plainError(e));
+    } finally {
+      setWorking('');
+    }
+  };
+  return (
+    <>
+      {!ready && o.reason && <p className="warn-banner">{o.reason}</p>}
+      {(ready || o.can_checkpoint) && (
+        <div className="msg-actions">
+          {ready && (
+            <button type="button" className="btn primary" disabled={busy || !!working} onClick={() => go(false)}>
+              <Icon name="projects" size={16} />
+              {working === 'enroll' ? `Letting Arena into ${o.name}…` : `Let Arena build in ${o.name}`}
+            </button>
+          )}
+          {o.can_checkpoint && (
+            <button type="button" className="btn primary" disabled={busy || !!working} onClick={() => go(true)}>
+              <Icon name="git" size={16} />
+              {working === 'save' ? 'Saving your work…' : 'Save my unsaved work and let Arena build here'}
+            </button>
+          )}
+        </div>
+      )}
+      {refused && (
+        <p className="warn-banner" role="alert">
+          {refused}
+        </p>
+      )}
+    </>
+  );
+}
+
 // `last`: only the newest message offers Retry, so an old error never re-asks an old question.
-function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSend: (text: string) => void; busy: boolean; last: boolean}) {
+function Bubble({m, spec, onSend, onEnroll, busy, last}: {m: ChatMessage; spec: Spec; onSend: (text: string) => void; onEnroll: (o: EnrollOffer, checkpoint: boolean) => Promise<EnrollResult>; busy: boolean; last: boolean}) {
   if (m.role === 'user')
     return (
       <div className="msg user">
@@ -349,6 +408,7 @@ function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSe
       </div>
     );
   const phrase = buildPhrase(spec);
+  const offer = enrollOffer(m);
   return (
     <div className={'msg arena' + (m.error ? ' error' : '')}>
       <div className="bubble">
@@ -363,6 +423,7 @@ function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSe
           </button>
         </div>
       )}
+      {offer && <EnrollCard o={offer} busy={busy} onEnroll={onEnroll} />}
       {m.build_started && <BuildCard m={m} />}
       {m.mac_activity && <MacActivityView data={m.mac_activity} compact />}
       {m.error && ((last && !!m.retry_text) || !!m.detail) && (
@@ -588,6 +649,17 @@ export function Chat() {
     }
   };
 
+  // The owner's tap on a director's offer: enrol that repository (by folder name), move this
+  // chat onto it (the agreed spec stays, so "build it" builds there) and say what comes next.
+  const enroll = async (o: EnrollOffer, checkpoint: boolean): Promise<EnrollResult> => {
+    const r = (await post('projects/enroll-local', {name: o.repo_name, ...(id ? {conversation_id: id} : {}), ...(checkpoint ? {checkpoint: true} : {})})) as EnrollResult;
+    if (id) await load(id);
+    const files = r.checkpoint?.files;
+    const saved = files ? `Saved ${files} ${files === 1 ? 'file' : 'files'} on main. ` : '';
+    notify(`${saved}${r.name || o.name} is ready. Say “build it” when you are.`);
+    return r;
+  };
+
   const fresh = async () => {
     if (sending) return;
     setSending(true);
@@ -710,7 +782,7 @@ export function Chat() {
           </div>
         )}
         {messages.map((m, i) => (
-          <Bubble key={m.id === -1 ? 'pending' : m.id} m={m} spec={spec} onSend={send} busy={disabled || sending || thinking} last={i === messages.length - 1} />
+          <Bubble key={m.id === -1 ? 'pending' : m.id} m={m} spec={spec} onSend={send} onEnroll={enroll} busy={disabled || sending || thinking} last={i === messages.length - 1} />
         ))}
         {thinking && (
           <div className="msg arena thinking" role="status">

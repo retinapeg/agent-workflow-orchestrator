@@ -7,14 +7,14 @@
 // command run from any other folder must refuse (exit 1) and create nothing. 390 px, then
 // 360 px (the command wraps only between words and copies intact), Android user agent;
 // dispatch disabled; the live database and the service on 8791 are never touched.
-// Screenshots: docs/build-evidence/usability/round2/.
+// Screenshots: docs/build-evidence/usability/round2/ (ARENA_EVIDENCE redirects them).
 import {spawn, spawnSync} from 'node:child_process';
 import {existsSync,mkdirSync,mkdtempSync,readdirSync,rmSync,utimesSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 const PLAYWRIGHT='/opt/npm-tools/node_modules/playwright/index.mjs';
 const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
 const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-real-'),port=process.env.ARENA_UI_PORT||'8797',base='http://127.0.0.1:'+port;
-const output=root+'/docs/build-evidence/usability/round2';mkdirSync(output,{recursive:true});
+const output=process.env.ARENA_EVIDENCE||root+'/docs/build-evidence/usability/round2';mkdirSync(output,{recursive:true});
 const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const COMMAND='.venv/bin/python -m agent_arena.control --home .arena-control prune-workspaces';
 const python=root+'/.venv/bin/python',env={...process.env,PYTHONPATH:root+'/src',ARENA_UI_STATE:state,ARENA_UI_PORT:port};
@@ -85,10 +85,9 @@ print(json.dumps([r[0] for r in db.execute("SELECT a.id FROM attempts a WHERE a.
  result.wrongFolder={status:wrong.status,stderr:wrong.stderr.trim().replaceAll(away,'<elsewhere>'),created};
  if(wrong.status!==1||!wrong.stderr.includes('No Arena control state at')||created.length)throw Error('Hint command from the wrong folder: '+JSON.stringify(result.wrongFolder));
 
- // The Device session dialog: from the ☰ menu on the phone (the sidebar on wide screens).
- const menu=page.getByRole('button',{name:/^Menu\b/});
- if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name:'Device session',exact:true}).click();}
- else await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Device session',exact:true}).click();
+ // The Device session dialog: from the ☰ menu (Round 4: the only navigation at every width).
+ await page.getByRole('button',{name:/^Menu\b/}).click();
+ await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name:'Device session',exact:true}).click();
  const dialog=page.getByRole('dialog',{name:'Device session'});await dialog.waitFor();
  const row=dialog.locator('.facts > div',{hasText:'Workspaces on the Mac'});
  await page.waitForFunction(()=>[...document.querySelectorAll('.facts > div')].some(d=>d.textContent.includes('Workspaces on the Mac')&&!/Measuring/.test(d.textContent)),null,{timeout:15000});

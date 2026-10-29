@@ -288,24 +288,23 @@ function BlockCard({b, goalId, stale}: {b: StoryBlock; goalId: string; stale: bo
   );
 }
 
-// The build's ⋯ menu (a menu button): Advanced (the technical view), Stop build while it can
-// be stopped, Archive once it has finished, Restore when archived. Arrow keys move between the
-// items; Escape closes it and returns to ⋯.
-function StoryMenu({goalId, onStop, canStop, canArchive, onArchive, onRestore}: {goalId: string; onStop: () => void; canStop: boolean; canArchive: boolean; onArchive: () => void; onRestore?: () => void}) {
-  const {openAdvanced} = useArena();
+// A ⋯ menu (a menu button) of a few actions. Arrow keys move between the items; Escape
+// closes it and returns to ⋯. With no action to offer it is not shown at all.
+type MoreItem = {label: string; icon: string; run: () => void; danger?: boolean};
+function MoreMenu({label, items}: {label: string; items: MoreItem[]}) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const menuId = useId();
-  const items = () => [...(list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [])];
+  const buttons = () => [...(list.current?.querySelectorAll<HTMLElement>('[role="menuitem"]') || [])];
   const close = (refocus: boolean) => {
     setOpen(false);
     if (refocus) toggle.current?.focus();
   };
   useEffect(() => {
     if (!open) return;
-    items()[0]?.focus({preventScroll: true});
+    buttons()[0]?.focus({preventScroll: true});
     const outside = (e: Event) => {
       if (!wrap.current?.contains(e.target as Node)) setOpen(false);
     };
@@ -322,7 +321,7 @@ function StoryMenu({goalId, onStop, canStop, canArchive, onArchive, onRestore}: 
     };
   }, [open]);
   const onKey = (e: React.KeyboardEvent) => {
-    const all = items();
+    const all = buttons();
     const at = all.indexOf(document.activeElement as HTMLElement);
     const move = (i: number) => {
       e.preventDefault();
@@ -338,39 +337,36 @@ function StoryMenu({goalId, onStop, canStop, canArchive, onArchive, onRestore}: 
     setOpen(false);
     run();
   };
+  if (!items.length) return null;
   return (
     <div className="more-wrap" ref={wrap}>
-      <button ref={toggle} type="button" className="square-btn" aria-label="Build options" aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(o => !o)}>
+      <button ref={toggle} type="button" className="square-btn" aria-label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} onClick={() => setOpen(o => !o)}>
         <Icon name="more" size={22} />
       </button>
       {open && (
-        <div className="more-menu" role="menu" id={menuId} aria-label="Build options" ref={list} onKeyDown={onKey}>
-          <button type="button" role="menuitem" tabIndex={-1} onClick={pick(() => openAdvanced(goalId))}>
-            <Icon name="code" size={16} />
-            Advanced
-          </button>
-          {canStop && (
-            <button type="button" role="menuitem" tabIndex={-1} className="danger" onClick={pick(onStop)}>
-              <Icon name="stop" size={16} />
-              Stop build
+        <div className="more-menu" role="menu" id={menuId} aria-label={label} ref={list} onKeyDown={onKey}>
+          {items.map(item => (
+            <button key={item.label} type="button" role="menuitem" tabIndex={-1} className={item.danger ? 'danger' : undefined} onClick={pick(item.run)}>
+              <Icon name={item.icon} size={16} />
+              {item.label}
             </button>
-          )}
-          {canArchive && (
-            <button type="button" role="menuitem" tabIndex={-1} onClick={pick(onArchive)}>
-              <Icon name="archive" size={16} />
-              Archive build
-            </button>
-          )}
-          {onRestore && (
-            <button type="button" role="menuitem" tabIndex={-1} onClick={pick(onRestore)}>
-              <Icon name="undo" size={16} />
-              Restore build
-            </button>
-          )}
+          ))}
         </div>
       )}
     </div>
   );
+}
+
+// The build's ⋯ menu: Stop build while it can be stopped, Archive once it has finished,
+// Restore when archived, and in Advanced mode the technical build view.
+function StoryMenu({goalId, onStop, canStop, canArchive, onArchive, onRestore}: {goalId: string; onStop: () => void; canStop: boolean; canArchive: boolean; onArchive: () => void; onRestore?: () => void}) {
+  const {openAdvanced, advanced} = useArena();
+  const items: MoreItem[] = [];
+  if (canStop) items.push({label: 'Stop build', icon: 'stop', run: onStop, danger: true});
+  if (canArchive) items.push({label: 'Archive build', icon: 'archive', run: onArchive});
+  if (onRestore) items.push({label: 'Restore build', icon: 'undo', run: onRestore});
+  if (advanced) items.push({label: 'Technical build view', icon: 'code', run: () => openAdvanced(goalId)});
+  return <MoreMenu label="Build options" items={items} />;
 }
 
 // The line under a build's name: when it started and who is on it (an agent gone quiet is not
@@ -395,7 +391,7 @@ function storyLine(s: GoalStory, now: number, attempts: RecordData[]): string {
 
 // Screen 2: one build as plain-English story blocks on a timeline, in dependency order.
 export function BuildStory({goalId}: {goalId: string}) {
-  const {data, now, post, notify, disabled, setTab} = useArena();
+  const {data, now, post, notify, disabled, setTab, advanced} = useArena();
   const goal = (data.goals || []).find(g => g.id === goalId);
   const view = goal ? goalView(goal, data) : null;
   const live = !!view && isLive(view);
@@ -449,7 +445,7 @@ export function BuildStory({goalId}: {goalId: string}) {
   const restore = async () => {
     try {
       const r = await post('goals/unarchive', {ids: [goalId]});
-      notify((r?.restored || []).includes(goalId) ? 'Build restored. It is back on Home.' : 'Your Mac did not restore this build.');
+      notify((r?.restored || []).includes(goalId) ? 'Build restored. It is back in Build history.' : 'Your Mac did not restore this build.');
     } catch (e) {
       notify(plainError(e));
     }
@@ -488,7 +484,7 @@ export function BuildStory({goalId}: {goalId: string}) {
       )}
       {goal?.archived && (
         <p className="note archived-note">
-          <Icon name="archive" size={16} /> This build is archived: it stays off Home. Restore it from ⋯ or from Archived in the menu.
+          <Icon name="archive" size={16} /> This build is archived, out of Home and Build history. Restore it from ⋯ or from Archived in the menu.
         </p>
       )}
       {story?.failure && <FailureCard failure={story.failure} tasks={tasks} onAnswer={answerFocus} about={{goal_id: goalId}} />}
@@ -505,7 +501,7 @@ export function BuildStory({goalId}: {goalId: string}) {
       {story && !story.blocks.length && (
         <div className="empty">
           <h3>{running || story.status === 'queued' ? 'The director is still planning this build' : 'No work was recorded for this build'}</h3>
-          <p>{running || story.status === 'queued' ? 'Blocks appear here as soon as the plan exists.' : 'Open Advanced from the ⋯ menu for the technical record.'}</p>
+          <p>{running || story.status === 'queued' ? 'Blocks appear here as soon as the plan exists.' : advanced ? 'Open the technical build view from the ⋯ menu for the record.' : 'Its technical record is in Advanced mode, at the bottom of the ☰ menu.'}</p>
         </div>
       )}
       {!story && loading && <p className="muted small loading-line">Reading the build…</p>}
@@ -540,8 +536,11 @@ const RAIL_STATE: Record<string, string> = {done: 'done', current: 'in progress'
 // Screen 3: one block in plain English, its progress rail, recent updates and decisions,
 // any failure, the technical record folded under Advanced, and a question box.
 export function BlockDetail({taskId, goalId}: {taskId: string; goalId: string | null}) {
-  const {data, now, openChat, openGoal, setModal} = useArena();
+  const {data, now, openChat, openGoal, setModal, advanced, openAdvanced} = useArena();
   const task = data.tasks.find(t => t.id === taskId);
+  // In Advanced mode the block's ⋯ opens its build's technical view; otherwise it has none.
+  const parent = goalId || (task?.goal_id as string | undefined) || null;
+  const more = advanced && parent ? <MoreMenu label="Block options" items={[{label: 'Technical build view', icon: 'code', run: () => openAdvanced(parent)}]} /> : null;
   const live = !!task && (ACTIVE_TASK.includes(task.state) || task.state === 'integrating' || QUEUED_TASK.includes(task.state));
   // Re-read on this block's own task, attempts and approvals changing (and while it is live).
   const {data: story, error, loading, busy, at, reload} = usePolled<BlockStory>(`tasks/${taskId}/story`, live, taskSignal(task, data));
@@ -560,14 +559,13 @@ export function BlockDetail({taskId, goalId}: {taskId: string; goalId: string | 
   };
   // The director's question is answered on the build's story, where the answer box is.
   const answerFocus = () => {
-    const parent = goalId || task?.goal_id;
     if (parent) openGoal(parent);
   };
 
   if (!story && error)
     return (
       <div className="screen block-detail">
-        <Head title={known || 'This block'} />
+        <Head title={known || 'This block'}>{more}</Head>
         <ReadFailed what="block" error={error} polling={live} busy={busy} onRetry={() => reload()} />
       </div>
     );
@@ -599,7 +597,9 @@ export function BlockDetail({taskId, goalId}: {taskId: string; goalId: string | 
   );
   return (
     <div className="screen block-detail">
-      <Head title={heading} full={b?.title || known} avatar={<Avatar provider={b?.agent?.provider} size="lg" />} chip={b ? <Chip tone={tone}>{b.state_label}</Chip> : null} sub={b ? agentLabel(b) || 'No agent has worked on this yet' : loading ? 'Reading the block…' : ''} />
+      <Head title={heading} full={b?.title || known} avatar={<Avatar provider={b?.agent?.provider} size="lg" />} chip={b ? <Chip tone={tone}>{b.state_label}</Chip> : null} sub={b ? agentLabel(b) || 'No agent has worked on this yet' : loading ? 'Reading the block…' : ''}>
+        {more}
+      </Head>
       {stale && <StaleBar at={at} busy={busy} onRetry={() => reload()} />}
 
       {story && (

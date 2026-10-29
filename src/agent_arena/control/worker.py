@@ -634,6 +634,9 @@ def main(home, attempt_id):
                         "model is not supported",
                         "model not found",
                         "unsupported reasoning effort",
+                        # Claude Code: "There's an issue with the selected model (…). It may
+                        # not exist or you may not have access to it."
+                        "it may not exist or you may not have access",
                     ]
                 )
                 else "transient"

@@ -7,8 +7,10 @@ import {resolve} from 'node:path';
 // (a container), that one: ARENA_PLAYWRIGHT names its module.
 const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
 const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
-// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(['Projects','Agents','Review'].includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
 
 if (process.env.ARENA_LIVE !== '1') throw Error('ARENA_LIVE=1 is required: this drives real subscription agents');
 const root = process.cwd();
@@ -53,7 +55,7 @@ try {
   let {context, page} = await open(browser);
   await page.getByLabel('One-time pairing code').fill(code);
   await page.getByRole('button', {name: 'Pair device', exact: true}).click();
-  await page.getByLabel('Tell Arena what to build').waitFor();
+  await page.getByLabel('Talk to Arena').waitFor();
   log('Paired a phone-sized browser session');
   const before = await overview(page);
   let goalId = attachGoal, t0 = Date.now();
@@ -98,7 +100,7 @@ try {
   // 3. Reconnect in a fresh browser with the same paired device cookie.
   browser = await chromium.launch();
   ({context, page} = await open(browser, storageState));
-  await page.getByLabel('Tell Arena what to build').waitFor();
+  await page.getByLabel('Talk to Arena').waitFor();
   let snapshot = await overview(page);
   let tasks = mine(snapshot, goalId);
   if (!tasks.length) throw Error('Reconnected view does not show the submitted request');
@@ -223,7 +225,7 @@ try {
     await page.close();
     page = await context.newPage();
     await page.goto(url);
-    await page.getByLabel('Tell Arena what to build').waitFor();
+    await page.getByLabel('Talk to Arena').waitFor();
     await go(page,'Projects');
     await page.screenshot({path: evidence + '/06-integrated.png', fullPage: true});
   }

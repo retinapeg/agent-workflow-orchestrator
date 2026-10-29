@@ -1,34 +1,51 @@
 // Round 3 acceptance on a COPY of the real control state (tests/control/real_state_server.py),
 // following the owner's definition of done (docs/ROUND3_BRIEF.md §7) at 390 px with an Android
-// user agent; dispatch is off, and the live database and service are never touched.
-//   1. Home shows only the relevant projects (the archived proof projects are absent).
-//   2. Tapping an active build opens its story: real parallel blocks. A live build is seeded in
-//      the copy: two running attempts (Claude and Codex), each with a real transcript, plus a
-//      block that waits for both.
+// user agent; dispatch is off, and the live database and service are never touched. Round 4
+// ("One conversation. One list of active projects. Story blocks on demand. Everything else
+// hidden."): no sidebar at any width, one top bar (the lion and wordmark go Home, ☰ holds the
+// rest), Projects, Agents and Review only in Advanced mode, and Home showing only the box, one
+// line about the Mac, what needs the owner, the projects building now and one line about work
+// that finished recently. The phone's session also drives a desktop browser at 1440×900.
+//   I. Before anything is seeded, on the real template, at 1440×900 and 390×844: no navigation
+//      on Home; Projects, Agents, Review and Build history only inside ☰; the menu without
+//      Projects, Agents and Review until Advanced mode is on (a reload keeps it on, and off);
+//      the idle line, and the Mac and recent-work lines as the host says.
+//   R. Models (☰): Auto for every agent unless the owner pins a model and effort; this copy's
+//      host predates the control and the sheet says so; a newer host, stood in for in the
+//      browser, shows what the sheet sends (one change per agent) and the Pinned label.
+//   1. Home shows only the projects building now, one row each (no archived project, no earlier
+//      work but the one line), at 390 and 1440. A live build is seeded in the copy: two running
+//      attempts (Claude and Codex), each with a real transcript, plus a block that waits for both.
+//   2. Tapping an active build opens its story: real parallel blocks; the technical view only
+//      under ⋯ in Advanced mode.
 //   3. Tapping a block explains it in plain English: stage rail, recent updates, Advanced folded.
-//   4. What's running on my Mac: managed, discovered and unverified activity, from a fixed
-//      discovery fixture (ARENA_DISCOVERY_FIXTURE) for stable screenshots, plus one real
-//      discovery call on this machine proving the endpoint runs.
-//   5. A finished build is ticked, archived (gone from Home), found under Archived and restored;
-//      a running build cannot be ticked, and the host refuses to archive it.
+//   4. What's running on my Mac (also from Home's Mac line): managed, discovered and unverified
+//      activity, from a fixed discovery fixture (ARENA_DISCOVERY_FIXTURE) for stable
+//      screenshots, plus one real discovery call on this machine proving the endpoint runs.
+//   5. In Build history a finished build is ticked, archived (gone from the list), found under
+//      Archived and restored; a running build cannot be ticked, and the host refuses to archive
+//      it. A project archived from Projects (Advanced mode) comes back from Archived.
 //   6. A real blocked build in the state shows a plain-English failure card, no stack trace.
 //   7. Reloading, then closing and reopening, keeps the build live and the screen sane.
-// Also: Home's box opens Chat with the turn under way, no horizontal overflow at 360 and 390 px,
-// and the running-block wave stands still under reduced motion. Round 3 B fixes, each its own
-// section: A "Since you were away" counts each build once, from its blocks; C a real build
-// whose work was cancelled reads as cancelled, never finished; M a failed automatic merge is
-// stopped, not building; S an agent gone quiet is not shown as live or counted as working;
-// T Chat's default view is plain English (no hashes, exit codes or commands); N every "needs
-// you" count agrees, and archived work drops out of all of them. ARENA_REAL_DB names the
-// database to copy; ARENA_EVIDENCE redirects the output; ARENA_SECTIONS=1,2,L runs some
-// sections only (8 is Home → Chat, L the layout checks). Evidence: docs/build-evidence/round3/.
+// Also: Home's box opens Chat with the turn under way, no horizontal overflow at 360, 390 and
+// 1440 px, and the running-block wave stands still under reduced motion. Round 3 B fixes, each
+// its own section: A Home after a long absence (no banner: "Finished recently" counted from the
+// records, opening Build history); C a real build whose work was cancelled reads as cancelled,
+// never finished; M a failed automatic merge is stopped, not building; S an agent gone quiet is
+// not shown as live or counted as working; T Chat's default view is plain English (no hashes,
+// exit codes or commands); N every "needs you" count agrees, and archived work drops out of all
+// of them. ARENA_REAL_DB names the database to copy; ARENA_EVIDENCE redirects the output
+// (docs/build-evidence/round3/); ARENA_R4_EVIDENCE the Round 4 screenshots
+// (docs/build-evidence/round4/); ARENA_SECTIONS=I,1,L runs some sections only (8 is Home →
+// Chat, L the layout checks).
 import {spawn, spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {mkdirSync,mkdtempSync,rmSync,utimesSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-const wanted=(process.env.ARENA_SECTIONS||'1,2,3,4,5,6,7,8,A,C,M,S,T,N,L').toUpperCase().split(',').map(x=>x.trim());
+const wanted=(process.env.ARENA_SECTIONS||'I,R,1,2,3,4,5,6,7,8,A,C,M,S,T,N,L').toUpperCase().split(',').map(x=>x.trim());
 const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-r3-'),port=process.env.ARENA_UI_PORT||'8798',base='http://127.0.0.1:'+port;
 const output=process.env.ARENA_EVIDENCE||root+'/docs/build-evidence/round3';mkdirSync(output,{recursive:true});
+const r4out=process.env.ARENA_R4_EVIDENCE||root+'/docs/build-evidence/round4';mkdirSync(r4out,{recursive:true});
 const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const python=root+'/.venv/bin/python';
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -61,7 +78,7 @@ const env={...process.env,PYTHONPATH:root+'/src',ARENA_UI_STATE:state,ARENA_UI_P
 const spawned=now();
 const server=spawn(python,['-m','uvicorn','tests.control.real_state_server:create_app','--factory','--host','127.0.0.1','--port',port],{cwd:root,env,stdio:'pipe'});
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
-const result={state,viewport:390,userAgent:ANDROID,dispatch:false,platform:process.platform,checks:{}};
+const result={state,viewport:390,desktop:1440,userAgent:ANDROID,dispatch:false,platform:process.platform,checks:{}};
 let browser;
 // The repository's Playwright (the Mac has its browsers); where only another Playwright
 // build has browsers installed (a container), that one: ARENA_PLAYWRIGHT names its module.
@@ -83,10 +100,49 @@ const flat=async loc=>(await loc.innerText()).replace(/\s+/g,' ').trim();
 const expectedBar=s=>{const p=s.progress,stopped=(s.blocks||[]).filter(b=>b.state==='blocked').length,waiting=Math.max(0,p.total-p.done-(p.in_progress||0)-stopped);return {width:Math.min(100,Math.max(0,Math.round((typeof p.fraction==='number'?p.fraction:p.total?p.done/p.total:0)*100)))+'%',label:`${p.done} of ${p.total} done${p.in_progress?` · ${p.in_progress} under way`:''}${waiting?` · ${waiting} waiting`:''}`}};
 // A build's title as plain views show it: without the composer's legacy chip prefix.
 const plainTitle=t=>{const s=String(t||'').replace(/^\s*(?:add to an existing project|build a new feature|fix a bug|improve arena)\s*:\s*/i,'').trim();return s?s[0].toUpperCase()+s.slice(1):String(t||'')};
-// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
-const home=async page=>{await go(page,'Home');await page.getByLabel('Tell Arena what to build').waitFor();};
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const ADVANCED=['Projects','Agents','Review'];
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(ADVANCED.includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
+// Advanced mode on or off from the ☰ menu's switch (remembered on the device).
+const advancedMode=async(page,on)=>{await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),sw=sheet.getByRole('switch',{name:'Advanced mode'});if(await sw.getAttribute('aria-checked')!==String(on))await sw.click();await page.keyboard.press('Escape');await sheet.waitFor({state:'hidden'});};
+const home=async page=>{await go(page,'Home');await page.getByLabel('Talk to Arena').waitFor();};
 const shot=(page,name,full=false)=>page.screenshot({path:`${output}/r3-${name}.png`,fullPage:full});
+// The Round 4 screenshots, by the names the owner looks for.
+const shot4=(page,name,full=false)=>page.screenshot({path:`${r4out}/${name}.png`,fullPage:full});
+// What the ☰ menu lists (accessible names, in order); the menu is closed again afterwards.
+const menuItems=async page=>{await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();const names=await sheet.locator('button').evaluateAll(b=>b.map(x=>x.getAttribute('aria-label')));await page.keyboard.press('Escape');await sheet.waitFor({state:'hidden'});return names};
+// Navigation words on screen: a visible element whose own text or accessible name is one of
+// them (a closed menu renders nothing).
+const NAV_WORDS=['Projects','Agents','Review','Build history'];
+const navOnScreen=page=>page.evaluate(words=>{const out=new Set();for(const el of document.querySelectorAll('body *')){if(!el.getClientRects().length||getComputedStyle(el).visibility==='hidden')continue;const own=[...el.childNodes].filter(n=>n.nodeType===3).map(n=>n.textContent).join('').trim();const name=(el.getAttribute('aria-label')||'').trim();for(const w of words)if(own===w||name===w)out.add(w)}return [...out]},NAV_WORDS);
+// Visible navigation landmarks or a sidebar (Round 4: none at any width).
+const landmarks=page=>page.evaluate(()=>[...document.querySelectorAll('nav,[role=navigation],aside,.sidebar')].filter(el=>el.getClientRects().length&&getComputedStyle(el).visibility!=='hidden').map(el=>el.outerHTML.slice(0,80)));
+// Where main sits in the window: one centred column on a wide screen.
+const column=page=>page.evaluate(()=>{const m=document.querySelector('main').getBoundingClientRect();return {left:Math.round(m.left),right:Math.round(innerWidth-m.right),width:Math.round(m.width)}});
+const centred=c=>c.width<=608&&Math.abs(c.left-c.right)<=2;
+const esc=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+// Home's Mac line for the discovery fixture below, counted from its groups.
+const MAC_LINE='On your Mac: 1 Arena agent · 1 Claude Code session · 1 Codex session · 1 dev server';
+const macReady=page=>page.waitForFunction(()=>!/checking/.test(document.querySelector('.mac-line')?.textContent||'checking'),null,{timeout:15000});
+// Home's "Finished recently" line as the host's records tell it: in the last 24 hours, builds
+// (not archived, nor their project) whose work all finished, and builds that stopped.
+const recentFromRecords=async page=>{
+ const snap=await api(page,'overview');const since=snap.server_time-86400;
+ const shelved=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
+ let finished=0,stopped=0;
+ for(const g of snap.goals.filter(g=>!g.archived&&!shelved.has(g.project_id))){
+  const s=await api(page,'goals/'+g.id+'/story');
+  const work=snap.tasks.filter(t=>t.goal_id===g.id&&!isPlan(t));
+  if(s.status==='completed'&&Math.max(0,...work.filter(t=>t.state==='completed').map(t=>t.updated||0))>=since)finished++;
+  if(s.status==='blocked'&&Math.max(0,...(s.blocks||[]).filter(b=>b.state==='blocked').map(b=>b.updated||0))>=since)stopped++;
+ }
+ return `Finished recently: ${finished?`${finished} build${finished===1?'':'s'}`:'none'}${stopped?` · ${stopped} stopped`:''}`;
+};
+// Home's line agrees with the records read just before or just after it (a build can cross the
+// 24-hour mark in between).
+const recentOnHome=async page=>{const before=await recentFromRecords(page);const shown=await flat(page.locator('.finished-line'));const after=await recentFromRecords(page);return {shown,expected:before===after?before:[before,after],ok:shown===before||shown===after}};
 // Owner-facing text must not show machinery: hashes, file names or paths, stack traces, exit codes.
 const MACHINERY=[[/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/,'a commit hash'],[/\b[\w-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|sh|md|css|html)\b/,'a file name'],[/(?:^|\s)(?:~|\.{0,2})\/[\w.-]+\/[\w./-]+/,'a path'],[/Traceback|File "|exit=-?\d+|exit code|stderr/i,'terminal output']];
 const machinery=text=>MACHINERY.map(([re,what])=>{const m=re.exec(text);return m?`${what} ("${m[0].trim()}")`:''}).filter(Boolean);
@@ -112,6 +168,188 @@ const codexTranscript=[{type:'thread.started',thread_id:'acceptance'},{type:'ite
 
 try{
  for(let n=0;n<80;n++){if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+' (is port '+port+' free?)\n'+serverLog.slice(-800));try{if((await fetch(base)).ok)break}catch{}await sleep(250);}
+
+ browser=await launch();
+ const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:ANDROID,deviceScaleFactor:2});
+ let page=await context.newPage();const errors=[];const watch=p=>p.on('pageerror',e=>errors.push(e.message));watch(page);
+ await page.goto(base);
+ await page.getByLabel('One-time pairing code').fill('real-state-one-use-code');
+ await page.getByRole('button',{name:'Pair device',exact:true}).click();
+ await page.getByLabel('Talk to Arena').waitFor();
+ // The same paired device in a desktop browser at 1440×900 (the session cookie, not a second
+ // pairing; its own local storage, so Advanced mode is its own choice).
+ const desktop=await browser.newContext({viewport:{width:1440,height:900},deviceScaleFactor:1,storageState:await context.storageState()});
+ const dpage=await desktop.newPage();watch(dpage);
+ await dpage.goto(base);await dpage.getByLabel('Talk to Arena').waitFor();
+
+ // I. Round 4 Home on the real template, before anything is seeded: at 1440×900 on the desktop
+ // and 390×844 on the Android phone, one top bar and nothing else that navigates; Projects,
+ // Agents, Review and Build history only inside ☰; the menu without Projects, Agents and Review
+ // until Advanced mode is on, which a reload keeps (and keeps off once turned off); the calm idle
+ // line, with the Mac and recent-work lines as the host says, and nothing else.
+ if(wanted.includes('I')){
+  const r={};
+  const EVERYDAY=['Chats',"What's running on my Mac",'Build history','Archived','Models',/^(?:Pause|Resume) queue$/,'Device session','Advanced mode'];
+  for(const [name,p,width] of [['desktop-1440',dpage,1440],['android-390',page,390]]){
+   const v={};
+   await home(p);await macReady(p);
+   v.top={brand:await p.getByRole('button',{name:'Arena home',exact:true}).isVisible(),menu:await p.getByRole('button',{name:/^Menu\b/}).isVisible()};
+   if(!v.top.brand||!v.top.menu)throw Error(`${name}: the top bar lacks the lion or ☰: `+JSON.stringify(v.top));
+   v.landmarks=await landmarks(p);
+   if(v.landmarks.length)throw Error(`${name}: navigation on Home: `+v.landmarks.join(' | '));
+   v.nav=await navOnScreen(p);
+   if(v.nav.length)throw Error(`${name}: ${v.nav.join(', ')} visible on Home before ☰ opens`);
+   v.idle=[await p.getByText('Nothing is building right now.',{exact:true}).isVisible(),await p.getByText('Tell Arena what to build.',{exact:true}).isVisible()];
+   if(v.idle.includes(false)||await p.locator('.active-row').count())throw Error(`${name}: the real template is not idle on Home: `+JSON.stringify(v.idle));
+   v.mac=await flat(p.locator('.mac-line'));
+   if(v.mac!==MAC_LINE)throw Error(`${name}: the Mac line says "${v.mac}", expected "${MAC_LINE}"`);
+   v.recent=await recentOnHome(p);
+   if(!v.recent.ok)throw Error(`${name}: Home says "${v.recent.shown}"; the records say `+JSON.stringify(v.recent.expected));
+   // Nothing else: no heading, no Ready or Finished section, no ▷, no away banner.
+   v.extra=await p.locator('main :is(h1,h2,h3), main .home-section, main .ready-row, main .play-btn, main .away-banner, main .away-panel').count();
+   if(v.extra)throw Error(`${name}: Home shows ${v.extra} headings or sections besides its lines`);
+   v.column=await column(p);
+   if(width===1440&&!centred(v.column))throw Error('Home is not one centred column at 1440 px: '+JSON.stringify(v.column));
+   if(await overflow(p))throw Error(`${name}: horizontal overflow on Home`);
+   await shot4(p,`home-${name}-idle`);
+   // ☰: the everyday items only, in a dropdown anchored under the button.
+   await p.getByRole('button',{name:/^Menu\b/}).click();
+   const sheet=p.getByRole('dialog',{name:'Menu'}),sw=sheet.getByRole('switch',{name:'Advanced mode'});await sw.waitFor();
+   v.menu=await sheet.locator('button').evaluateAll(b=>b.map(x=>x.getAttribute('aria-label')));
+   if(v.menu.length!==EVERYDAY.length||!EVERYDAY.every((e,i)=>typeof e==='string'?v.menu[i]===e:e.test(v.menu[i])))throw Error(`${name}: the menu lists `+JSON.stringify(v.menu));
+   v.switch=await sw.getAttribute('aria-checked');
+   if(v.switch!=='false')throw Error(`${name}: Advanced mode is on by default`);
+   v.navOpen=await navOnScreen(p);
+   if(v.navOpen.join()!=='Build history')throw Error(`${name}: with ☰ open the screen shows `+JSON.stringify(v.navOpen));
+   const button=await p.getByRole('button',{name:/^Menu\b/}).boundingBox(),box=await sheet.boundingBox();
+   v.anchor={gap:Math.round(box.y-(button.y+button.height)),right:Math.round(button.x+button.width-(box.x+box.width))};
+   if(v.anchor.gap<0||v.anchor.gap>16||Math.abs(v.anchor.right)>2)throw Error(`${name}: the menu is not anchored under ☰: `+JSON.stringify(v.anchor));
+   if(await overflow(p))throw Error(`${name}: horizontal overflow with the menu open`);
+   await shot4(p,`menu-open-${width}`);
+   // Advanced mode on: Projects, Agents and Review join the menu, and a label shows beside ☰.
+   await sw.click();
+   await sheet.getByRole('button',{name:'Projects',exact:true}).waitFor();
+   v.advanced=await sheet.locator('button').evaluateAll(b=>b.map(x=>x.getAttribute('aria-label')));
+   for(const item of ADVANCED)if(!v.advanced.includes(item))throw Error(`${name}: Advanced mode does not add ${item}: `+JSON.stringify(v.advanced));
+   v.badge=await p.locator('.topbar').getByText('Advanced',{exact:true}).isVisible();
+   if(!v.badge)throw Error(`${name}: no Advanced label beside ☰`);
+   if(await overflow(p))throw Error(`${name}: horizontal overflow with the Advanced menu open`);
+   if(width===390){await p.mouse.move(1,1);await shot4(p,'menu-advanced-390');}
+   await p.keyboard.press('Escape');await sheet.waitFor({state:'hidden'});
+   v.navAdvanced=await navOnScreen(p);
+   if(v.navAdvanced.length)throw Error(`${name}: with Advanced mode on, Home shows ${v.navAdvanced.join(', ')}`);
+   // A reload keeps Advanced mode on, and off once it is turned off.
+   await p.reload();await p.getByLabel('Talk to Arena').waitFor();
+   v.afterReload={badge:await p.locator('.mode-badge').isVisible(),menu:await menuItems(p)};
+   if(!v.afterReload.badge||!ADVANCED.every(n=>v.afterReload.menu.includes(n)))throw Error(`${name}: Advanced mode did not survive a reload: `+JSON.stringify(v.afterReload));
+   await advancedMode(p,false);
+   await p.reload();await p.getByLabel('Talk to Arena').waitFor();
+   v.offAfterReload={badge:await p.locator('.mode-badge').count(),menu:await menuItems(p)};
+   if(v.offAfterReload.badge||v.offAfterReload.menu.some(n=>ADVANCED.includes(n)))throw Error(`${name}: Advanced mode came back after a reload: `+JSON.stringify(v.offAfterReload));
+   r[name]=v;
+  }
+  result.checks.idle=r;console.log('I',JSON.stringify(r));
+ }
+
+ // R. Models (☰ → Models): which model each agent uses, Auto unless the owner pins a model and
+ // effort. This copy's host predates the control (no GET routing/options), so the row says Auto
+ // and the sheet says the Mac needs the latest Arena. Then a newer host is stood in for in the
+ // browser (the snapshot's routing_override, GET routing/options, POST control/routing) to show
+ // what the sheet sends and shows: Codex pinned to Astra at low effort (one change, with the
+ // snapshot's revision; the Pinned label beside ☰), then Codex back to Auto and Claude pinned
+ // in one save (one change per agent), then Auto for both.
+ if(wanted.includes('R')){
+  const r={};
+  const sheet=page.getByRole('dialog',{name:'Models'});
+  const openModels=async()=>{await page.getByRole('button',{name:/^Menu\b/}).click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name:'Models',exact:true}).click();await sheet.waitFor();};
+  const modelsRow=async()=>{await page.getByRole('button',{name:/^Menu\b/}).click();const menu=page.getByRole('dialog',{name:'Menu'});const text=await flat(menu.getByRole('button',{name:'Models',exact:true}));await page.keyboard.press('Escape');await menu.waitFor({state:'hidden'});return text};
+  const auto=name=>sheet.getByRole('checkbox',{name:'Use Auto for '+name,exact:true});
+  const save=async()=>{await sheet.getByRole('button',{name:'Save',exact:true}).click();await sheet.waitFor({state:'hidden'});};
+  await home(page);
+  r.older={row:await modelsRow(),pinned:await page.locator('.pinned-badge').count()};
+  if(r.older.row!=='Models: Auto'||r.older.pinned)throw Error('Models on the copy: '+JSON.stringify(r.older));
+  // The real host (this release): GET routing/options and POST control/routing on the copy.
+  // Pin Claude to Opus 5.5 at max, check the host stored it and the Pinned label shows,
+  // then put Claude back on Auto.
+  await openModels();
+  await auto('Claude').waitFor({timeout:10000});
+  if(await sheet.getByText('Your Mac needs the latest Arena to change this.',{exact:true}).count())throw Error('The real host should offer the Models control');
+  await auto('Claude').uncheck();
+  await sheet.getByLabel('Claude model',{exact:true}).selectOption('claude-opus-5-5');
+  await sheet.getByLabel('Claude effort',{exact:true}).selectOption('max');
+  await save();
+  const waitOverride=async want=>{for(let n=0;n<40;n++){const o=(await api(page,'overview')).routing_override||{};if(JSON.stringify(o.claude||null)===JSON.stringify(want))return o;await sleep(250)}throw Error('Host routing_override never became '+JSON.stringify(want))};
+  r.real={pinned:await waitOverride({model:'claude-opus-5-5',effort:'max'})};
+  await page.locator('.pinned-badge').first().waitFor({timeout:10000});
+  r.real.row=await modelsRow();
+  if(!/^Models: Claude →/.test(r.real.row))throw Error('The Models row says '+r.real.row);
+  await openModels();await auto('Claude').check();await save();
+  r.real.cleared=await waitOverride(null);
+  for(let n=0;n<40&&await page.locator('.pinned-badge').count();n++)await sleep(250);
+  if(await page.locator('.pinned-badge').count())throw Error('Pinned label stays after returning to Auto');
+  // A newer host, stood in for in the browser.
+  let override={codex:null,claude:null};const posted=[];
+  const OPTIONS={codex:{models:[{slug:'gpt-6-astra',efforts:['low','medium','high','xhigh','max']},{slug:'gpt-6.1-sol',efforts:['low','medium','high','xhigh']},{slug:'gpt-6-luna',efforts:['low','medium','high']}]},claude:{models:[{slug:'claude-fable-5-1',efforts:['low','medium','high','max']},{slug:'claude-haiku-5-5',efforts:['low','medium','high']},{slug:'sonnet',efforts:['low','medium','high']}]}};
+  const overview=async route=>{const res=await route.fetch();const json=await res.json();json.routing_override=override;await route.fulfill({response:res,json})};
+  const options=route=>route.fulfill({json:{...OPTIONS,override}});
+  const control=async route=>{const body=route.request().postDataJSON();posted.push(body);override={...override,[body.provider]:body.model?{model:body.model,effort:body.effort}:null};await route.fulfill({json:{ok:true}})};
+  await page.route('**/api/v1/overview',overview);await page.route('**/api/v1/routing/options',options);await page.route('**/api/v1/control/routing',control);
+  try{
+   await page.reload();await page.getByLabel('Talk to Arena').waitFor();
+   const revision=(await api(page,'overview')).revision;
+   // Auto for both to begin with: no pickers, nothing to save.
+   await openModels();
+   await auto('Codex').waitFor();
+   r.start={codexAuto:await auto('Codex').isChecked(),claudeAuto:await auto('Claude').isChecked(),pickers:await sheet.getByRole('combobox').count(),saveDisabled:await sheet.getByRole('button',{name:'Save',exact:true}).isDisabled()};
+   if(!r.start.codexAuto||!r.start.claudeAuto||r.start.pickers||!r.start.saveDisabled)throw Error('The sheet does not start on Auto: '+JSON.stringify(r.start));
+   // Pin Codex: Astra at low effort (Claude stays on Auto, without pickers).
+   await auto('Codex').uncheck();
+   await sheet.getByLabel('Codex model',{exact:true}).selectOption('gpt-6-astra');
+   await sheet.getByLabel('Codex effort',{exact:true}).selectOption('low');
+   if(await sheet.getByLabel('Claude model',{exact:true}).count())throw Error('Claude shows a model picker while on Auto');
+   if(await overflow(page))throw Error('Horizontal overflow with the Models sheet open');
+   await page.mouse.move(1,1);
+   await shot4(page,'menu-models-390');
+   await save();
+   await page.getByRole('status').filter({hasText:'Models: Codex → Astra · low.'}).waitFor({timeout:10000});
+   r.first=posted.slice();
+   if(JSON.stringify(r.first)!==JSON.stringify([{provider:'codex',model:'gpt-6-astra',effort:'low',revision}]))throw Error('Saving sent '+JSON.stringify(r.first));
+   await page.locator('.pinned-badge').waitFor({timeout:10000});
+   r.pinnedRow=await modelsRow();
+   if(r.pinnedRow!=='Models: Codex → Astra · low')throw Error('The Models row says '+r.pinnedRow);
+   // Advanced and Pinned side by side (stacked on a phone) leave the bar inside 360 px.
+   await advancedMode(page,true);
+   for(const width of [360,390]){await page.setViewportSize({width,height:780});await sleep(200);if(await overflow(page))throw Error(`Horizontal overflow with Advanced and Pinned at ${width} px`);}
+   await page.setViewportSize({width:390,height:844});
+   r.labels=await page.locator('.mode-badges .mode-badge').allInnerTexts();
+   if(r.labels.map(t=>t.trim().toUpperCase()).join()!=='ADVANCED,PINNED')throw Error('Labels beside ☰: '+JSON.stringify(r.labels));
+   await advancedMode(page,false);
+   // Reopened, the sheet shows the pin. Codex back to Auto and Claude pinned: two changes.
+   await openModels();
+   await auto('Codex').waitFor();
+   r.reopened={codexAuto:await auto('Codex').isChecked(),model:await sheet.getByLabel('Codex model',{exact:true}).inputValue(),effort:await sheet.getByLabel('Codex effort',{exact:true}).inputValue()};
+   if(r.reopened.codexAuto||r.reopened.model!=='gpt-6-astra'||r.reopened.effort!=='low')throw Error('The sheet does not show the pin: '+JSON.stringify(r.reopened));
+   await auto('Codex').check();
+   await auto('Claude').uncheck();
+   await sheet.getByLabel('Claude model',{exact:true}).selectOption('claude-fable-5-1');
+   await sheet.getByLabel('Claude effort',{exact:true}).selectOption('max');
+   await save();
+   r.second=posted.slice(1);
+   if(JSON.stringify(r.second.map(({revision,...x})=>x))!==JSON.stringify([{provider:'codex',model:null,effort:null},{provider:'claude',model:'claude-fable-5-1',effort:'max'}])||r.second.some(x=>typeof x.revision!=='number'))throw Error('The second save sent '+JSON.stringify(r.second));
+   r.claudeRow=await modelsRow();
+   if(r.claudeRow!=='Models: Claude → Fable · max')throw Error('The Models row says '+r.claudeRow);
+   // Auto for both again: the Pinned label goes.
+   await openModels();
+   await auto('Claude').check();
+   await save();
+   await page.locator('.pinned-badge').waitFor({state:'detached',timeout:10000});
+   r.autoRow=await modelsRow();
+   if(r.autoRow!=='Models: Auto')throw Error('The Models row says '+r.autoRow);
+   r.posted=posted.length;
+  }finally{await page.unroute('**/api/v1/overview',overview);await page.unroute('**/api/v1/routing/options',options);await page.unroute('**/api/v1/control/routing',control);}
+  await page.reload();await page.getByLabel('Talk to Arena').waitFor();
+  result.checks.models=r;console.log('R',JSON.stringify(r));
+ }
 
  // Seed the live build on the copy, on the active project with the newest integrated work
  // (cloned fields from that project's own records, so the shape is the host's).
@@ -169,35 +407,35 @@ ev(now-600,"task.changed",task_id=p["b"],state="running",reason="Bounded worker 
 db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`,live);
  result.seeded={goal:ids.goal,project:live.name,blocks:[ids.a,ids.b,ids.c]};
 
- browser=await launch();
- const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,userAgent:ANDROID,deviceScaleFactor:2});
- let page=await context.newPage();const errors=[];const watch=p=>p.on('pageerror',e=>errors.push(e.message));watch(page);
- await page.goto(base);
- await page.getByLabel('One-time pairing code').fill('real-state-one-use-code');
- await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByLabel('Tell Arena what to build').waitFor();
  const snap=await api(page,'overview');
 
- // 1. Home: only relevant projects. No archived project anywhere on Home, finished folded open.
+ // 1. Home: one row per project building now (only the seeded build's project) and nothing
+ // about earlier work but the one line; no archived project anywhere. At 390 on the phone, then
+ // 1440 on the desktop: the same row, one centred column, no navigation.
  if(wanted.includes('1')){
   const r={};
   const archived=snap.projects.filter(p=>p.archived).map(p=>p.name);
   const active=snap.projects.filter(p=>!p.archived).map(p=>p.name);
+  await home(page);
   await page.getByRole('button',{name:/^Building /}).first().waitFor({timeout:15000});
-  await shot(page,'home');
-  const finished=page.getByRole('button',{name:/^Finished/});
-  await finished.click();
   const text=await page.locator('main').innerText();
   r.archivedProjects=archived;r.activeProjects=active;
   r.shownArchived=archived.filter(n=>text.includes(n));
   r.rows=await page.locator('.active-row').allInnerTexts().then(a=>a.map(s=>s.replace(/\s+/g,' ').trim()));
-  r.ready=await page.locator('.ready-row b').allInnerTexts();
   if(!archived.length)throw Error('The copy has no archived project to prove the filter');
   if(r.shownArchived.length)throw Error('Archived projects on Home: '+r.shownArchived.join(', '));
   const legacy=/(?:add to an existing project|build a new feature|fix a bug|improve arena)\s*:/i.exec(text);
   if(legacy)throw Error('Home shows a legacy title prefix: '+legacy[0]);
-  if(!r.rows.some(s=>s.startsWith('Building '+live.name)))throw Error('No "Building '+live.name+'" row: '+JSON.stringify(r.rows));
-  if(!/2 agents working/.test(r.rows.join(' ')))throw Error('The live row does not count two working agents: '+r.rows.join(' | '));
+  if(r.rows.length!==1||!r.rows[0].startsWith('Building '+live.name))throw Error('Home rows are not just "Building '+live.name+'": '+JSON.stringify(r.rows));
+  if(!/2 agents working · Started \S+ ago/.test(r.rows[0]))throw Error('The live row does not count two working agents: '+r.rows[0]);
+  // Earlier work is one line, never a list: no other build is named on Home.
+  r.earlierNamed=snap.goals.filter(g=>g.id!==ids.goal).map(g=>plainTitle(g.display_title)).filter(t=>t.length>12&&text.includes(t));
+  if(r.earlierNamed.length)throw Error('Home names earlier builds: '+r.earlierNamed.join(' | '));
+  r.recent=await recentOnHome(page);
+  if(!r.recent.ok)throw Error('Home says "'+r.recent.shown+'"; the records say '+JSON.stringify(r.recent.expected));
+  r.headings=await page.locator('main :is(h1,h2,h3)').allInnerTexts();
+  if(r.headings.map(h=>h.trim().toUpperCase()).join()!=='ACTIVE')throw Error('Home headings: '+JSON.stringify(r.headings));
+  if(await page.locator('main .home-section, main .ready-row, main .play-btn, main .away-banner, main .away-panel').count())throw Error('Home shows a Ready or Finished section, ▷ or an away banner');
   // Progress credits the stages the running blocks have reached (the host's stage-weighted
   // fraction) and says what is under way, exactly as the build's story reports it.
   await page.waitForTimeout(1500); // the build's story (progress) is read once Home shows it
@@ -210,7 +448,21 @@ db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`
   if(!(r.progress.fraction>0)||!(r.progress.in_progress>0)||r.progress.done!==0||r.progress.total!==3)throw Error('The live build reports no progress under way: '+JSON.stringify(r.progress));
   if(r.bar.width==='0%'||r.bar.width!==r.expected.width||r.bar.label!==r.expected.label)throw Error('Home progress: '+JSON.stringify(r));
   const words=machinery(await visibleText(page));if(words.length)throw Error('Home shows '+words.join(', '));
-  await finished.click();
+  r.nav=await navOnScreen(page);r.landmarks=await landmarks(page);
+  if(r.nav.length||r.landmarks.length)throw Error('Navigation on Home: '+JSON.stringify({nav:r.nav,landmarks:r.landmarks}));
+  await macReady(page);
+  await shot(page,'home');await shot4(page,'home-android-390-active');
+  // The same Home on the desktop.
+  await home(dpage);
+  await dpage.getByRole('button',{name:/^Building /}).first().waitFor({timeout:15000});
+  await dpage.waitForTimeout(1500);await macReady(dpage);
+  r.desktop={rows:await dpage.locator('.active-row').allInnerTexts().then(a=>a.map(s=>s.replace(/\s+/g,' ').trim())),column:await column(dpage),nav:await navOnScreen(dpage),landmarks:await landmarks(dpage),bar:await dpage.locator('.active-row .progress i').first().evaluate(i=>i.style.width)};
+  if(r.desktop.rows.length!==1||!r.desktop.rows[0].startsWith('Building '+live.name))throw Error('Desktop Home rows: '+JSON.stringify(r.desktop.rows));
+  if(r.desktop.nav.length||r.desktop.landmarks.length)throw Error('Navigation on the desktop Home: '+JSON.stringify(r.desktop));
+  if(!centred(r.desktop.column))throw Error('The desktop Home is not one centred column: '+JSON.stringify(r.desktop.column));
+  if(r.desktop.bar!==r.bar.width)throw Error('The desktop and the phone disagree on progress: '+JSON.stringify({desktop:r.desktop.bar,phone:r.bar.width}));
+  if(await overflow(dpage))throw Error('Horizontal overflow on the desktop Home');
+  await shot4(dpage,'home-desktop-1440-active');
   result.checks.home=r;console.log('1',JSON.stringify(r));
  }
 
@@ -241,7 +493,12 @@ db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`
   if(await page.locator('.block-card.running .wave').count()!==2)throw Error('Running blocks lack the accent wave');
   if(!(await page.getByRole('button',{name:'Stop build',exact:true}).isVisible()))throw Error('No Stop build while the build runs');
   await page.evaluate(()=>window.scrollTo(0,0));
-  await shot(page,'story');await shot(page,'story-full',true);
+  await shot(page,'story');await shot(page,'story-full',true);await shot4(page,'story-390');
+  // Technical items only under ⋯, and only in Advanced mode: with it off ⋯ offers Stop build.
+  await page.getByRole('button',{name:'Build options',exact:true}).click();
+  r.options=await page.getByRole('menu',{name:'Build options'}).getByRole('menuitem').allInnerTexts();
+  await page.keyboard.press('Escape');
+  if(r.options.map(o=>o.trim()).join('|')!=='Stop build')throw Error('Build options with Advanced mode off: '+JSON.stringify(r.options));
   // Stop asks first (the fixture would refuse the stop itself); Keep building leaves it be.
   await page.getByRole('button',{name:'Stop build',exact:true}).click();
   const confirm=page.getByRole('group',{name:'Stop this build?'});await confirm.waitFor();
@@ -250,6 +507,17 @@ db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`
   await confirm.waitFor({state:'detached'});
   const words=machinery(await visibleText(page));if(words.length)throw Error('The story shows '+words.join(', ')+': '+(await visibleText(page)).slice(0,400));
   if(await overflow(page))throw Error('Horizontal overflow on the story');
+  // In Advanced mode ⋯ adds the technical build view, of this very build.
+  await advancedMode(page,true);
+  await page.getByRole('button',{name:'Build options',exact:true}).click();
+  r.optionsAdvanced=(await page.getByRole('menu',{name:'Build options'}).getByRole('menuitem').allInnerTexts()).map(o=>o.trim());
+  if(!r.optionsAdvanced.includes('Technical build view'))throw Error('Advanced mode adds no technical view to ⋯: '+JSON.stringify(r.optionsAdvanced));
+  await page.getByRole('menuitem',{name:'Technical build view',exact:true}).click();
+  await page.locator('#goal-pick').waitFor();
+  r.technical=await page.locator('#goal-pick').inputValue();
+  if(r.technical!==ids.goal)throw Error('The technical view opened on '+r.technical);
+  await page.goBack();await page.locator('.timeline-blocks .block-card').nth(2).waitFor();
+  await advancedMode(page,false);
   result.checks.story=r;console.log('2',JSON.stringify(r));
  }
 
@@ -259,6 +527,9 @@ db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`
   if(!(await page.locator('.timeline-blocks .block-card').count())){await home(page);await page.getByRole('button',{name:/^Building /}).first().click();await page.locator('.timeline-blocks .block-card').nth(2).waitFor({timeout:15000});}
   await page.locator('.block-card.agent-claude').first().click();
   await page.getByRole('heading',{name:'What this block is doing'}).waitFor({timeout:15000});
+  // Advanced mode off: no ⋯ on the block (its technical record stays folded under Advanced).
+  r.blockOptions=await page.getByRole('button',{name:'Block options',exact:true}).count();
+  if(r.blockOptions)throw Error('The block offers ⋯ with Advanced mode off');
   const detail=await api(page,'tasks/'+ids.a+'/story');
   r.what=detail.what;r.why=detail.why;r.connects=detail.connects_text;r.rail=detail.stage_rail;r.updates=detail.updates.slice(0,6);r.now=detail.now;
   r.railShown=await page.locator('.progress-rail li').allInnerTexts();
@@ -272,7 +543,14 @@ db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`
   if(!detail.what||!(await flat(page.locator('.plain-card'))).includes(detail.what))throw Error('What the block does is not shown');
   const words=machinery(await visibleText(page));if(words.length)throw Error('The block detail shows '+words.join(', ')+' outside Advanced');
   if(await overflow(page))throw Error('Horizontal overflow on the block detail');
-  await shot(page,'block');await shot(page,'block-full',true);
+  await shot(page,'block');await shot(page,'block-full',true);await shot4(page,'block-390');
+  // In Advanced mode its ⋯ holds the technical build view.
+  await advancedMode(page,true);
+  await page.getByRole('button',{name:'Block options',exact:true}).click();
+  r.blockOptionsAdvanced=(await page.getByRole('menu',{name:'Block options'}).getByRole('menuitem').allInnerTexts()).map(o=>o.trim());
+  await page.keyboard.press('Escape');
+  await advancedMode(page,false);
+  if(r.blockOptionsAdvanced.join('|')!=='Technical build view')throw Error('Block options in Advanced mode: '+JSON.stringify(r.blockOptionsAdvanced));
   // Advanced opens on request and holds the technical record.
   await page.locator('details.advanced > summary').click();
   r.advanced=await flat(page.locator('details.advanced'));
@@ -300,6 +578,12 @@ db.execute("UPDATE accounts SET data=json_set(data,'$.enabled',json('false'))")`
  // 4. What's running on my Mac: three groups, plain sentences, limitations; one real call.
  if(wanted.includes('4')){
   const r={};
+  // Home's Mac line counts the same look in one line, and opens this screen.
+  await home(page);await macReady(page);
+  r.homeLine=await flat(page.locator('.mac-line'));
+  if(r.homeLine!==MAC_LINE)throw Error(`Home's Mac line says "${r.homeLine}", expected "${MAC_LINE}"`);
+  await page.locator('.mac-line').click();
+  await page.getByRole('heading',{name:'In short'}).waitFor({timeout:15000});
   await go(page,"What's running on my Mac");
   await page.getByRole('heading',{name:'In short'}).waitFor({timeout:15000});
   for(const [key,title] of [['managed','Managed by Arena'],['external','Discovered on your Mac'],['unknown',"Couldn't verify"]]){
@@ -339,7 +623,9 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   result.checks.mac=r;console.log('4',JSON.stringify({...r,managed:r.managed.rows,external:r.external.rows,unknown:r.unknown.rows}));
  }
 
- // 5. Archive a finished build with a checkbox, then restore it; a running build never.
+ // 5. Build history: tick a finished build, archive it (it leaves the list), find it under
+ // Archived and restore it; a running build never. A project archived from Projects (Advanced
+ // mode) takes its builds out of Build history and comes back from Archived.
  if(wanted.includes('5')){
   const r={};
   const before=await api(page,'overview');
@@ -351,10 +637,11 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   target.display_title=plainTitle(target.display_title);
   r.target={id:target.id,title:target.display_title};
   const records=snapshotCounts(before,target.id);
-  await home(page);
+  const listed=()=>page.locator('.history .home-row b').allInnerTexts();
+  await go(page,'Build history');
   await page.getByRole('button',{name:'Select',exact:true}).click();
   // The running build's box is there, disabled, and says why.
-  const runningBox=page.getByRole('checkbox',{name:new RegExp('^Building '+live.name.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+' is running')});
+  const runningBox=page.getByRole('checkbox',{name:new RegExp('^'+esc(live.title)+' is still running')});
   r.runningDisabled=await runningBox.isDisabled();
   if(!r.runningDisabled)throw Error('A running build can be selected');
   const box=page.getByRole('checkbox',{name:'Select '+target.display_title,exact:true});
@@ -365,15 +652,14 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   const after=await api(page,'overview');
   r.archived=after.goals.find(g=>g.id===target.id)?.archived;
   if(!r.archived)throw Error('The host did not record the archive');
-  const finishedToggle=page.getByRole('button',{name:/^Finished/});
-  if(await finishedToggle.getAttribute('aria-expanded')==='false')await finishedToggle.click();
-  r.goneFromHome=!(await page.locator('main').innerText()).includes(target.display_title);
-  if(!r.goneFromHome)throw Error('The archived build is still on Home');
-  await shot(page,'archived-home',true);
+  await page.waitForFunction(t=>![...document.querySelectorAll('.history .home-row b')].some(b=>b.textContent===t),target.display_title,{timeout:10000});
+  r.goneFromHistory=!(await listed()).includes(target.display_title);
+  if(!r.goneFromHistory)throw Error('The archived build is still in Build history');
+  await shot(page,'archived-history',true);
   // The host refuses to archive the running build even if asked directly.
   r.refused=await page.evaluate(async goal=>{const s=await (await fetch('/api/v1/session')).json();const res=await fetch('/api/v1/goals/archive',{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':s.csrf,'Idempotency-Key':crypto.randomUUID()},body:JSON.stringify({ids:[goal]})});return await res.json()},ids.goal);
   if(r.refused.archived?.length||r.refused.skipped?.[0]?.reason!=='still running')throw Error('Archiving a running build: '+JSON.stringify(r.refused));
-  // Archived lists it; restoring brings it back to Home with every record intact.
+  // Archived lists it; restoring brings it back to Build history with every record intact.
   await go(page,'Archived');
   await page.getByRole('checkbox',{name:'Select '+target.display_title,exact:true}).check();
   await shot(page,'archived');
@@ -385,26 +671,32 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   const recordsAfter=snapshotCounts(restored,target.id);
   if(JSON.stringify(records)!==JSON.stringify(recordsAfter))throw Error('Records changed by archive/restore: '+JSON.stringify({records,recordsAfter}));
   r.records=records;
-  await home(page);
-  if(await finishedToggle.getAttribute('aria-expanded')==='false')await finishedToggle.click();
-  if(!(await page.locator('main').innerText()).includes(target.display_title))throw Error('The restored build is not back on Home');
+  await go(page,'Build history');
+  await page.waitForFunction(t=>[...document.querySelectorAll('.history .home-row b')].some(b=>b.textContent===t),target.display_title,{timeout:10000});
   await shot(page,'restored',true);
-  // A Ready project is ticked the same way, archived (its builds leave Home) and restored.
-  const projectName=after.projects.find(p=>!p.archived&&p.id!==live.project)?.name;
-  if(projectName){
-   await page.getByRole('button',{name:'Select',exact:true}).click();
-   await page.getByRole('checkbox',{name:'Select project '+projectName,exact:true}).check();
-   await page.getByRole('button',{name:'Archive selected (1)',exact:true}).click();
-   await page.getByRole('status').filter({hasText:'Archived 1 project'}).waitFor({timeout:10000});
-   r.projectArchived=!(await page.locator('.ready-row b').allInnerTexts()).includes(projectName);
-   if(!r.projectArchived)throw Error('The archived project is still Ready on Home');
+  // A project, archived from Projects in Advanced mode and restored from Archived.
+  const project=after.projects.find(p=>!p.archived&&p.id!==live.project);
+  if(project){
+   r.project=project.name;
+   await go(page,'Projects');
+   // The row (found by its own priority control) opens on a tap; Archive is inside it.
+   const projectRow=page.locator('.project-row').filter({has:page.getByLabel(project.name+' priority',{exact:true})});
+   await projectRow.locator('.project-main').click();
+   await projectRow.getByRole('button',{name:'Archive',exact:true}).click();
+   await page.getByRole('status').filter({hasText:project.name+' archived'}).waitFor({timeout:10000});
+   const shelved=await api(page,'overview');
+   if(!shelved.projects.find(p=>p.id===project.id)?.archived)throw Error('The host did not archive the project');
+   const ofProject=shelved.goals.filter(g=>g.project_id===project.id).map(g=>plainTitle(g.display_title));
+   await go(page,'Build history');await page.getByRole('heading',{name:'Build history',exact:true}).waitFor();
+   r.projectBuildsLeft=(await listed()).filter(t=>ofProject.includes(t));
+   if(r.projectBuildsLeft.length)throw Error('Builds of the archived project are still in Build history: '+r.projectBuildsLeft.join(' | '));
    await go(page,'Archived');
-   await page.getByRole('checkbox',{name:'Select project '+projectName,exact:true}).check();
+   await page.getByRole('checkbox',{name:'Select project '+project.name,exact:true}).check();
    await page.getByRole('button',{name:'Restore selected (1)',exact:true}).click();
    await page.getByRole('status').filter({hasText:'Restored 1 project'}).waitFor({timeout:10000});
-   await home(page);
-   r.projectRestored=(await page.locator('.ready-row b').allInnerTexts()).includes(projectName);
-   if(!r.projectRestored)throw Error('The restored project is not back on Home');
+   r.projectRestored=!(await api(page,'overview')).projects.find(p=>p.id===project.id)?.archived;
+   if(!r.projectRestored)throw Error('The project was not restored');
+   await advancedMode(page,false);
   }
   result.checks.archive=r;console.log('5',JSON.stringify(r));
  }
@@ -420,10 +712,8 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   unique.display_title=plainTitle(unique.display_title);
   const raw=s.tasks.filter(t=>t.goal_id===unique.id&&t.state==='blocked').map(t=>t.reason);
   r.goal={id:unique.id,title:unique.display_title,rawReasons:raw};
-  await home(page);
-  const finishedToggle=page.getByRole('button',{name:/^Finished/});
-  if(await finishedToggle.getAttribute('aria-expanded')==='false')await finishedToggle.click();
-  await page.locator('.finished-row',{hasText:unique.display_title}).first().click();
+  await go(page,'Build history');
+  await page.locator('.history .finished-row',{hasText:unique.display_title}).first().click();
   const card=page.getByRole('region',{name:'What went wrong'});
   await card.waitFor({timeout:15000});
   r.card=await flat(card);
@@ -451,12 +741,12 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   if(r.afterReload.running!==2)throw Error('After reload the blocks are not running');
   // Back from the restored story goes somewhere sane (the previous screen, else Home).
   await page.getByRole('button',{name:'Back',exact:true}).click();
-  await page.getByLabel('Tell Arena what to build').waitFor({timeout:10000});
+  await page.getByLabel('Talk to Arena').waitFor({timeout:10000});
   await page.close();
   await sleep(2000);
   page=await context.newPage();watch(page);
   await page.goto(base);
-  await page.getByLabel('Tell Arena what to build').waitFor();
+  await page.getByLabel('Talk to Arena').waitFor();
   await page.getByRole('button',{name:/^Building /}).first().waitFor({timeout:15000});
   const s=await api(page,'overview');
   r.attempts=s.attempts.filter(a=>a.id===ids.attA||a.id===ids.attB).map(a=>a.state);
@@ -470,7 +760,7 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   const r={};
   await home(page);
   r.text='What is running on my Mac right now?';
-  await page.getByLabel('Tell Arena what to build').fill(r.text);
+  await page.getByLabel('Talk to Arena').fill(r.text);
   await page.getByRole('button',{name:'Send to Arena',exact:true}).click();
   await page.getByLabel('Message Arena').waitFor();
   await page.waitForFunction(q=>[...document.querySelectorAll('.msg.user .bubble')].some(b=>b.textContent.includes(q)),r.text,{timeout:15000});
@@ -490,60 +780,47 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   result.checks.homeToChat=r;console.log('8',JSON.stringify(r));
  }
 
- // A. "Since you were away" (blocker 1). With this device last seen 20 hours ago the banner
- // counts each build once, in one group, as its blocks tell it: finished only when its work
- // (never the plan) finished after the absence began, stopped when a part stopped then, the
- // live build not at all. Its line wraps rather than being cut, at 390 and 360 px.
+ // A. Home after a long absence (Round 4: no "Since you were away" banner). The newest finished
+ // build is moved into the last 24 hours in the copy and this device was last seen 20 hours ago:
+ // Home shows no banner and no list of earlier work, only "Finished recently: …", counted as the
+ // host's records say, which opens Build history, led by that build. The line wraps rather than
+ // being cut, at 390 and 360 px.
  if(wanted.includes('A')){
   const r={};
+  const snap=await api(page,'overview');
+  const shelved=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
+  const done=snap.goals.filter(g=>!g.archived&&!shelved.has(g.project_id)).filter(g=>{const work=snap.tasks.filter(t=>t.goal_id===g.id&&!isPlan(t)&&t.state!=='cancelled');return work.length&&work.every(t=>t.state==='completed')}).sort((a,b)=>b.created-a.created)[0];
+  if(!done)throw Error('The copy has no finished build');
+  r.moved={id:done.id,title:plainTitle(done.display_title)};
+  py(`now=time.time()
+for ident,data in db.execute("SELECT id,data FROM tasks WHERE goal_id=? AND state='completed'",(p["goal"],)).fetchall():
+    d=json.loads(data);d["updated"]=now-3*3600
+    db.execute("UPDATE tasks SET data=? WHERE id=?",(json.dumps(d),ident))
+db.execute("INSERT INTO events(time,kind,data) VALUES(?,?,?)",(now,"task.changed",json.dumps({"schema":1})))`,{goal:done.id});
   await page.goto('about:blank');await sleep(1500);
   py(`db.execute("UPDATE sessions SET last_seen=?, away_since=NULL",(time.time()-20*3600,))`);
-  const host=async path=>(await page.request.get(base+'/api/v1/'+path)).json();
-  const session=await host('session');r.since=session.away_since;
-  if(typeof r.since!=='number')throw Error('The session does not report the absence: '+JSON.stringify(session));
-  // What the host's records say happened since then.
-  const snap=await host('overview');
-  const shelved=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
-  const needy=new Set(snap.tasks.filter(t=>['awaiting_input','needs_auth','needs_permission'].includes(t.state)&&(t.updated||0)>=r.since).map(t=>t.goal_id));
-  for(const a of snap.approvals){const t=snap.tasks.find(x=>x.id===a.task_id);const proj=snap.projects.find(x=>x.id===t?.project_id);if(a.state==='pending'&&(a.created||0)>=r.since&&t&&proj?.integration_policy!=='auto_local_main')needy.add(t.goal_id)}
-  const expect={finished:[],needs:[],stopped:[]};
-  for(const g of snap.goals.filter(g=>!g.archived&&!shelved.has(g.project_id))){
-   if(needy.has(g.id)){expect.needs.push(g.id);continue}
-   const s=await host('goals/'+g.id+'/story');
-   const work=snap.tasks.filter(t=>t.goal_id===g.id&&!isPlan(t));
-   if(s.status==='completed'&&Math.max(0,...work.filter(t=>t.state==='completed').map(t=>t.updated||0))>=r.since)expect.finished.push(g.id);
-   if(s.status==='blocked'&&Math.max(0,...s.blocks.filter(b=>b.state==='blocked').map(b=>b.updated||0))>=r.since)expect.stopped.push(g.id);
-  }
-  r.expected={finished:expect.finished.length,needs:expect.needs.length,stopped:expect.stopped.length};
-  const line=[r.expected.finished&&`${r.expected.finished} finished`,r.expected.needs&&`${r.expected.needs} need${r.expected.needs===1?'s':''} you`,r.expected.stopped&&`${r.expected.stopped} stopped`].filter(Boolean).join(' · ');
-  if(!line)throw Error('Nothing in the copy finished or stopped during the absence');
-  await page.goto(base);await page.getByLabel('Tell Arena what to build').waitFor();
-  const banner=page.getByRole('region',{name:'Since you were away'});await banner.waitFor({timeout:15000});
-  r.line=await flat(banner.locator('.away-counts'));
-  if(r.line!==line)throw Error(`The banner says "${r.line}"; the records say "${line}"`);
-  // Every word of the line is on screen (it wraps; nothing is cut) at 390 and 360 px.
+  r.since=(await (await page.request.get(base+'/api/v1/session')).json()).away_since;
+  if(typeof r.since!=='number')throw Error('The session does not report the absence');
+  await page.goto(base);await page.getByLabel('Talk to Arena').waitFor();
+  await page.waitForFunction(()=>/Finished recently: [1-9]\d* builds?/.test(document.querySelector('.finished-line')?.textContent||''),null,{timeout:15000});
+  r.banner=await page.locator('.away-banner, .away-panel').count()+await page.getByText(/Since you were away/i).count();
+  if(r.banner)throw Error('Home shows an away banner');
+  r.recent=await recentOnHome(page);
+  if(!r.recent.ok)throw Error('Home says "'+r.recent.shown+'"; the records say '+JSON.stringify(r.recent.expected));
+  if((await page.locator('main').innerText()).includes(r.moved.title))throw Error('Home names the finished build');
   for(const width of [390,360]){
    await page.setViewportSize({width,height:844});await sleep(300);
-   const cut=await banner.locator('.away-toggle').evaluate(t=>[t,...t.querySelectorAll('*')].filter(e=>{const cs=getComputedStyle(e);return (cs.overflow!=='visible'||cs.textOverflow==='ellipsis')&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)}).map(e=>e.className.baseVal??e.className));
-   if(cut.length)throw Error(`The banner line is cut at ${width} px: ${cut.join(', ')}`);
-   if(await overflow(page))throw Error('Horizontal overflow with the banner at '+width+' px');
-   r['toggle'+width]=await flat(banner.locator('.away-toggle'));
+   const cut=await page.locator('.finished-line').evaluate(t=>[t,...t.querySelectorAll('*')].filter(e=>{const cs=getComputedStyle(e);return (cs.overflow!=='visible'||cs.textOverflow==='ellipsis')&&(e.scrollWidth>e.clientWidth+1||e.scrollHeight>e.clientHeight+1)}).map(e=>e.className.baseVal??e.className));
+   if(cut.length)throw Error(`The line is cut at ${width} px: ${cut.join(', ')}`);
+   if(await overflow(page))throw Error('Horizontal overflow on Home at '+width+' px');
   }
   await page.setViewportSize({width:390,height:844});
-  await banner.getByRole('button',{name:/Since you were away/}).click();
-  const rows=banner.locator('.list-row');await rows.first().waitFor();
-  r.rows=(await rows.locator('b').allInnerTexts()).map(t=>t.trim());
-  r.labels=(await rows.locator('.tone').allInnerTexts()).map(t=>t.trim());
-  const titleOf=id=>plainTitle(snap.goals.find(g=>g.id===id).display_title);
-  if(r.rows.length!==Math.min(12,r.expected.finished+r.expected.needs+r.expected.stopped))throw Error('Banner rows: '+JSON.stringify(r.rows));
-  if(new Set(r.rows).size!==r.rows.length)throw Error('A build is listed twice: '+JSON.stringify(r.rows));
-  for(const id of [...expect.finished,...expect.stopped])if(!r.rows.includes(titleOf(id)))throw Error('Missing from the banner: '+titleOf(id));
-  if(r.rows.includes(live.title))throw Error('The live build is listed as finished or stopped');
-  if(r.labels.filter(l=>l==='Stopped').length!==r.expected.stopped||r.labels.filter(l=>/^(Finished|Merged into main)$/.test(l)).length!==r.expected.finished)throw Error('Banner labels: '+JSON.stringify(r.labels));
-  await shot(page,'away-390');
-  await page.setViewportSize({width:360,height:780});await sleep(300);await shot(page,'away-360');
-  await page.setViewportSize({width:390,height:844});
-  await banner.getByRole('button',{name:'Got it',exact:true}).click();
+  await shot(page,'finished-recently');
+  await page.locator('.finished-line').click();
+  await page.getByRole('heading',{name:'Build history',exact:true}).waitFor();
+  r.first=await page.getByRole('region',{name:'Finished'}).locator('.home-row b').first().innerText();
+  if(r.first!==r.moved.title)throw Error('Build history does not lead its Finished builds with the one that just finished: '+r.first);
+  await shot(page,'finished-history');
   result.checks.away=r;console.log('A',JSON.stringify(r));
  }
 
@@ -559,14 +836,11 @@ db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?
   const title=plainTitle(target.display_title);r.goal=target.id;r.title=title;
   const story=await api(page,'goals/'+target.id+'/story');r.story={status:story.status,label:story.status_label};
   if(story.status!=='cancelled')throw Error('The host does not call it cancelled: '+JSON.stringify(r.story));
-  await home(page);
-  const finishedToggle=page.getByRole('button',{name:/^Finished/});
-  if(await finishedToggle.getAttribute('aria-expanded')==='false')await finishedToggle.click();
-  const row=page.locator('.finished-row').filter({hasText:title}).first();await row.waitFor({timeout:15000});
-  r.home=await flat(row);r.glyph=await row.locator('.status-glyph').getAttribute('class');
-  if(!/Cancelled (?:just now|\d+[mhd] ago)/.test(r.home)||/Finished|Merged/.test(r.home)||/\bdone\b/.test(r.glyph))throw Error('Home row of the cancelled build: '+JSON.stringify(r));
-  await row.scrollIntoViewIfNeeded();await shot(page,'cancelled-home');
-  await go(page,'Builds');await page.locator('.history .home-section').first().waitFor();
+  await go(page,'Build history');await page.locator('.history .home-section').first().waitFor();
+  const row=page.locator('.history .finished-row').filter({hasText:title}).first();await row.waitFor({timeout:15000});
+  r.history=await flat(row);r.glyph=await row.locator('.status-glyph').getAttribute('class');
+  if(!/Cancelled (?:just now|\d+[mhd] ago)/.test(r.history)||/Finished|Merged/.test(r.history)||/\bdone\b/.test(r.glyph))throw Error('Build history row of the cancelled build: '+JSON.stringify(r));
+  await row.scrollIntoViewIfNeeded();await shot(page,'cancelled-history');
   r.builds=await page.evaluate(t=>[...document.querySelectorAll('.history .home-section')].filter(s=>[...s.querySelectorAll('.home-row b')].some(b=>b.textContent===t)).map(s=>s.getAttribute('aria-label')),title);
   if(r.builds.join()!=='Stopped')throw Error('Builds lists the cancelled build under '+JSON.stringify(r.builds));
   await page.locator('.finished-row').filter({hasText:title}).first().click();
@@ -604,16 +878,19 @@ db.execute("INSERT INTO approvals(id,task_id,state,data) VALUES(?,?,?,?)",(p["ap
 db.execute("INSERT INTO events(time,kind,data) VALUES(?,?,?)",(now,"integration.failed",json.dumps({"schema":1,"task_id":p["task"]})))
 print(json.dumps(policy))`,m));
   try{
-   await go(page,'Builds');await home(page);
-   const finishedToggle=page.getByRole('button',{name:/^Finished/});
-   if(await finishedToggle.getAttribute('aria-expanded')==='false')await finishedToggle.click();
-   const row=page.locator('.finished-row').filter({hasText:m.title}).first();await row.waitFor({timeout:15000});
+   await go(page,'Build history');
+   const row=page.locator('.history .finished-row').filter({hasText:m.title}).first();await row.waitFor({timeout:15000});
+   r.history=await flat(row);
+   if(!/Stopped (?:just now|\d+[mhd] ago)/.test(r.history))throw Error('Build history row of the failed merge: '+r.history);
+   await row.scrollIntoViewIfNeeded();await shot(page,'merge-failed-history');
+   // Home (the same snapshot): not building, and the build is not named there.
+   await home(page);
    r.active=(await page.locator('.active-row').allInnerTexts()).map(t=>t.split('\n')[0].trim());
    if(r.active.includes('Building '+target.name))throw Error('A failed merge still shows as building: '+r.active.join(' | '));
-   r.home=await flat(row);
-   if(!/Stopped (?:just now|\d+[mhd] ago)/.test(r.home))throw Error('Home row of the failed merge: '+r.home);
-   await row.scrollIntoViewIfNeeded();await shot(page,'merge-failed-home');
-   await row.click();
+   if((await page.locator('main').innerText()).includes(m.title))throw Error('Home names the failed merge');
+   await shot(page,'merge-failed-home');
+   await go(page,'Build history');
+   await page.locator('.history .finished-row').filter({hasText:m.title}).first().click();
    const card=page.getByRole('region',{name:'What went wrong'});await card.waitFor({timeout:15000});
    const story=await api(page,'goals/'+m.goal+'/story');
    r.story={status:story.status,what:story.failure?.what_failed};r.card=await flat(card);
@@ -621,7 +898,7 @@ print(json.dumps(policy))`,m));
    if(!(await card.getByRole('button',{name:'Ask the director',exact:true}).count()))throw Error('No "Ask the director" on the failure');
    const words=machinery(await visibleText(page));if(words.length)throw Error('The failed merge shows '+words.join(', '));
    await shot(page,'merge-failed');
-   await go(page,'Builds');await page.locator('.history .home-section').first().waitFor();
+   await go(page,'Build history');await page.locator('.history .home-section').first().waitFor();
    r.builds=await page.evaluate(t=>[...document.querySelectorAll('.history .home-section')].filter(s=>[...s.querySelectorAll('.home-row b')].some(b=>b.textContent===t)).map(s=>s.getAttribute('aria-label')),m.title);
    if(r.builds.join()!=='Stopped')throw Error('Builds lists the failed merge under '+JSON.stringify(r.builds));
   }finally{
@@ -641,7 +918,7 @@ db.execute("UPDATE projects SET data=? WHERE id=?",(json.dumps(proj),p["project"
   const quietSince=Date.now()/1000-24*60-5;utimesSync(file,quietSince,quietSince);
   const quietLine=/Last activity 2[45] min ago: \S/;
   try{
-   await go(page,'Builds');await home(page);
+   await go(page,'Build history');await home(page);
    await page.waitForFunction(n=>[...document.querySelectorAll('.active-row')].some(r=>r.textContent.includes('Building '+n)&&/quiet for 2\d min/.test(r.textContent)),live.name,{timeout:20000});
    const row=page.locator('.active-row').filter({hasText:'Building '+live.name}).first();
    r.home=await flat(row);r.dot=await row.locator('.live-dot').getAttribute('class');
@@ -724,9 +1001,11 @@ for i,(cid,role,text,data) in enumerate(msgs):
   result.checks.chat=r;console.log('T',JSON.stringify(r));
  }
 
- // N. One "needs you" list (should-fix 10): Home's Needs you, the ☰ attention dot and its
- // accessible name, Review's count, the sidebar count and the amber band always agree, and a
- // need of an archived build or project leaves every one of them.
+ // N. One "needs you" list (should-fix 10): Home's Needs you rows, the ☰ attention dot and its
+ // accessible name with the count beside Review in the menu (Advanced mode, where the menu lists
+ // Review), Review's count and the amber band always agree, and a need of an archived build or
+ // project leaves every one of them. With Advanced mode off ☰ stays plain "Menu" (its menu lists
+ // nothing that waits): Home's rows and the band say what needs the owner.
  if(wanted.includes('N')){
   const r={};
   const snap=await api(page,'overview');
@@ -745,15 +1024,19 @@ db.execute("UPDATE ${table} SET data=? WHERE id=?",(json.dumps(row),p["id"]))
   const counts=async()=>{
    await home(page);
    const menu=page.getByRole('button',{name:/^Menu\b/});
-   const c={home:(await page.locator('.home-needs').count())?Number(await page.locator('.home-needs .count').first().innerText()):0,label:await menu.getAttribute('aria-label'),dot:await menu.evaluate(b=>b.classList.contains('attention'))};
-   await go(page,'Builds');await page.locator('.history').waitFor();
+   const c={home:await page.locator('.home-needs .need-row').count(),label:await menu.getAttribute('aria-label'),dot:await menu.evaluate(b=>b.classList.contains('attention'))};
+   await menu.click();
+   const sheet=page.getByRole('dialog',{name:'Menu'});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();
+   c.menu=(await sheet.locator('#menu-count-review').count())?Number(String(await sheet.locator('#menu-count-review').innerText()).replace(/\D/g,'')||0):0;
+   await page.keyboard.press('Escape');await sheet.waitFor({state:'hidden'});
+   await go(page,'Build history');await page.locator('.history').waitFor();
    c.band=(await page.locator('.needs-band').count())?await page.locator('.needs-band').getAttribute('aria-label'):null;
    await go(page,'Review');await page.getByRole('heading',{name:'Review',exact:true}).waitFor();
    c.review=(await page.locator('main .panel.accent-amber').count())?Number(await page.locator('main .panel.accent-amber .count').first().innerText()):0;
-   c.sidebar=Number(String(await page.evaluate(()=>document.querySelector('.sidebar .nav-count')?.textContent||'0')).replace(/\D/g,'')||0);
    return c;
   };
-  const agree=(c,n)=>c.home===n&&c.review===n&&c.sidebar===n&&c.dot===(n>0)&&c.label===label(n)&&(n?!!c.band&&c.band.startsWith(`Needs you: ${n} item`):c.band===null);
+  const agree=(c,n)=>c.home===n&&c.review===n&&c.menu===n&&c.dot===(n>0)&&c.label===label(n)&&(n?!!c.band&&c.band.startsWith(`Needs you: ${n} item`):c.band===null);
+  await advancedMode(page,true);
   try{
    setState('needs_auth');await settle(1);
    r.waiting=await counts();if(!agree(r.waiting,1))throw Error('The needs counts disagree: '+JSON.stringify(r.waiting));
@@ -770,52 +1053,66 @@ db.execute("UPDATE ${table} SET data=? WHERE id=?",(json.dumps(row),p["id"]))
    await settle(0);r.projectArchived=await counts();if(!agree(r.projectArchived,0))throw Error('An archived project still needs you: '+JSON.stringify(r.projectArchived));
    flag('projects',task.project_id,false);
    await settle(1);r.restored=await counts();if(!agree(r.restored,1))throw Error('The restored need is not counted everywhere: '+JSON.stringify(r.restored));
+   // Advanced mode off: ☰ is plain "Menu" while Home's row still says what needs the owner.
+   await advancedMode(page,false);await home(page);
+   r.plain={label:await page.getByRole('button',{name:/^Menu\b/}).getAttribute('aria-label'),dot:await page.getByRole('button',{name:/^Menu\b/}).evaluate(b=>b.classList.contains('attention')),home:await page.locator('.home-needs .need-row').count()};
+   if(r.plain.label!=='Menu'||r.plain.dot||r.plain.home!==1)throw Error('With Advanced mode off: '+JSON.stringify(r.plain));
   }finally{setState(task.state)}
-  await settle(0);
+  await home(page);
+  await page.waitForFunction(()=>!document.querySelector('.home-needs .need-row'),null,{timeout:20000});
   result.checks.needs=r;console.log('N',JSON.stringify(r));
  }
 
- // No horizontal overflow at 360 and 390 px on any screen; the wave stands still when the
+ // L. No horizontal overflow at 360 and 390 px on the phone and 1440 px on the desktop, on every
+ // screen (Advanced ones included), and every control named; no navigation landmark anywhere;
+ // the story and the block are one column at every width; the menu lists the same items on the
+ // phone and the desktop, and ☰ is there on the wide screen; the wave stands still when the
  // platform prefers reduced motion.
  if(wanted.includes('L')){
   const r={};
   freshen();
-  for(const width of [390,360]){
-   await page.setViewportSize({width,height:780});
-   for(const name of ['Home','Chats',"What's running on my Mac",'Builds','Projects','Agents','Review','Archived']){
-    await go(page,name);await sleep(500);
-    if(await overflow(page))throw Error(`Horizontal overflow at ${width} px on ${name}`);
-    const missing=await unnamed(page);if(missing.length)throw Error(`Controls without an accessible name on ${name}: `+missing.join(' | '));
+  const SCREENS=['Home','Chats',"What's running on my Mac",'Build history','Archived','Projects','Agents','Review'];
+  const named=async(p,where)=>{const missing=await unnamed(p);if(missing.length)throw Error(`Controls without an accessible name on ${where}: `+missing.join(' | '))};
+  const sweep=async(p,width)=>{
+   for(const name of SCREENS){
+    await go(p,name);await sleep(500);
+    if(await overflow(p))throw Error(`Horizontal overflow at ${width} px on ${name}`);
+    await named(p,`${name} at ${width} px`);
+    const marks=await landmarks(p);if(marks.length)throw Error(`Navigation at ${width} px on ${name}: `+marks.join(' | '));
    }
-   await home(page);
-   await page.getByRole('button',{name:/^Building /}).first().click();
-   await page.locator('.timeline-blocks .block-card').nth(2).waitFor();
-   if(await overflow(page))throw Error(`Horizontal overflow at ${width} px on the story`);
-   {const missing=await unnamed(page);if(missing.length)throw Error('Controls without an accessible name on the story: '+missing.join(' | '));}
-   if(width===360)await shot(page,'story-360');
-   await page.locator('.block-card').first().click();
-   await page.getByRole('heading',{name:'What this block is doing'}).waitFor();
-   if(await overflow(page))throw Error(`Horizontal overflow at ${width} px on the block detail`);
-   {const missing=await unnamed(page);if(missing.length)throw Error('Controls without an accessible name on the block detail: '+missing.join(' | '));}
-   await page.getByRole('button',{name:/^Menu\b/}).click();
-   if(await overflow(page))throw Error(`Horizontal overflow at ${width} px with the menu open`);
-   {const missing=await unnamed(page);if(missing.length)throw Error('Controls without an accessible name in the menu: '+missing.join(' | '));}
-   if(width===360)await shot(page,'menu-360');
-   await page.keyboard.press('Escape');
+   await home(p);
+   await p.getByRole('button',{name:/^Building /}).first().click();
+   await p.locator('.timeline-blocks .block-card').nth(2).waitFor();
+   if(await overflow(p))throw Error(`Horizontal overflow at ${width} px on the story`);
+   await named(p,`the story at ${width} px`);
+   const storyColumns=await p.locator('.screen.story').evaluate(s=>getComputedStyle(s).gridTemplateColumns.split(' ').length);
+   if(storyColumns!==1)throw Error(`The story is ${storyColumns} columns at ${width} px`);
+   if(width===1440&&!centred(await column(p)))throw Error('The story is not one centred column at 1440 px: '+JSON.stringify(await column(p)));
+   if(width===360)await shot(p,'story-360');
+   if(width===1440)await shot(p,'desktop-story');
+   await p.locator('.block-card').first().click();
+   await p.getByRole('heading',{name:'What this block is doing'}).waitFor();
+   if(await overflow(p))throw Error(`Horizontal overflow at ${width} px on the block detail`);
+   await named(p,`the block detail at ${width} px`);
+   const blockColumns=await p.locator('.screen.block-detail').evaluate(s=>getComputedStyle(s).gridTemplateColumns.split(' ').length);
+   if(blockColumns!==1)throw Error(`The block detail is ${blockColumns} columns at ${width} px`);
+   if(width===1440)await shot(p,'desktop-block');
+   await p.getByRole('button',{name:/^Menu\b/}).click();
+   if(await overflow(p))throw Error(`Horizontal overflow at ${width} px with the menu open`);
+   await named(p,`the menu at ${width} px`);
+   if(width===360)await shot(p,'menu-360');
+   await p.keyboard.press('Escape');
    r[width]='no overflow';
-  }
-  // The phone menu and the desktop sidebar list the same items.
+  };
+  for(const width of [390,360]){await page.setViewportSize({width,height:780});await sweep(page,width);}
+  await sweep(dpage,1440);
+  // One menu: the same items on the phone and the desktop (both in Advanced mode now), and ☰
+  // is the navigation on the wide screen too.
   await page.setViewportSize({width:390,height:844});
-  await page.getByRole('button',{name:/^Menu\b/}).click();
-  r.menu=await page.getByRole('dialog',{name:'Menu'}).getByRole('button').evaluateAll(b=>b.map(x=>x.getAttribute('aria-label')).filter(n=>n&&n!=='Close menu'));
-  await page.keyboard.press('Escape');
-  await page.setViewportSize({width:1440,height:1000});
-  r.sidebar=await page.getByRole('navigation',{name:'Primary'}).getByRole('button').evaluateAll(b=>b.map(x=>x.getAttribute('aria-label')));
-  if(r.menu.join('|')!==r.sidebar.join('|'))throw Error('Menu and sidebar differ: '+JSON.stringify({menu:r.menu,sidebar:r.sidebar}));
-  if(await page.getByRole('button',{name:/^Menu\b/}).isVisible())throw Error('The menu button shows on a wide screen');
-  await home(page);await page.getByRole('button',{name:/^Building /}).first().click();await page.locator('.timeline-blocks .block-card').nth(2).waitFor();
-  await shot(page,'desktop-story');
-  await page.setViewportSize({width:390,height:844});
+  r.menu={phone:await menuItems(page),desktop:await menuItems(dpage)};
+  if(r.menu.phone.join('|')!==r.menu.desktop.join('|'))throw Error('The phone and desktop menus differ: '+JSON.stringify(r.menu));
+  if(!(await dpage.getByRole('button',{name:/^Menu\b/}).isVisible()))throw Error('No ☰ on the wide screen');
+  await advancedMode(page,false);await advancedMode(dpage,false);
   await page.emulateMedia({reducedMotion:'reduce'});
   await home(page);
   await page.getByRole('button',{name:/^Building /}).first().click();

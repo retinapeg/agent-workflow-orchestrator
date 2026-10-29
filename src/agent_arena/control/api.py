@@ -16,9 +16,10 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import conversation, discovery, livetail, provisioning, story, views, workspaces
+from . import conversation, discovery, enrolment, livetail, provisioning, story, views, workspaces
 from .engine import ACTIVE, QUEUED, Engine, git
 from .intent import resolve_project
+from .routing import load_override, normalize_override, routing_options
 from .store import Conflict, Store, encode
 from .worker import redact
 
@@ -50,6 +51,15 @@ class Change(Model):
     decision: str | None = None
 
 
+class RoutingChoice(Model):
+    """Pin one provider's model and effort from the phone; a null model returns it to Auto."""
+
+    provider: str = Field(min_length=1, max_length=20)
+    model: str | None = Field(default=None, max_length=100)
+    effort: str | None = Field(default=None, max_length=20)
+    revision: int
+
+
 class Pair(Model):
     code: str = Field(min_length=8, max_length=128)
 
@@ -61,6 +71,16 @@ class ProjectIdea(Model):
 class Provision(Model):
     proposal_id: str = Field(min_length=8, max_length=64)
     revision: int = 0
+
+
+class EnrollLocal(Model):
+    """Let Arena build in a local repository, named by its folder name in the Projects
+    folder (never a path). ``conversation_id``: the chat that asked, which then builds there.
+    ``checkpoint``: first commit its unsaved work on main for the owner (their explicit tap)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    conversation_id: str | None = Field(default=None, min_length=1, max_length=64)
+    checkpoint: bool = False
 
 
 class About(Model):
@@ -503,7 +523,8 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             meta = {
                 r["key"]: json.loads(r["value"])
                 for r in db.execute(
-                    "SELECT * FROM meta WHERE key IN ('paused','limit','heartbeat','control_rev')"
+                    "SELECT * FROM meta WHERE key IN "
+                    "('paused','limit','heartbeat','control_rev','routing_override')"
                 )
             }
             db.commit()
@@ -524,6 +545,7 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             "paused": meta["paused"],
             "limit": meta["limit"],
             "revision": meta.get("control_rev", 0),
+            "routing_override": normalize_override(meta.get("routing_override")),
             "heartbeat": meta.get("heartbeat"),
             "version": "0.4.1-local",
             "server_time": time.time(),
@@ -858,6 +880,61 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
         return JSONResponse(command(request, body.model_dump(), approve), status_code=202)
 
+    @app.post("/api/v1/projects/enroll-local")
+    def enroll_local(body: EnrollLocal, request: Request):
+        """The owner's one tap that lets Arena build in a local repository the director
+        offered (offer_enroll). The repository is one the catalog lists, found by folder
+        name; with ``checkpoint`` its unsaved work on main is committed first. Refusals are
+        plain-English 409s. An idempotent replay returns the first answer without touching
+        the repository; a later tap answers ``already``."""
+        key = request.headers.get("idempotency-key", "")
+        if not key or len(key) > 128:
+            raise ValueError("An idempotency key is required")
+        payload = body.model_dump()
+        with contextlib.closing(store.connect()) as db:
+            replay = db.execute("SELECT 1 FROM commands WHERE key=?", (key,)).fetchone()
+        if replay:  # the stored answer, or the key-reuse refusal
+            return command(request, payload, lambda db: None)
+        repo = enrolment.find(app.state.director.catalog.local_repos(), body.name)
+        if repo is None:
+            return JSONResponse(
+                {
+                    "detail": f"There is no repository called {body.name[:80]} in your Projects "
+                    "folder on the Mac."
+                },
+                status_code=404,
+            )
+        outcome = enrolment.enroll(store, engine, repo, checkpoint=body.checkpoint)
+
+        def record(db):
+            project = store.get("projects", outcome["project"]["id"], db)
+            if project.get("archived"):
+                # The owner asked to build there again: it leaves the archive, history kept.
+                project.update(archived=False, archived_at=None)
+                db.execute(
+                    "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+                    (
+                        encode({k: v for k, v in project.items() if k not in {"id", "rev"}}),
+                        project["id"],
+                    ),
+                )
+                store.event(db, "project.changed", project_id=project["id"], reason="unarchive")
+            if body.conversation_id:
+                with contextlib.suppress(KeyError):  # the chat is gone; the enrolment stands
+                    conv = store.get("conversations", body.conversation_id, db)
+                    # The agreed spec stays: the next "build it" there launches normally.
+                    conv["project_id"] = project["id"]
+                    conversation._save(store, db, conv)
+            return {
+                "ok": True,
+                "project_id": project["id"],
+                "name": project["name"],
+                "already": outcome["already"],
+                "checkpoint": outcome["checkpoint"],
+            }
+
+        return command(request, payload, record)
+
     @app.get("/api/v1/provisions/{ident}")
     def provision_status(ident: str):
         for record in provisioning.provisions(store, limit=200):
@@ -980,6 +1057,71 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             )
             store.event(db, "account.changed", account_id=ident)
             return {"ok": True}
+
+        return command(request, body.model_dump(), update)
+
+    @app.get("/api/v1/routing/options")
+    def routing_choices():
+        """What each provider can be pinned to (Codex: exactly what its catalog on the Mac
+        advertises; Claude: fixed choices) and the current pins, null meaning Auto."""
+        options = routing_options(store.rows("accounts"))
+        with contextlib.closing(store.connect()) as db:
+            return {**options, "override": load_override(db)}
+
+    # Registered before /control/{action}, which would otherwise take this path.
+    @app.post("/api/v1/control/routing")
+    def control_routing(body: RoutingChoice, request: Request):
+        """Pin a provider's model and effort for every attempt routed to it, or return it
+        to Auto (null model). Which provider takes which phase, checks, reviews, retries
+        and integration do not change."""
+        names = {"codex": "Codex", "claude": "Claude"}
+        # The Codex catalog is read outside the write transaction.
+        offered = routing_options(store.rows("accounts")).get(body.provider, {"models": []})
+
+        def update(db):
+            row = db.execute("SELECT value FROM meta WHERE key='control_rev'").fetchone()
+            rev = int(row[0]) if row else 0
+            if body.revision != rev:
+                raise Conflict("Control view is stale")
+            name = names.get(body.provider)
+            if name is None:
+                raise Conflict("Arena routes work to Codex or Claude; choose one of them.")
+            pin = None
+            if body.model is not None:
+                efforts = {m["slug"]: m["efforts"] for m in offered["models"]}
+                if not efforts:
+                    raise Conflict(
+                        f"{name} can't be pinned right now: its model catalog on the Mac is "
+                        "missing or more than a week old. Run codex once on the Mac, then "
+                        "try again."
+                    )
+                if body.model not in efforts:
+                    raise Conflict(
+                        f"{name} can't be pinned to {body.model}. "
+                        f"Choose one of: {', '.join(efforts)}."
+                    )
+                allowed = ", ".join(efforts[body.model])
+                if body.effort is None:
+                    raise Conflict(f"Choose an effort for {body.model}: {allowed}.")
+                if body.effort not in efforts[body.model]:
+                    raise Conflict(
+                        f"{body.model} can't run at {body.effort} effort. Choose one of: {allowed}."
+                    )
+                pin = {"model": body.model, "effort": body.effort}
+            override = load_override(db)
+            override[body.provider] = pin
+            db.execute(
+                "INSERT OR REPLACE INTO meta VALUES('routing_override',?)", (encode(override),)
+            )
+            db.execute("INSERT OR REPLACE INTO meta VALUES('control_rev',?)", (encode(rev + 1),))
+            store.event(
+                db,
+                "control.routing",
+                provider=body.provider,
+                model=pin["model"] if pin else None,
+                effort=pin["effort"] if pin else None,
+            )
+            return {"ok": True, "override": override}
 
         return command(request, body.model_dump(), update)
 

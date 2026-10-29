@@ -1,10 +1,11 @@
 // Browser/API acceptance only. Dispatch is disabled and no agent is simulated.
-// Navigation is the owner's: the ☰ Menu on a phone, the sidebar on a wide screen.
+// Navigation is the owner's ☰ menu at every width (Round 4: no sidebar); Projects, Agents and
+// Review are Advanced mode screens. ARENA_EVIDENCE redirects the output.
 import {spawn} from 'node:child_process';
 import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-ui-');
-const output=root+'/docs/build-evidence/ui-acceptance';mkdirSync(output,{recursive:true});
+const output=process.env.ARENA_EVIDENCE||root+'/docs/build-evidence/ui-acceptance';mkdirSync(output,{recursive:true});
 const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.ui_server:create_app','--factory','--host','127.0.0.1','--port','8793'],{cwd:root,env:{...process.env,ARENA_UI_STATE:state,ARENA_UI_PORT:'8793'},stdio:'pipe'});
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
 // The repository's Playwright (the Mac has its browsers); where only another Playwright
@@ -13,8 +14,11 @@ async function launch(){
  try{return await (await import('@playwright/test')).chromium.launch()}
  catch(error){try{return await (await import(process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs')).chromium.launch()}catch{throw error}}
 }
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
-const home=page=>page.getByLabel('Tell Arena what to build').waitFor();
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(['Projects','Agents','Review'].includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
+const home=page=>page.getByLabel('Talk to Arena').waitFor();
 let browser;
 try{
  for(let n=0;n<40;n++){try{if((await fetch('http://127.0.0.1:8793')).ok)break}catch{}await new Promise(r=>setTimeout(r,250));}

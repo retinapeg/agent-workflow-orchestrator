@@ -5,10 +5,12 @@ import {mkdirSync, writeFileSync, existsSync} from 'node:fs';
 // (a container), that one: ARENA_PLAYWRIGHT names its module.
 const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
 const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
-// Earlier tab names → Round 3 menu items.
-const NAME={Overview:'Home',Chat:'Chats',Build:'Builds'};
-// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
+// Earlier tab names → Round 4 menu items (the technical build view is an Advanced mode screen).
+const NAME={Overview:'Home',Chat:'Chats',Build:'Build history'};
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(['Projects','Agents','Review'].includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
 const root=process.cwd(), url=process.env.ARENA_URL||'https://leonards-macbook-air-1.tail11ad03.ts.net', out='docs/build-evidence/ui-live-nxt';
 mkdirSync(out,{recursive:true});
 const code=execFileSync(root+'/.venv/bin/python',['-m','agent_arena.control','--home',root+'/.arena-control','pair'],{encoding:'utf8'}).trim();
@@ -20,11 +22,11 @@ try{
  await page.screenshot({path:`${out}/pair-390.png`,fullPage:false});
  await page.getByLabel('One-time pairing code').fill(code);
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByLabel('Tell Arena what to build').waitFor();
+ await page.getByLabel('Talk to Arena').waitFor();
  await page.waitForTimeout(1500);
  const bundle=await page.evaluate(()=>[...document.scripts].map(s=>s.src).find(s=>s.includes('/assets/index-'))||'');
  report.checks.bundle=bundle.split('/').pop();
- report.checks.hero=await page.getByText('Tell me what to build.',{exact:true}).count();
+ report.checks.hero=await page.getByLabel('Talk to Arena').count(); // Home's conversational box
  report.checks.mic=await page.getByRole('button',{name:/dictate|speak/i}).count();
  report.checks.segmented=await page.getByRole('button',{name:'Improve',exact:true}).count();
  const snap=await page.evaluate(async()=>await(await fetch('/api/v1/overview')).json());
@@ -44,7 +46,7 @@ try{
  await go(page,'Home');
  await page.waitForTimeout(800);
  await page.screenshot({path:`${out}/overview-1440.png`,fullPage:false});
- await go(page,'Builds');
+ await go(page,'Build history');
  await page.waitForTimeout(800);
  await page.screenshot({path:`${out}/build-1440.png`,fullPage:false});
  // controls still work: open and close the New request dialog (on Projects), open Device session

@@ -45,6 +45,7 @@ function TranscriptView({attempt, agent, onClose}: {attempt: RecordData; agent: 
 }
 import {DeviceFacts, Devices} from './Devices';
 import {ProposalCard, ProvisionCard, type Proposal} from './Provision';
+import {ModelsSheet} from './Models';
 
 function lineClass(line: string) {
   if (line.startsWith('+++') || line.startsWith('---')) return 'd-file';
@@ -643,7 +644,7 @@ export function DialogBody() {
   const task = modal?.kind === 'task' ? data.tasks.find(t => t.id === modal.id) : null;
   const review = modal?.kind === 'review' ? data.approvals.find(a => a.id === modal.id) : null;
   const reviewedTask = review ? data.tasks.find(t => t.id === review.task_id) : null;
-  const title = modal?.kind === 'goal' ? 'New request' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : stripLegacy(task?.title || reviewedTask?.title || '') || 'Build control';
+  const title = modal?.kind === 'goal' ? 'New request' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : modal?.kind === 'models' ? 'Models' : stripLegacy(task?.title || reviewedTask?.title || '') || 'Build control';
   const heartbeatAge = data.heartbeat ? now - data.heartbeat : null;
   return (
     <>
@@ -655,6 +656,7 @@ export function DialogBody() {
       </div>
       <div className="dialog-scroll">
         {modal?.kind === 'goal' && <NewRequest />}
+        {modal?.kind === 'models' && <ModelsSheet />}
         {task && <TaskDialog task={task} />}
         {review && reviewedTask && <ReviewDialog review={review} task={reviewedTask} />}
         {modal?.kind === 'account' && (

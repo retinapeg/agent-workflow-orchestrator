@@ -1,11 +1,13 @@
 // Usability acceptance on a COPY of the real control state (tests/control/real_state_server.py).
 // Dispatch is disabled; the live database and the service on 8791 are never touched.
-// Navigation is the owner's: the ☰ Menu on a phone (Round 3 has no bottom navigation).
+// Navigation is the owner's ☰ menu at every width (Round 4: no sidebar, no bottom navigation);
+// Projects, Agents, Review and the technical build view are Advanced mode screens.
+// ARENA_EVIDENCE redirects the output.
 import {spawn} from 'node:child_process';
 import {mkdtempSync,mkdirSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-real-'),port='8794',base='http://127.0.0.1:'+port;
-const output=root+'/docs/build-evidence/usability';mkdirSync(output,{recursive:true});
+const output=process.env.ARENA_EVIDENCE||root+'/docs/build-evidence/usability';mkdirSync(output,{recursive:true});
 const ANDROID='Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 const PROOF=/^Orchestrator live proof/;
 const ACTIVE_ATTEMPT=['leased','running','verifying'];
@@ -20,10 +22,14 @@ async function launch(){
  try{return await (await import('@playwright/test')).chromium.launch()}
  catch(error){try{return await (await import(process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs')).chromium.launch()}catch{throw error}}
 }
-// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
-// The technical build view: Builds, then Advanced → Technical view.
-const technical=async page=>{await go(page,'Builds');await page.locator('details.advanced > summary').click();await page.getByRole('button',{name:'Technical view',exact:true}).click();};
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(['Projects','Agents','Review'].includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
+// Advanced mode on or off from the ☰ menu's switch (remembered on this device).
+const advancedMode=async(page,on)=>{await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),sw=sheet.getByRole('switch',{name:'Advanced mode'});if(await sw.getAttribute('aria-checked')!==String(on))await sw.click();await page.keyboard.press('Escape');await sheet.waitFor({state:'hidden'});};
+// The technical build view (Advanced mode): Build history → Technical build view.
+const technical=async page=>{await advancedMode(page,true);await go(page,'Build history');await page.getByRole('button',{name:'Technical build view',exact:true}).click();};
 try{
  for(let n=0;n<80;n++){if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+' (is port '+port+' free?)\n'+serverLog.slice(-800));try{if((await fetch(base)).ok)break}catch{}await new Promise(r=>setTimeout(r,250));}
  if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+'\n'+serverLog.slice(-800));
@@ -33,7 +39,7 @@ try{
  await page.goto(base);
  await page.getByLabel('One-time pairing code').fill('real-state-one-use-code');
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByLabel('Tell Arena what to build').waitFor();
+ await page.getByLabel('Talk to Arena').waitFor();
 
  // 1. Slim overview on the real state.
  const {bytes,snap}=await page.evaluate(async()=>{const r=await fetch('/api/v1/overview');const b=await r.arrayBuffer();return{bytes:b.byteLength,snap:JSON.parse(new TextDecoder().decode(b))}});
@@ -51,13 +57,15 @@ try{
  if(proofs.length!==4||proofs.some(p=>!p.archived))throw Error('Proof projects not all archived: '+JSON.stringify(result.checks.proofProjects));
  const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
 
- // 3. Home lists no archived project (finished builds unfolded too).
+ // 3. Home lists no archived project, and neither does Build history (every build not archived).
  await go(page,'Home');
- await page.getByLabel('Tell Arena what to build').waitFor();
- const finishedToggle=page.getByRole('button',{name:/^Finished/});
- if(await finishedToggle.getAttribute('aria-expanded')==='false')await finishedToggle.click();
+ await page.getByLabel('Talk to Arena').waitFor();
  const homeText=await page.locator('main').innerText();
  if(PROOF.test(homeText)||/Orchestrator live proof/.test(homeText))throw Error('Archived proof project visible on Home');
+ await go(page,'Build history');
+ await page.getByRole('heading',{name:'Build history',exact:true}).waitFor();
+ const historyText=await page.locator('main').innerText();
+ if(/Orchestrator live proof/.test(historyText))throw Error('Archived proof project visible in Build history');
  // ...and neither does the request dialog's project picker (the form lives on Projects).
  await go(page,'Projects');
  await page.getByRole('button',{name:'New request',exact:true}).first().click();
@@ -78,7 +86,7 @@ try{
  if(chatOptions.some(o=>/Orchestrator live proof/.test(o)))throw Error('Archived project in chat picker');
  await chatPicker.getByRole('button',{name:'Close dialog'}).click();
 
- // 4. Builds opens on the live / needs-you / newest request.
+ // 4. The technical build view opens on the live / needs-you / newest request.
  const goalTasks=g=>snap.tasks.filter(t=>t.goal_id===g.id);
  const goals=[...snap.goals].sort((a,b)=>b.created-a.created);
  const isLive=g=>{const ids=new Set(goalTasks(g).map(t=>t.id));return snap.attempts.some(a=>ids.has(a.task_id)&&ACTIVE_ATTEMPT.includes(a.state))};
@@ -91,7 +99,7 @@ try{
  await page.locator('#goal-pick').waitFor();
  const selected=await page.locator('#goal-pick').inputValue();
  result.checks.buildsDefault={expected:expected.id,selected,rule:why,title:expected.display_title};
- if(selected!==expected.id)throw Error(`Builds opened on ${selected}, expected ${why} request ${expected.id}`);
+ if(selected!==expected.id)throw Error(`The technical build view opened on ${selected}, expected ${why} request ${expected.id}`);
  const buildOptions=await page.locator('#goal-pick option').allInnerTexts();
  if(buildOptions.some(o=>/\(archived\)/.test(o)&&!o.includes(expected.display_title||'\u0000')))throw Error('Archived requests listed without Show archived');
  if(buildOptions.some(o=>/OUTCOME:/i.test(o)))throw Error('Picker shows raw spec text');
@@ -111,7 +119,7 @@ try{
 
  // 6. No horizontal overflow on any screen at 390 px (file names keep the earlier tab names).
  result.checks.overflow={};
- for(const [tab,file] of [['Chats','chat'],['Home','overview'],['Projects','projects'],['Builds','build'],['Agents','agents'],['Review','review'],["What's running on my Mac",'mac'],['Archived','archived']]){
+ for(const [tab,file] of [['Chats','chat'],['Home','overview'],['Projects','projects'],['Build history','build'],['Agents','agents'],['Review','review'],["What's running on my Mac",'mac'],['Archived','archived']]){
   await go(page,tab);
   await page.waitForTimeout(400);
   const over=await overflow(page);result.checks.overflow[tab]=over;

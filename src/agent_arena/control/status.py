@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from .engine import ACTIVE, TERMINAL
+from .routing import stored_override
 from .story import is_plan_task, is_stalled
 from .titles import display_title, goal_title
 
@@ -123,4 +124,6 @@ def arena_status(store, now: float | None = None) -> dict:
             for t in recent
         ],
         "paused": bool(store.setting("paused")),
+        # The model and effort the owner pinned per provider; null is Auto (Arena picks).
+        "routing_override": stored_override(store),
     }

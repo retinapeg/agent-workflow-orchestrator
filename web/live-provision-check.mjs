@@ -5,8 +5,13 @@ import {mkdirSync, writeFileSync, existsSync} from 'node:fs';
 // (a container), that one: ARENA_PLAYWRIGHT names its module.
 const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
 const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
-// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
-const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
+// Open a screen (Round 4: no sidebar at any width). The lion and wordmark go Home; everything
+// else is in the ☰ menu, where Projects, Agents and Review are listed only in Advanced mode:
+// asked for one of those, this turns Advanced mode on from the menu's own switch first.
+const go=async(page,name)=>{if(name==='Home'){await page.getByRole('button',{name:'Arena home',exact:true}).click();return}await page.getByRole('button',{name:/^Menu\b/}).click();const sheet=page.getByRole('dialog',{name:'Menu'}),item=sheet.getByRole('button',{name,exact:true});await sheet.getByRole('switch',{name:'Advanced mode'}).waitFor();if(['Projects','Agents','Review'].includes(name)&&!(await item.count()))await sheet.getByRole('switch',{name:'Advanced mode'}).click();await item.click();};
+// The technical build view (Advanced mode, turned on by visiting Projects first): Build
+// history → Technical build view.
+const technical=async page=>{await go(page,'Build history');await page.getByRole('button',{name:'Technical build view',exact:true}).click();};
 const root=process.cwd(), url='https://leonards-macbook-air-1.tail11ad03.ts.net', out='docs/build-evidence/ui-live-provisioning';
 mkdirSync(out,{recursive:true});
 const code=execFileSync(root+'/.venv/bin/python',['-m','agent_arena.control','--home',root+'/.arena-control','pair'],{encoding:'utf8'}).trim();
@@ -15,7 +20,7 @@ try{
  const ctx=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
  const page=await ctx.newPage(); const errors=[]; page.on('pageerror',e=>errors.push(e.message));
  await page.goto(url); await page.getByLabel('One-time pairing code').fill(code); await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByLabel('Tell Arena what to build').waitFor();
+ await page.getByLabel('Talk to Arena').waitFor();
  await page.getByRole('button',{name:'New project',exact:true}).click();
  await page.getByLabel('What should Arena build?').fill('A tiny weather widget web page that shows the forecast for my city with a dark theme.');
  await page.getByRole('button',{name:'Propose project',exact:true}).click();
@@ -31,7 +36,7 @@ try{
  report.checks.smoke_project_listed=await page.getByText('Arena Smoke 20261028').count();
  report.checks.github_link=await page.getByRole('link',{name:/Open .* on GitHub/}).count();
  await page.screenshot({path:`${out}/phone-projects.png`,fullPage:true});
- await go(page,'Builds');
+ await technical(page);
  await page.waitForTimeout(800);
  const picker=page.getByLabel('Request').first();
  const options=await picker.locator('option').allTextContents().catch(()=>[]);
@@ -44,7 +49,7 @@ try{
  await go(page,'Home');
  await page.waitForTimeout(800);
  await page.screenshot({path:`${out}/desk-overview.png`,fullPage:false});
- await go(page,'Builds');
+ await technical(page);
  await page.waitForTimeout(800);
  await page.screenshot({path:`${out}/desk-build.png`,fullPage:false});
  report.checks.page_errors=errors; report.passed=report.checks.approve_button===1&&report.checks.smoke_project_listed>0&&errors.length===0;

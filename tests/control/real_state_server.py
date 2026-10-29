@@ -37,6 +37,7 @@ WRITABLE = (
     "/api/v1/session",
     "/api/v1/goals/archive",
     "/api/v1/goals/unarchive",
+    "/api/v1/control/routing",
 )
 WRITABLE_PROJECT = re.compile(r"^/api/v1/projects/[A-Za-z0-9_]+/(?:archive|unarchive)$")
 

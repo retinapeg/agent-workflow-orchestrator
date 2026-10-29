@@ -610,9 +610,10 @@ class Engine:
                             "independent of the author",
                         )
                     continue
-                from .routing import select_route
+                from .routing import load_override, select_route
 
-                selected = select_route(task, eligible, attempts)
+                # The owner's per-provider pins (Auto when none): same transaction as the claim.
+                selected = select_route(task, eligible, attempts, load_override(db))
                 if selected is None:
                     self.store.update_task(
                         db,

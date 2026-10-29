@@ -1,5 +1,5 @@
 {
-  "state": "/tmp/arena-real-082SgL",
+  "state": "/tmp/arena-real-UWIrrA",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
@@ -8,15 +8,20 @@
   "slices": {
     "A": {
       "awaySince": 1793188609.825794,
-      "line": "Since you were away 1 stopped",
-      "rows": 1,
-      "labels": [
+      "banner": 0,
+      "lines": 1,
+      "recent": {
+        "shown": "Finished recently: none",
+        "expected": "Finished recently: none",
+        "ok": true
+      },
+      "sections": [
+        "Finished",
         "Stopped"
       ],
-      "seenAfterView": null,
       "opened": {
-        "row": "Arena can run its queued builds unattended overnight in a bounded…",
-        "build": "Arena can run its queued builds unattended overnight in a bounded…"
+        "row": "Add optional silent completion, a Pomodoro: countdown prefix and a…",
+        "build": "Add optional silent completion, a Pomodoro: countdown prefix and a…"
       }
     },
     "B": {
@@ -57,7 +62,7 @@
         "text": "The director was interrupted before it could answer. Tap Retry.",
         "retry": 1,
         "thinking": 0,
-        "turnAge": 133
+        "turnAge": 134
       }
     },
     "D": {
@@ -70,8 +75,8 @@
         "opened": "goal_a6faaa785f084d70"
       },
       "review": {
-        "goal": "goal_e2d50f4fff95f92f",
-        "task": "task_6efe4ea634676097",
+        "goal": "goal_a322fbf5ce1226c0",
+        "task": "task_bd6c27618f92a638",
         "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Needs you 5m 00s Queue requests overnight and run them economically A verified change is waiting for your approval. Review Open the build",
         "review": 1,
         "status": "Needs you",

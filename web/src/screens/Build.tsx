@@ -493,7 +493,7 @@ export function Build() {
             </button>
             <div>
               <Eyebrow>Advanced · technical view</Eyebrow>
-              <h2 className="page-title">Builds</h2>
+              <h2 className="page-title">Technical build view</h2>
               <p className="page-sub">Each request, its stepper, the agents on it and their live output.</p>
             </div>
           </div>

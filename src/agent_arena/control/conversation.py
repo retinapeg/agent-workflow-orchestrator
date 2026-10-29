@@ -6,9 +6,11 @@ answered by the director model through the authenticated Codex CLI in a READ-ONL
 sandbox, with the selected local repository as its working directory so it can inspect
 code and history without changing anything. GitHub repositories are listed and
 summarised read-only by the controller with the signed-in `gh` CLI. Nothing here can
-enrol, modify or push a repository. A build starts only when the owner's own words ask
-for execution AND the director agrees the discussion is build-ready; it then files the
-compiled specification through the existing request path.
+enrol, modify or push a repository: when the owner wants to build in a local repository
+Arena may not build in yet, the reply offers it (offer_enroll, from a read-only check) and
+only the owner's tap enrols it (enrolment.py). A build starts only when the owner's own
+words ask for execution AND the director agrees the discussion is build-ready; it then
+files the compiled specification through the existing request path.
 """
 
 from __future__ import annotations
@@ -25,9 +27,9 @@ from pathlib import Path
 from agent_arena.process import ProcessRunner
 from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 
-from . import discovery, story
+from . import discovery, enrolment, story
 from .engine import git
-from .intent import resolve_project
+from .intent import STOPWORDS, normalize, resolve_project
 from .status import arena_status
 from .store import encode
 from .worker import auth_status, invocation, redact
@@ -117,10 +119,14 @@ repositories, commits, files or build results. Do not mention your scratch worki
 when no project is selected simply say so and name the enrolled projects.
 Project selection: the owner selects a project by naming it (or its repository). Whenever the
 discussion is about an enrolled project, set project_hint to its exact enrolled name on
-every turn — including when you merely inspect or plan for it. If they name a local or GitHub
-repository that is
-NOT enrolled, explain that Arena can discuss it but cannot build there until it is enrolled on
-the Mac (or created through "New project"), and set project_hint to null.
+every turn — including when you merely inspect or plan for it. Unenrolled local repositories
+(in local_repositories, not in enrolled_projects) can be enrolled by the owner with one tap:
+when they want to build or work in one, never refuse — say in plain English that Arena needs
+their permission to build there and that the button under your reply gives it, keep discussing
+and planning, and set enroll_repo to its exact folder name (on every turn while it is the
+subject) and project_hint to null. enrolled_projects is current: a repository enrolled since an
+earlier message can be built in now. A GitHub repository with no local copy cannot be built in
+until it is on the Mac (or created through "New project"); set project_hint to null for it.
 Planning: as the discussion matures, maintain a structured PLAN inside spec: milestones with
 codes ("M1 — Data layer", "M2 — Backend", "M2.1 — API"), each holding concrete tasks with
 instructions, the paths they own (relative, inside the selected project's enrolled scope),
@@ -136,20 +142,23 @@ action to "build" and make spec complete (outcome, acceptance, constraints, plan
 to execute but something essential is still ambiguous, set action to "clarify" and ask the one
 question that matters. Otherwise action is "chat".
 Live facts in CONTEXT: arena_status (Arena's work right now; running[].stalled means no agent
-output for ten minutes or more), recent_outcomes (builds that finished or stopped in the last
-24 hours), failures (why builds stopped in the last 48 hours) and mac_activity (a fresh,
-read-only look at the owner's Mac). When the owner asks what is running on their Mac, laptop,
-machine or computer, or what Claude or Codex is doing, answer ONLY from mac_activity: name each
-activity once with its group ("managed by Arena", "discovered on your Mac" or "could not be
-verified") and say what could not be seen (its limitations); a running process alone does not
-prove progress. When asked what went wrong, what failed or what is stuck, answer from failures
+output for ten minutes or more; routing_override is the model and effort the owner pinned for
+each provider, codex and claude, from the phone, null meaning Auto: Arena picks per task),
+recent_outcomes (builds that finished or stopped in the last 24 hours), failures (why builds
+stopped in the last 48 hours) and mac_activity (a fresh, read-only look at the owner's Mac).
+When the owner asks what is running on their Mac, laptop, machine or computer, or what Claude
+or Codex is doing, answer ONLY from mac_activity: name each activity once with its group
+("managed by Arena", "discovered on your Mac" or "could not be verified") and say what could
+not be seen (its limitations); a running process alone does not prove progress.
+When asked what went wrong, what failed or what is stuck, answer from failures
 and arena_status: what failed, what it was meant to achieve, whether it is recoverable, what the
 agents already tried, what happens next and whether the owner must act; no stack traces, logs,
 file names or hashes unless the owner asks for technical detail. When CONTEXT.about is present
 the owner is asking about that build or block: answer from its story first. Never invent
 processes, repositories, progress or results.
 Return ONLY JSON:
-{"reply": string, "project_hint": string|null, "action": "chat"|"build"|"clarify",
+{"reply": string, "project_hint": string|null, "enroll_repo": string|null,
+ "action": "chat"|"build"|"clarify",
  "spec": {"outcome": string, "acceptance": [string], "constraints": [string], "notes": string,
           "plan": {"milestones": [{"code": "M1", "title": string,
                     "tasks": [{"title": string, "instructions": string, "scope": [string],
@@ -280,6 +289,38 @@ class Catalog:
             "url": meta.get("url"),
             "readme": readme[:3000] if code == 0 else "",
         }
+
+
+def _resolved(path):
+    try:
+        return str(Path(str(path or "")).expanduser().resolve()) if path else ""
+    except (OSError, RuntimeError):
+        return ""
+
+
+def named(text, repos, projects=()):
+    """What the words name in full (folder name or title, as a phrase), the way project
+    selection reads the owner's words: (the repositories among ``repos`` named, whether an
+    enrolled project is named). Longer names are read first, so naming an enrolled project
+    never also names a shorter repository inside it."""
+    phrases = [(normalize(r["name"]), r) for r in repos] + [
+        (normalize(name), None)
+        for p in projects
+        for name in (str(p.get("name") or ""), Path(str(p.get("repo") or "")).name)
+    ]
+    phrases = sorted(
+        (e for e in phrases if len(e[0]) >= 3 and any(w not in STOPWORDS for w in e[0].split())),
+        key=lambda e: -len(e[0]),
+    )
+    haystack, found, project = f" {normalize(text)} ", [], False
+    for phrase, repo in phrases:
+        if f" {phrase} " in haystack:
+            haystack = haystack.replace(f" {phrase} ", "  ")
+            if repo is None:
+                project = True
+            elif repo not in found:
+                found.append(repo)
+    return found, project
 
 
 def default_project(store, db):
@@ -642,6 +683,51 @@ class Director:
                 )
         return context, selected
 
+    def _enroll_offer(self, answer, text, local, conv=None, history=()):
+        """offer_enroll: the local repository the owner wants to build or work in that Arena
+        may not build in yet: named by the director (enroll_repo, or a project_hint that
+        names no enrolled project) or, when the owner asks to build, by the owner's own words
+        in full, or still the one the previous reply offered when those words name nothing
+        else and no project was chosen since. Carries a read-only check of whether one tap
+        can enrol it now; None when this turn is not about one."""
+        projects = [p for p in self.store.rows("projects") if not p.get("archived")]
+        known = {_resolved(p.get("repo")) for p in projects}
+        repos = [r for r in local if _resolved(r.get("path")) not in known]
+        if not repos:
+            return None
+        names = {
+            normalize(n)
+            for p in projects
+            for n in (str(p.get("name") or ""), Path(str(p.get("repo") or "")).name)
+        }
+        wanted = [answer.get("enroll_repo")]
+        hint = answer.get("project_hint")
+        if isinstance(hint, str) and normalize(hint) not in names:
+            wanted.append(hint)  # a hint naming no enrolled project must never select one
+        repo = None
+        for value in wanted:
+            key = normalize(value) if isinstance(value, str) else ""
+            repo = next((r for r in repos if key and normalize(r["name"]) == key), None)
+            if repo:
+                break
+        if (
+            repo is None
+            and not hint
+            and (BUILD_INTENT.search(text) or answer.get("action") in {"build", "clarify"})
+        ):
+            found, project = named(text, repos, projects)
+            last = next((m for m in reversed(history) if m.get("role") == "assistant"), {})
+            offered = (last.get("offer_enroll") or {}).get("repo_name")
+            if len(found) == 1:
+                repo = found[0]
+            elif not found and not project and offered and not (conv or {}).get("project_id"):
+                # "Build it" right after an offer: still that repository, never a launch.
+                repo = next((r for r in repos if r["name"] == offered), None)
+        if repo is None:
+            return None
+        name = enrolment.title(repo["name"])
+        return {"name": name, "repo_name": repo["name"], **enrolment.check(repo["path"], name)}
+
     def _cwd(self, conv, text, selected):
         """Read-only working directory for inspection: the selected or mentioned local repo."""
         if selected and Path(selected["repo"]).is_dir():
@@ -758,6 +844,7 @@ class Director:
                 extra["mac_activity"] = discovery.capped(activity)
             if about:
                 extra["about"] = about
+            offer = self._enroll_offer(answer, text, context["local_repositories"], conv, history)
             with self.store.transaction() as db:
                 live = self.store.get("conversations", conversation_id, db)
                 if isinstance(answer.get("spec"), dict):
@@ -769,8 +856,13 @@ class Director:
                     for p in self.store.rows("projects", db)
                     if p.get("enabled", True) and not p.get("archived")
                 ]
+                if offer:
+                    # The subject is a repository Arena may not build in yet: no project stays
+                    # selected, so "build it" can never start on another one meanwhile. The
+                    # owner's tap enrols it and selects it here, keeping the agreed spec.
+                    live["project_id"] = None
                 for candidate, strict in ((answer.get("project_hint"), False), (text, True)):
-                    if not candidate:
+                    if offer or not candidate:
                         continue
                     match = resolve_project(str(candidate), enabled)
                     if not match.get("project"):
@@ -784,7 +876,12 @@ class Director:
                 _save(self.store, db, live)
             action = answer.get("action")
             explicit = bool(BUILD_INTENT.search(text))
-            if action == "build" and explicit:
+            if offer:
+                # Nothing launches: Arena needs the owner's permission (one tap) first.
+                extra["offer_enroll"] = offer
+                if "permission" not in reply.lower():
+                    reply += f"\n\nArena needs your permission to build in {offer['name']}."
+            elif action == "build" and explicit:
                 try:
                     extra.update(self._launch(conversation_id))
                 except ValueError as exc:
