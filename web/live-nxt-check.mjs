@@ -1,7 +1,14 @@
 // Verify the LIVE HTTPS app shows the redesign: real origin, real data, real browser.
-import {chromium} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync, writeFileSync} from 'node:fs';
+import {mkdirSync, writeFileSync, existsSync} from 'node:fs';
+// The repository's Playwright on the Mac; where only another Playwright build has browsers
+// (a container), that one: ARENA_PLAYWRIGHT names its module.
+const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
+const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
+// Earlier tab names → Round 3 menu items.
+const NAME={Overview:'Home',Chat:'Chats',Build:'Builds'};
+// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
+const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
 const root=process.cwd(), url=process.env.ARENA_URL||'https://leonards-macbook-air-1.tail11ad03.ts.net', out='docs/build-evidence/ui-live-nxt';
 mkdirSync(out,{recursive:true});
 const code=execFileSync(root+'/.venv/bin/python',['-m','agent_arena.control','--home',root+'/.arena-control','pair'],{encoding:'utf8'}).trim();
@@ -13,7 +20,7 @@ try{
  await page.screenshot({path:`${out}/pair-390.png`,fullPage:false});
  await page.getByLabel('One-time pairing code').fill(code);
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByLabel('Tell Arena what to build').waitFor();
  await page.waitForTimeout(1500);
  const bundle=await page.evaluate(()=>[...document.scripts].map(s=>s.src).find(s=>s.includes('/assets/index-'))||'');
  report.checks.bundle=bundle.split('/').pop();
@@ -28,25 +35,25 @@ try{
  report.checks.blocked_visible_on_home=await page.locator('main').getByText(/Frozen acceptance checks did not all pass|non-regular untracked path/).count();
  await page.screenshot({path:`${out}/overview-390.png`,fullPage:true});
  for(const tab of ['Build','Review','Projects','Agents']){
-  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:tab,exact:true}).click();
+  await go(page,NAME[tab]||tab);
   await page.waitForTimeout(800);
   if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('overflow '+tab);
   await page.screenshot({path:`${out}/${tab.toLowerCase()}-390.png`,fullPage:true});
  }
  await page.setViewportSize({width:1440,height:1000});
- await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click();
+ await go(page,'Home');
  await page.waitForTimeout(800);
  await page.screenshot({path:`${out}/overview-1440.png`,fullPage:false});
- await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Build',exact:true}).click();
+ await go(page,'Builds');
  await page.waitForTimeout(800);
  await page.screenshot({path:`${out}/build-1440.png`,fullPage:false});
- // controls still work: open and close the New request dialog, open Device session
- await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click();
+ // controls still work: open and close the New request dialog (on Projects), open Device session
+ await go(page,'Projects');
  await page.getByRole('button',{name:'New request',exact:true}).click();
  await page.getByLabel('What would you like to change?').waitFor();
  await page.keyboard.press('Escape');
  await page.getByRole('dialog').waitFor({state:'hidden'});
- await page.getByRole('button',{name:'Device session'}).first().click();
+ await go(page,'Device session');
  await page.getByRole('button',{name:'Unpair this device'}).waitFor();
  await page.screenshot({path:`${out}/device-session-1440.png`,fullPage:false});
  await page.getByRole('button',{name:'Unpair this device'}).click();

@@ -14,10 +14,10 @@ from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from . import conversation, livetail, provisioning, views, workspaces
-from .engine import ACTIVE, Engine, git
+from . import conversation, discovery, livetail, provisioning, story, views, workspaces
+from .engine import ACTIVE, QUEUED, Engine, git
 from .intent import resolve_project
 from .store import Conflict, Store, encode
 from .worker import redact
@@ -63,9 +63,23 @@ class Provision(Model):
     revision: int = 0
 
 
+class About(Model):
+    """The block (task) or build (goal) a chat message is about."""
+
+    task_id: str | None = Field(default=None, min_length=1, max_length=64)
+    goal_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+    @model_validator(mode="after")
+    def exactly_one(self):
+        if bool(self.task_id) == bool(self.goal_id):
+            raise ValueError("about names exactly one task_id or goal_id")
+        return self
+
+
 class ChatMessage(Model):
     text: str = Field(min_length=1, max_length=20000)
     revision: int = 0
+    about: About | None = None
 
 
 class ChatProject(Model):
@@ -108,6 +122,81 @@ class AutoIntent(Model):
     revision: int | None = None
 
 
+class GoalIds(Model):
+    """Builds (goals) to archive or restore; ``revision`` is accepted and ignored."""
+
+    ids: list[str] = Field(min_length=1, max_length=500)
+    revision: int | None = None
+
+
+# Work in these states runs again without anyone acting: a task an owner action put back in
+# one of them brings its archived build and project back (task_action). What blocks an
+# archive is story.still_going (these states, less work waiting on a stopped dependency,
+# plus verified changes awaiting approval or being merged) and, for a project, also
+# story.waiting_for_owner (a question, sign-in, permission or approval).
+GOAL_BUSY = ACTIVE | QUEUED | {"integrating", "awaiting_input"}
+
+
+WAITING_FOR_YOU = "This project has something waiting for you — answer or decide it first."
+
+
+def going(db, store, project_ids, *, owner_waits):
+    """story.still_going over these projects' tasks: {project_id: ids of tasks still going}."""
+    return {
+        project_id: story.still_going(tasks, approvals, policy, owner_waits=owner_waits)
+        for project_id, (tasks, approvals, policy) in project_work(db, store, project_ids).items()
+    }
+
+
+def project_work(db, store, project_ids):
+    """{project_id: (its tasks with their dependencies and ``goal_archived``, the approvals
+    of those tasks, its integration policy)}, read in the caller's transaction."""
+    if not project_ids:
+        return {}
+    marks = ",".join("?" * len(project_ids))
+    tasks = [
+        store.unpack(r)
+        for r in db.execute(f"SELECT * FROM tasks WHERE project_id IN ({marks})", project_ids)
+    ]
+    dependencies: dict[str, list[str]] = {}
+    for task_id, dependency_id in db.execute(
+        f"SELECT d.task_id, d.dependency_id FROM task_dependencies d JOIN tasks t "
+        f"ON t.id=d.task_id WHERE t.project_id IN ({marks})",
+        project_ids,
+    ):
+        dependencies.setdefault(task_id, []).append(dependency_id)
+    approvals = [
+        store.unpack(r)
+        for r in db.execute(
+            f"SELECT a.* FROM approvals a JOIN tasks t ON t.id=a.task_id "
+            f"WHERE t.project_id IN ({marks})",
+            project_ids,
+        )
+    ]
+    archived = {
+        g["id"]
+        for g in (
+            store.unpack(r)
+            for r in db.execute(f"SELECT * FROM goals WHERE project_id IN ({marks})", project_ids)
+        )
+        if g.get("archived")
+    }
+    out = {}
+    for project_id in project_ids:
+        project = store.get("projects", project_id, db)
+        mine = [
+            {
+                **t,
+                "dependencies": dependencies.get(t["id"], []),
+                "goal_archived": t.get("goal_id") in archived,
+            }
+            for t in tasks
+            if t["project_id"] == project_id
+        ]
+        out[project_id] = (mine, approvals, project.get("integration_policy") or "manual")
+    return out
+
+
 def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     from .configuration import validate_origin
 
@@ -137,7 +226,10 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
     )
     app.state.store = store
     app.state.engine = engine
-    director = conversation.Director(store, engine)
+    # What runs on this Mac: read-only, cached ten seconds, never part of the snapshot. The
+    # director reads the same cached discovery (looked up per turn, so it can be replaced).
+    app.state.discovery = discovery.Discovery(store)
+    director = conversation.Director(store, engine, mac_activity=lambda: app.state.discovery.get())
     app.state.director = director
     # A director turn the previous controller was answering died with it: close it with a
     # plain-language error and Retry (later ones are closed when the phone reads them).
@@ -339,6 +431,20 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             for r in rows
         ]
 
+    @app.get("/api/v1/mac-activity")
+    def mac_activity():
+        """Coding agents, development servers and test runs on this Mac, reconciled with
+        Arena's records (managed / external / unknown). Read-only; cached ten seconds; never
+        waits more than a few seconds (a look still running elsewhere serves the previous
+        one, marked stale, or 503 when there is none yet)."""
+        found = app.state.discovery.get()
+        if found is None:
+            return JSONResponse(
+                {"detail": "Arena is still looking at the Mac. Try again in a moment."},
+                status_code=503,
+            )
+        return found
+
     @app.get("/api/v1/system")
     def system():
         """Host facts for the Device dialog: attempt workspaces on the Mac (count, bytes and
@@ -456,6 +562,61 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
         approvals = [a["id"] for a in store.rows("approvals", db) if a["task_id"] in task_ids]
         return goal, tasks, attempts, approvals
 
+    def set_goal_archived(db, goal, archived, **extra):
+        """Archive or restore one build. Only the flag changes: its tasks, attempts,
+        transcripts, commits and evidence are untouched."""
+        data = {k: v for k, v in goal.items() if k not in {"id", "project_id"}}
+        data.update(archived=archived, archived_at=time.time() if archived else None, **extra)
+        db.execute("UPDATE goals SET data=? WHERE id=?", (encode(data), goal["id"]))
+        store.event(db, "goal.archived" if archived else "goal.restored", goal_id=goal["id"])
+
+    @app.post("/api/v1/goals/archive")
+    def archive_goals(body: GoalIds, request: Request):
+        def update(db):
+            archived, skipped = [], []
+            goals = {}
+            for ident in dict.fromkeys(body.ids):
+                with contextlib.suppress(KeyError):
+                    goals[ident] = store.get("goals", ident, db)
+            # Still going: work running, queued (not stuck behind a stopped dependency) or
+            # merging, a question or a verified change waiting for the owner (the story's
+            # "Needs you"): those builds are skipped.
+            busy = going(
+                db, store, sorted({g["project_id"] for g in goals.values()}), owner_waits=True
+            )
+            for ident in dict.fromkeys(body.ids):
+                goal = goals.get(ident)
+                if goal is None:
+                    skipped.append({"id": ident, "reason": "not found"})
+                    continue
+                mine = {r[0] for r in db.execute("SELECT id FROM tasks WHERE goal_id=?", (ident,))}
+                if mine & busy[goal["project_id"]]:
+                    skipped.append({"id": ident, "reason": "still running"})
+                    continue
+                if not goal.get("archived"):
+                    set_goal_archived(db, goal, True)
+                archived.append(ident)
+            return {"archived": archived, "skipped": skipped}
+
+        return command(request, body.model_dump(), update)
+
+    @app.post("/api/v1/goals/unarchive")
+    def unarchive_goals(body: GoalIds, request: Request):
+        def update(db):
+            restored, skipped = [], []
+            for ident in dict.fromkeys(body.ids):
+                try:
+                    goal = store.get("goals", ident, db)
+                except KeyError:
+                    skipped.append({"id": ident, "reason": "not found"})
+                    continue
+                if goal.get("archived"):
+                    set_goal_archived(db, goal, False)
+                restored.append(ident)
+            return {"restored": restored, "skipped": skipped}
+
+        return command(request, body.model_dump(), update)
+
     @app.get("/api/v1/goals/{ident}")
     def goal_detail(ident: str):
         with contextlib.closing(store.connect()) as db:
@@ -487,6 +648,16 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             )
             db.commit()
         return {"events": events, "cursor": events[-1]["id"] if events else max(after, 0)}
+
+    @app.get("/api/v1/goals/{ident}/story")
+    def goal_story(ident: str):
+        """The build in plain English: its blocks, progress, failure and what needs you."""
+        return story.load_goal_story(store, ident)
+
+    @app.get("/api/v1/tasks/{ident}/story")
+    def task_story(ident: str):
+        """One block in plain English; technical evidence only under ``advanced``."""
+        return story.load_task_story(store, ident)
 
     @app.get("/api/v1/tasks/{ident}")
     def task_detail(ident: str):
@@ -627,13 +798,29 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
 
     @app.post("/api/v1/conversations/{ident}/messages")
     def conversation_message(ident: str, body: ChatMessage, request: Request):
+        about = body.about.model_dump(exclude_none=True) if body.about else None
+
         def send(db):
-            store.get("conversations", ident, db)
+            conv = store.get("conversations", ident, db)
+            if about:
+                # Asking about a block or build: it must exist (404 otherwise), and the
+                # conversation moves to its project so the director reads that repository.
+                if "task_id" in about:
+                    project_id = store.get("tasks", about["task_id"], db)["project_id"]
+                else:
+                    project_id = store.get("goals", about["goal_id"], db)["project_id"]
+                if conv.get("project_id") != project_id:
+                    # The draft specification belonged to the previous project: "build it"
+                    # must never launch it on this one.
+                    conv["project_id"] = project_id
+                    conv["spec"] = None
+                    conversation._save(store, db, conv)
             return {"ok": True, "queued": True}
 
-        result = command(request, body.model_dump(), send)
+        payload = body.model_dump(exclude=None if about else {"about"})
+        result = command(request, payload, send)
         if result.get("queued") and not result.get("replayed"):
-            director.submit(ident, body.text)
+            director.submit(ident, body.text, **({"about": about} if about else {}))
             with store.transaction() as db:
                 db.execute(
                     "UPDATE commands SET response=? WHERE key=?",
@@ -750,6 +937,17 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
             revision(p, body.revision)
             if action in {"pause", "resume"}:
                 p["enabled"] = action == "resume"
+            if action == "archive":
+                tasks, approvals, policy = project_work(db, store, [ident])[ident]
+                # Running, queued (not stuck behind a stopped part) or merging work.
+                if story.still_going(tasks, approvals, policy):
+                    raise Conflict("This project has a build in progress")
+                # A question, a sign-in, a permission or an approval: archived projects
+                # leave the needs-you lists, so a decision must be made first. One inside a
+                # build the owner already archived is out of those lists already.
+                live = [t for t in tasks if not t["goal_archived"]]
+                if story.waiting_for_owner(live, approvals, policy):
+                    raise Conflict(WAITING_FOR_YOU)
             if action in {"archive", "unarchive"}:
                 # Archived projects keep their history but leave the pickers, the
                 # director's catalog and dispatch; new requests are refused (409).
@@ -895,7 +1093,29 @@ def make_app(home: Path, origin="http://127.0.0.1:8790", run_scheduler=True):
                     repairs=t["repairs"] + 1,
                     cancel_requested=False,
                 )
-            return {"ok": True}
+            if action == "cancel":
+                return {"ok": True}
+            restored_project = False
+            if store.get("tasks", ident, db)["state"] in GOAL_BUSY:
+                # Work that runs again is never hidden or held back: its build leaves the
+                # archive, and so does its project (an archived project is never dispatched).
+                if t.get("goal_id"):
+                    goal = store.get("goals", t["goal_id"], db)
+                    if goal.get("archived"):
+                        set_goal_archived(db, goal, False)
+                project = store.get("projects", t["project_id"], db)
+                if project.get("archived"):
+                    project.update(archived=False, archived_at=None)
+                    db.execute(
+                        "UPDATE projects SET rev=rev+1,data=? WHERE id=?",
+                        (
+                            encode({k: v for k, v in project.items() if k not in {"id", "rev"}}),
+                            project["id"],
+                        ),
+                    )
+                    store.event(db, "project.changed", project_id=project["id"], reason="unarchive")
+                    restored_project = True
+            return {"ok": True, "restored_project": restored_project}
 
         result = command(request, body.model_dump(), update)
         if action == "cancel":

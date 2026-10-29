@@ -269,6 +269,9 @@ def test_director_context_carries_live_arena_status_without_a_selected_project(
             "agent": "Test slot 0",
             "model": "test-only",
             "elapsed_seconds": status["running"][0]["elapsed_seconds"],
+            # Round 3: no transcript written yet, and not yet ten minutes without one.
+            "last_activity_seconds": None,
+            "stalled": False,
         }
     ]
     assert 89 <= status["running"][0]["elapsed_seconds"] <= 95

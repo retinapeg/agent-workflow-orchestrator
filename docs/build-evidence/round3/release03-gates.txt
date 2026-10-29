@@ -1,0 +1,19 @@
+Release 03 gates (cloud, Linux container) — 2026-10-29T03:52:22Z
+commit: 2824507 Integrate Round 3 (+ backend and frontend review fixes) on top of release 02 (7793bcd)
+ruff check src tests: All checks passed!
+npm run build: passed (tsc strict + vite)
+ui-acceptance: BROWSER_API_ACCEPTANCE_PASSED
+usability-acceptance: USABILITY_ACCEPTANCE_PASSED
+round2-e-acceptance: ROUND2_E_ACCEPTANCE_PASSED
+round3-acceptance: ROUND3_ACCEPTANCE_PASSED
+round2-acceptance (ABCD): ROUND2_ACCEPTANCE_PASSED
+All acceptance runs: copy of the live state (control.sqlite3 snapshot 28 Oct 22:51), 390 px, Android UA, dispatch off.
+pytest (full):
+FAILED tests/control/test_control.py::test_restart_after_spawn_and_artifact_before_commit_does_not_duplicate
+FAILED tests/control/test_control.py::test_parallel_candidates_combine_before_dependent_and_review_is_independent
+FAILED tests/control/test_control.py::test_approval_bound_to_actual_candidate_and_base
+FAILED tests/control/test_control.py::test_rate_limit_cools_one_slot_without_stopping_other_project
+FAILED tests/test_process.py::test_ignoring_descendants_die_without_harming_unrelated_group[False]
+FAILED tests/test_process.py::test_ignoring_descendants_die_without_harming_unrelated_group[True]
+6 failed, 391 passed, 1 warning in 222.88s (0:03:42)
+Known in this container only (pass on the Mac: macOS sandbox / process groups): the 4 test_control.py cases and the 2 test_process.py cases.

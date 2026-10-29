@@ -1,9 +1,14 @@
 // Live acceptance of the conversational director on the real HTTPS origin:
 // questions, GitHub exploration, project inspection, multi-turn planning, explicit execution,
 // close/reopen persistence, and the resulting build. Real director, real agents.
-import {chromium} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
-import {appendFileSync, mkdirSync, writeFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync, writeFileSync, existsSync} from 'node:fs';
+// The repository's Playwright on the Mac; where only another Playwright build has browsers
+// (a container), that one: ARENA_PLAYWRIGHT names its module.
+const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
+const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
+// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
+const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
 
 const root = process.cwd();
 const url = process.env.ARENA_URL || 'https://leonards-macbook-air-1.tail11ad03.ts.net';
@@ -56,8 +61,8 @@ try {
   await page.goto(url);
   await page.getByLabel('One-time pairing code').fill(code);
   await page.getByRole('button', {name: 'Pair device', exact: true}).click();
-  await page.getByRole('navigation', {name: 'Primary'}).waitFor();
-  await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Chat', exact: true}).click();
+  await page.getByRole('button',{name:/^Menu\b/}).waitFor();
+  await go(page,'Chats');
   await page.getByLabel('Message Arena').waitFor();
   await page.getByRole('button', {name: 'New chat', exact: true}).click().catch(() => {});
   await sleep(500);
@@ -78,7 +83,7 @@ try {
   page = await context.newPage();
   await page.addInitScript((kv) => { for (const [k, v] of Object.entries(kv)) localStorage.setItem(k, v); }, ls);
   await page.goto(url);
-  await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Chat', exact: true}).click();
+  await go(page,'Chats');
   await page.getByLabel('Message Arena').waitFor();
   await sleep(1500);
   const restored = await page.evaluate(async () => {
@@ -95,7 +100,7 @@ try {
     if (!last.reply.build_started) throw Error('Execution was not started: ' + (last.reply.launch_error || last.reply.text.slice(0, 200)));
     result.goal_id = last.reply.goal_id;
     if (waitBuild) {
-      await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Build', exact: true}).click();
+      await go(page,'Builds');
       await sleep(1500);
       await shot(page, 'build-started');
       const t0 = Date.now();

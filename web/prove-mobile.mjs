@@ -1,8 +1,13 @@
 // Real-agent acceptance driver. No provider fixtures or intercepted API responses.
-import {chromium} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,readFileSync,writeFileSync} from 'node:fs';
+import {mkdirSync,readFileSync,writeFileSync, existsSync} from 'node:fs';
 import {resolve} from 'node:path';
+// The repository's Playwright on the Mac; where only another Playwright build has browsers
+// (a container), that one: ARENA_PLAYWRIGHT names its module.
+const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
+const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
+// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
+const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
 if(process.env.ARENA_LIVE!=='1')throw Error('ARENA_LIVE=1 is required');
 const root=process.cwd(),home=process.env.ARENA_HOME,url=process.env.ARENA_URL;
 if(!home||!url||!process.env.ARENA_PROJECT)throw Error('Run scripts/prove_mobile.py');
@@ -18,8 +23,9 @@ try{
  await page.goto(url);
  await page.getByLabel('One-time pairing code').fill(code);
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await page.getByLabel('Tell Arena what to build').waitFor();
  const before=await page.evaluate(async()=>await(await fetch('/api/v1/overview')).json());
+ await go(page,'Projects');
  await page.getByRole('button',{name:'New request',exact:true}).click();
  await page.getByLabel('Your project').selectOption(process.env.ARENA_PROJECT);
  await page.getByLabel('What would you like to change?').fill(process.env.ARENA_INSTRUCTIONS);
@@ -67,7 +73,7 @@ try{
  if(!providers.has('codex')||!providers.has('claude'))throw Error('Both real providers must author a change');
  const overlaps=builds.some((a,i)=>builds.slice(i+1).some(b=>a.account_id!==b.account_id&&Math.max(a.result.provider_started,b.result.provider_started)<Math.min(a.result.provider_ended,b.result.provider_ended)));
  if(!overlaps)throw Error('No measured concurrent provider execution');
- await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Review',exact:true}).click();
+ await go(page,'Review');
  await page.getByRole('button',{name:'Inspect evidence & diff'}).last().click();
  await page.getByRole('button',{name:'Read combined diff'}).click();
  await page.screenshot({path:evidence+'/review.png',fullPage:true});

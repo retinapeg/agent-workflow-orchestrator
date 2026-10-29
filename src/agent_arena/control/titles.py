@@ -36,6 +36,41 @@ _SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n\s*\n")
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+.*$", re.M)
 
 
+# Chips the old Home form put in front of a request ("Add to an existing project: …").
+_LEGACY = re.compile(
+    r"^\s*(?:add to an existing project|build a new feature|fix a bug|improve arena|build|fix|"
+    r"improve)\s*:\s*",
+    re.I,
+)
+
+
+def strip_legacy(text: str | None) -> str:
+    """The request without the legacy Home prefixes (stacked ones too), capitalised."""
+    original = value = (text or "").strip()
+    previous = None
+    while value != previous:
+        previous = value
+        value = _LEGACY.sub("", value, count=1)
+    return value[:1].upper() + value[1:] if value != original else value
+
+
+def goal_title(goal: dict, limit: int = TITLE_LIMIT) -> str:
+    """A build's name: the first sentence of the director's agreed outcome when the goal
+    has a specification, else its title or request without the legacy Home prefixes.
+    Empty when none of them has words (callers choose their own default)."""
+    spec = goal.get("specification")
+    if isinstance(spec, dict) and isinstance(spec.get("outcome"), str):
+        title = display_title(spec["outcome"], limit)
+        if title:
+            return title
+    for text in (goal.get("title"), goal.get("request")):
+        first = display_title(strip_legacy(text), 2000)
+        title = display_title(strip_legacy(first), limit)
+        if title:
+            return title
+    return ""
+
+
 def display_title(text: str | None, limit: int = TITLE_LIMIT) -> str:
     """One readable line (≤ ``limit`` chars, ellipsis when cut) from request text.
 

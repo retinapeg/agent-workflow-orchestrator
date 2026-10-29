@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {useArena} from '../App';
 import {clock, family, goalClass, goalStatus, goalView, isArchived, stateLabel, when, type RecordData} from '../types';
-import {Chip, Empty, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
+import {Chip, Empty, Eyebrow, Facts, Glyph, Icon, LiveDot, Sha} from '../ui';
 import {ProvisionCard} from './Provision';
 
 const basename = (repo: string) => (repo || '').replace(/\/+$/, '').split('/').pop() || repo;
@@ -63,29 +63,40 @@ function ProjectRow({p, expanded, onToggle}: {p: RecordData; expanded: boolean; 
             </Eyebrow>
             <Chip tone={archived ? 'off' : p.enabled ? 'running' : 'off'}>{archived ? 'Archived' : p.enabled ? 'Active' : 'Paused'}</Chip>
           </div>
-          <p className="path">{p.repo}</p>
           <Facts
             rows={[
-              ['Scope', p.scope.join(', ')],
-              ['Checks', p.checks.map((c: any) => c.name).join(', ') || 'None'],
-              [
-                'Base → head',
-                <span className="num">
-                  {<Sha value={p.base} n={7} />} → {<Sha value={p.head} n={7} />}
-                </span>,
-              ],
-              ['Main', p.integrated_head ? <Sha value={p.integrated_head} /> : 'No integration yet'],
-              p.github_url
-                ? [
-                    'GitHub',
-                    <a className="link" href={p.github_url} target="_blank" rel="noopener noreferrer">
-                      {String(p.github_url).replace(/^https?:\/\/(www\.)?github\.com\//, '')}
-                    </a>,
-                  ]
-                : null,
               ['Integration', p.integration_policy === 'auto_local_main' ? 'Automatic into local main after every gate passes' : 'Manual: you accept each verified change'],
+              ['Checks', `${p.checks.length} frozen check${p.checks.length === 1 ? '' : 's'} before anything is merged`],
             ]}
           />
+          {/* The repository's machinery (folder, scope, commits) stays under Advanced. */}
+          <details className="disclosure advanced">
+            <summary>Advanced</summary>
+            <div className="disclosure-body">
+              <p className="path">{p.repo}</p>
+              <Facts
+                rows={[
+                  ['Scope', p.scope.join(', ')],
+                  ['Checks', p.checks.map((c: any) => c.name).join(', ') || 'None'],
+                  [
+                    'Base → head',
+                    <span className="num">
+                      {<Sha value={p.base} n={7} />} → {<Sha value={p.head} n={7} />}
+                    </span>,
+                  ],
+                  ['Main', p.integrated_head ? <Sha value={p.integrated_head} /> : 'No integration yet'],
+                  p.github_url
+                    ? [
+                        'GitHub',
+                        <a className="link" href={p.github_url} target="_blank" rel="noopener noreferrer">
+                          {String(p.github_url).replace(/^https?:\/\/(www\.)?github\.com\//, '')}
+                        </a>,
+                      ]
+                    : null,
+                ]}
+              />
+            </div>
+          </details>
           <div className="project-controls">
             <select
               aria-label={`${p.name} integration policy`}
@@ -172,7 +183,7 @@ function ProjectRow({p, expanded, onToggle}: {p: RecordData; expanded: boolean; 
             </div>
             {results.map(t => (
               <div className="list-row" key={t.id}>
-                <Sha value={t.integrated_commit} n={7} />
+                <Glyph tone="done" size={28} />
                 <div className="list-main">
                   <b>{t.title}</b>
                   <span className="small muted">Integrated into main · {when(t.updated)}</span>
@@ -180,7 +191,7 @@ function ProjectRow({p, expanded, onToggle}: {p: RecordData; expanded: boolean; 
                 <span className="num small muted">{clock(t.updated)}</span>
               </div>
             ))}
-            {!results.length && <p className="muted small">No integrated commits yet.</p>}
+            {!results.length && <p className="muted small">Nothing merged into main yet.</p>}
           </section>
 
           {history.length > 0 && (

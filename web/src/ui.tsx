@@ -83,6 +83,34 @@ const PATHS: Record<string, React.ReactNode> = {
   ),
   warn: <path d="M12 3 2.5 20h19zM12 10v4M12 17.5h.01" />,
   wave: <path d="M3 12h2M7 8v8M11 5v14M15 8v8M19 12h2" />,
+  menu: <path d="M4 7h16M4 12h16M4 17h16" />,
+  archive: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="4" rx="1" />
+      <path d="M5.5 8.5V19a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V8.5M10 12.5h4" />
+    </>
+  ),
+  mac: (
+    <>
+      <rect x="5" y="5" width="14" height="10" rx="1.5" />
+      <path d="M2.5 18.5h19" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3" />
+      <path d="M19.5 4.5V9H15" />
+    </>
+  ),
+  server: (
+    <>
+      <rect x="4" y="4" width="16" height="7" rx="2" />
+      <rect x="4" y="13" width="16" height="7" rx="2" />
+      <path d="M8 7.5h.01M8 16.5h.01" />
+    </>
+  ),
+  flask: <path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3" />,
+  undo: <path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3" />,
 };
 
 export function Icon({name, size = 20}: {name: string; size?: number}) {
@@ -256,15 +284,36 @@ export function StageBar({stage, total, tone = 'running', label}: {stage: number
   );
 }
 
-// Restrained waveform: five bars that breathe only while `live`; static otherwise and
-// whenever the platform prefers reduced motion (CSS).
-export function Waveform({live = false, bars = 21}: {live?: boolean; bars?: number}) {
-  const heights = [4, 7, 12, 8, 16, 10, 22, 14, 28, 18, 34, 18, 28, 14, 22, 10, 16, 8, 12, 7, 4];
+// An agent's avatar: a letter glyph, never a brand logo. Claude wears the warm accent,
+// Codex the blue one, anything else the neutral chrome. Decorative: the name is beside it.
+export function Avatar({provider, size = 'md'}: {provider?: string | null; size?: 'sm' | 'md' | 'lg'}) {
+  const family = provider === 'claude' ? 'claude' : provider === 'codex' ? 'codex' : 'other';
   return (
-    <span className={'waveform' + (live ? ' live' : '')} aria-hidden="true">
-      {Array.from({length: bars}, (_, i) => (
-        <i key={i} style={{height: heights[i % heights.length], animationDelay: `${(i % 7) * 0.09}s`}} />
-      ))}
+    <span className={`avatar-glyph ${family} ${size}`} aria-hidden="true">
+      {family === 'claude' ? 'Cl' : family === 'codex' ? 'Cx' : '··'}
     </span>
+  );
+}
+
+// Work done out of the work planned, from recorded task states only (never from time): the
+// host's stage-weighted fraction when it gives one, else blocks done of blocks planned.
+export function Progress({done, total, fraction, tone = 'running', label}: {done: number; total: number; fraction?: number | null; tone?: Tone; label: string}) {
+  const share = typeof fraction === 'number' && isFinite(fraction) ? fraction : total > 0 ? done / total : 0;
+  const pct = Math.min(100, Math.max(0, Math.round(share * 100)));
+  return (
+    <span className={'progress ' + tone} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-valuetext={label}>
+      <i style={{width: pct + '%'}} />
+    </span>
+  );
+}
+
+// The accent wave along the foot of a running block: a static gradient shape that drifts
+// slowly, and stays still when the platform prefers reduced motion (CSS).
+export function Wave() {
+  return (
+    <svg className="wave" viewBox="0 0 480 48" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+      <path className="w1" d="M0 30 C 40 12, 80 40, 120 26 S 200 8, 240 26 S 320 44, 360 22 S 440 12, 480 28 V48 H0Z" />
+      <path className="w2" d="M0 36 C 50 22, 90 46, 140 32 S 220 18, 270 34 S 350 46, 400 30 S 450 26, 480 34 V48 H0Z" />
+    </svg>
   );
 }

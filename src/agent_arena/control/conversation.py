@@ -25,6 +25,7 @@ from pathlib import Path
 from agent_arena.process import ProcessRunner
 from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 
+from . import discovery, story
 from .engine import git
 from .intent import resolve_project
 from .status import arena_status
@@ -64,6 +65,19 @@ STEP_LOCK_SECONDS = 0.2
 # plus its own bookkeeping. A turn started before this controller is closed at once.
 STALE_TURN_SECONDS = TURN_TIMEOUT_SECONDS + 60
 INTERRUPTED = "The director was interrupted before it could answer. Tap Retry."
+# A question about what is going on right now (on the Mac or with the agents): the reply
+# carries the fresh discovery so the phone can show it as a card next to the director's
+# words. A word alone ("Make the active tab bold", "Rename the Claude label") is not one.
+MAC_QUESTION = re.compile(
+    r"\b(?:what|who|which|anything|anyone)\b.{0,40}?"
+    r"\b(?:running|working|doing|active|open|going on|stuck|up to)\b"
+    r"|\b(?:on|across)\s+(?:my|the)\s+(?:mac|macbook|laptop|machine|computer)\b"
+    r"|\b(?:is|are)\s+(?:claude|codex|arena|anything|anyone|any\s+\w+|the\s+agents?)\b"
+    r".{0,30}?\b(?:running|working|stuck|doing|active)\b"
+    r"|\b(?:is|are)\b.{0,40}?\bstuck\b",
+    re.I,
+)
+_UNSET = object()
 
 
 class TurnError(Exception):
@@ -121,6 +135,19 @@ latest message explicitly says to build/execute/run the plan AND the plan is con
 action to "build" and make spec complete (outcome, acceptance, constraints, plan). If they ask
 to execute but something essential is still ambiguous, set action to "clarify" and ask the one
 question that matters. Otherwise action is "chat".
+Live facts in CONTEXT: arena_status (Arena's work right now; running[].stalled means no agent
+output for ten minutes or more), recent_outcomes (builds that finished or stopped in the last
+24 hours), failures (why builds stopped in the last 48 hours) and mac_activity (a fresh,
+read-only look at the owner's Mac). When the owner asks what is running on their Mac, laptop,
+machine or computer, or what Claude or Codex is doing, answer ONLY from mac_activity: name each
+activity once with its group ("managed by Arena", "discovered on your Mac" or "could not be
+verified") and say what could not be seen (its limitations); a running process alone does not
+prove progress. When asked what went wrong, what failed or what is stuck, answer from failures
+and arena_status: what failed, what it was meant to achieve, whether it is recoverable, what the
+agents already tried, what happens next and whether the owner must act; no stack traces, logs,
+file names or hashes unless the owner asks for technical detail. When CONTEXT.about is present
+the owner is asking about that build or block: answer from its story first. Never invent
+processes, repositories, progress or results.
 Return ONLY JSON:
 {"reply": string, "project_hint": string|null, "action": "chat"|"build"|"clarify",
  "spec": {"outcome": string, "acceptance": [string], "constraints": [string], "notes": string,
@@ -343,11 +370,24 @@ class Director:
     """Answers one owner message; runs in a background thread per turn."""
 
     def __init__(
-        self, store, engine, *, run=subprocess.run, runner=None, catalog=None, projects_dir=None
+        self,
+        store,
+        engine,
+        *,
+        run=subprocess.run,
+        runner=None,
+        catalog=None,
+        projects_dir=None,
+        mac_activity=None,
+        clock=time.time,
     ):
         self.store, self.engine, self.run = store, engine, run
         self.runner = runner or ProcessRunner()
         self.catalog = catalog or Catalog(store, run=run, projects_dir=projects_dir)
+        # A fresh read-only look at the Mac (discovery.Discovery.get; the app shares its
+        # cached one with GET /api/v1/mac-activity).
+        self.mac_activity = mac_activity or discovery.Discovery(store).get
+        self.clock = clock
         # Only one controller process ever runs, so a turn that started before this one did
         # has no thread left to answer it (see recover).
         self.started = time.time()
@@ -357,10 +397,11 @@ class Director:
         self._busy_lock = threading.Lock()
 
     # -- public ---------------------------------------------------------------------
-    def submit(self, conversation_id, text):
+    def submit(self, conversation_id, text, about=None):
         """Open a turn: the owner's message and the conversation turning "thinking" land in
         one write transaction, so of two sends racing (two devices) exactly one is accepted
-        and the other is refused as still answering."""
+        and the other is refused as still answering. ``about`` ({task_id} or {goal_id})
+        names the block or build the owner is asking about."""
         self.recover(conversation_id)  # a turn orphaned by a restart must not block the owner
         token = object()
         try:
@@ -368,7 +409,9 @@ class Director:
                 live = self.store.get("conversations", conversation_id, db)
                 if live.get("status") == "thinking":
                     raise ValueError("Arena is still answering the previous message")
-                _insert_message(self.store, db, conversation_id, "user", text, {})
+                _insert_message(
+                    self.store, db, conversation_id, "user", text, {"about": about} if about else {}
+                )
                 live = self.store.get("conversations", conversation_id, db)
                 now = time.time()
                 live.update(
@@ -384,7 +427,7 @@ class Director:
                     self.busy[conversation_id] = token
             threading.Thread(
                 target=self._turn,
-                args=(conversation_id, text, token),
+                args=(conversation_id, text, token, about),
                 daemon=True,
                 name="arena-chat",
             ).start()
@@ -516,18 +559,57 @@ class Director:
 
         return on_output
 
-    def _context(self, conv, text):
+    def _discover(self):
+        """This turn's look at the Mac, or None when it cannot be read (the director then
+        says so rather than guessing)."""
+        try:
+            return self.mac_activity()
+        except Exception:
+            return None
+
+    def _about(self, about):
+        """The block or build the owner is asking about, as its plain-English story."""
+        if not about:
+            return None
+        now = self.clock()
+        try:
+            if about.get("task_id"):
+                found = story.load_task_story(self.store, about["task_id"], now=now)
+                return {"kind": "block", "task_id": about["task_id"], "story": found}
+            if about.get("goal_id"):
+                found = story.load_goal_story(self.store, about["goal_id"], now=now)
+                return {"kind": "build", "goal_id": about["goal_id"], "story": found}
+        except Exception:  # gone or unreadable: the director answers without it
+            return None
+        return None
+
+    def _context(self, conv, text, *, activity=_UNSET, about=None):
         projects = self.store.rows("projects")
         selected = next((p for p in projects if p["id"] == conv.get("project_id")), None)
+        if activity is _UNSET:
+            activity = self._discover()
+        now = self.clock()
+        try:
+            facts = story.outcomes(self.store, now=now)
+        except Exception:  # a record Arena cannot read must not cost the owner an answer
+            facts = {"recent_outcomes": [], "failures": []}
         context = {
             "selected_project": None,
             "enrolled_projects": self.catalog.enrolled(),
             # Live facts: what runs, what needs the owner, what just finished — so "what is
             # happening?" is answered from the store whether or not a project is selected.
-            "arena_status": arena_status(self.store),
+            "arena_status": arena_status(self.store, now=now),
+            # What finished or stopped lately, and why builds stopped (plain Failure records).
+            "recent_outcomes": facts["recent_outcomes"],
+            "failures": facts["failures"],
+            # A fresh read-only look at the Mac: managed / discovered / could not be verified.
+            "mac_activity": discovery.compact(activity),
             "local_repositories": self.catalog.local_repos(),
             "specification_so_far": conv.get("spec"),
         }
+        asked = self._about(about)
+        if asked:
+            context["about"] = asked
         if selected:
             tasks = [t for t in self.store.rows("tasks") if t["project_id"] == selected["id"]][-8:]
             context["selected_project"] = {
@@ -574,9 +656,9 @@ class Director:
             git(scratch, "init", "-q", "-b", "main")
         return scratch
 
-    def _turn(self, conversation_id, text, token):
+    def _turn(self, conversation_id, text, token, about=None):
         try:
-            self._answer(conversation_id, text)
+            self._answer(conversation_id, text, **({"about": about} if about else {}))
         finally:
             self._release(conversation_id, token)
 
@@ -587,13 +669,14 @@ class Director:
             if self.busy.get(conversation_id) is token:
                 del self.busy[conversation_id]
 
-    def _answer(self, conversation_id, text):
+    def _answer(self, conversation_id, text, about=None):
         conv = self.store.get("conversations", conversation_id)
         reply, extra = "", {}
         try:
             account = self._account()
             self._step(conversation_id, "reading Arena status")
-            context, selected = self._context(conv, text)
+            activity = self._discover()
+            context, selected = self._context(conv, text, activity=activity, about=about)
             history = messages(self.store, conversation_id, HISTORY_LIMIT)[:-1]
             prompt = (
                 DIRECTOR_CHAT_PROMPT
@@ -670,6 +753,11 @@ class Director:
                 "seconds": round(time.time() - started, 1),
                 "inspected": str(cwd) if cwd != self.store.home / "chat-scratch" else None,
             }
+            if activity and MAC_QUESTION.search(text):
+                # The same discovery the director answered from, for the phone's card.
+                extra["mac_activity"] = discovery.capped(activity)
+            if about:
+                extra["about"] = about
             with self.store.transaction() as db:
                 live = self.store.get("conversations", conversation_id, db)
                 if isinstance(answer.get("spec"), dict):
@@ -727,6 +815,8 @@ class Director:
                 "detail": redact(str(exc))[:400],
                 "retry_text": text,
             }
+        if extra.get("error") and about:
+            extra["retry_about"] = about  # Retry asks about the same block or build
         # The answer and the end of the turn land together: the phone never sees a reply
         # under a conversation that still says it is thinking.
         with self.store.transaction() as db:

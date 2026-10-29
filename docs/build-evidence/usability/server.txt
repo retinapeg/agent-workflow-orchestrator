@@ -1,36 +1,35 @@
-INFO:     Started server process [8600]
+INFO:     Started server process [12777]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8794 (Press CTRL+C to quit)
-INFO:     127.0.0.1:47082 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /assets/index-gw_agBhF.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /assets/index-Wqty4tV2.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47120 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:47088 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /icon.svg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47104 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "POST /api/v1/pair HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47104 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "POST /api/v1/conversations HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/conversations/conv_aa0cbbb1826c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/conversations/conv_aa0cbbb1826c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /api/v1/conversations/conv_aa0cbbb1826c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /api/v1/goals/goal_815db45a71e3a62d/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47088 - "GET /api/v1/conversations/conv_aa0cbbb1826c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47120 - "GET /api/v1/conversations/conv_aa0cbbb1826c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/conversations/conv_aa0cbbb1826c HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:47096 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60362 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /assets/index-nj4MAMBH.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /assets/index-DqWcSPaF.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:60376 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60388 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60388 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "POST /api/v1/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/conversations/conv_1bf69303ec94 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/goals/goal_815db45a71e3a62d/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/goals/goal_a6faaa785f084d70/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60370 - "GET /api/v1/conversations/conv_1bf69303ec94 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50318 - "GET /api/v1/conversations/conv_1bf69303ec94 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/conversations/conv_1bf69303ec94 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/mac-activity HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/goals/goal_815db45a71e3a62d/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60376 - "GET /api/v1/overview HTTP/1.1" 200 OK
 INFO:     Shutting down
 INFO:     Waiting for application shutdown.
 INFO:     Application shutdown complete.
-INFO:     Finished server process [8600]
+INFO:     Finished server process [12777]

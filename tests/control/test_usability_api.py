@@ -234,7 +234,8 @@ def test_overview_is_slim_and_small_with_forty_heavy_attempts(setup, monkeypatch
     assert len(task["reason"]) == 300 and task["dependencies"] == []
     g = data["goals"][0]
     assert "specification" not in g and len(g["request"]) == 300 and g["request_truncated"]
-    assert g["display_title"] == "src/t0.txt" or g["display_title"].startswith("src/t")
+    # Round 3: a build with an agreed specification is named after its outcome.
+    assert g["display_title"] == "S" * 71 + "…"
     a = next(x for x in data["attempts"] if x["task_id"] == task_ids[0])  # the heavy one
     for gone in ("workspace", "artifact_dir", "identity"):
         assert gone not in a
@@ -541,6 +542,15 @@ def test_archive_blocks_requests_catalog_and_dispatch_then_unarchive_restores(se
     client, headers = paired_client(store)
     queued = goal(store, engine, project, path="src/queued.txt")
     p = store.get("projects", project["id"])
+    # Round 3: a project with a build in progress is never archived; a stopped one can be.
+    r = client.post(
+        f"/api/v1/projects/{p['id']}/archive",
+        json={"revision": p["rev"]},
+        headers={**headers, "Idempotency-Key": "arch-0"},
+    )
+    assert r.status_code == 409 and r.json()["detail"] == "This project has a build in progress"
+    with store.transaction() as db:
+        store.update_task(db, store.get("tasks", queued, db), "blocked", "Stopped for the test")
     r = client.post(
         f"/api/v1/projects/{p['id']}/archive",
         json={"revision": p["rev"]},
@@ -597,7 +607,10 @@ def test_archive_blocks_requests_catalog_and_dispatch_then_unarchive_restores(se
         headers={**headers, "Idempotency-Key": "req-4"},
     )
     assert r.status_code == 409 and r.json()["detail"] == "Project is archived"
-    # The director no longer sees it, and the scheduler will not dispatch its queued task.
+    # The director no longer sees it, and the scheduler will not dispatch its queued task
+    # (queued again after archiving, as a retry of the stopped task would be).
+    with store.transaction() as db:
+        store.update_task(db, store.get("tasks", queued, db), "ready", "Explicit retry queued")
     assert Catalog(store, projects_dir=source.parent / "none").enrolled() == []
     assert engine.claim() is None
     assert store.get("tasks", queued)["state"] == "ready"

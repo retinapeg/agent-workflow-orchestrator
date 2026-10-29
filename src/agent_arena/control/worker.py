@@ -23,13 +23,111 @@ from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 from .engine import atomic_json, git, identity, within
 from .store import Store, encode
 
+# Every secret pattern Arena masks lives here. ``redact`` handles free text (transcripts,
+# logs, diffs, errors, command lines); ``redact_args`` adds what only makes sense for one
+# command line's arguments (the value after a secret-looking flag), then calls ``redact``.
+SECRET_NAME = re.compile(r"(?i)key|token|secret|passw|auth|cookie|credential")
+# After "Basic"/"token": a credential has a digit or base64 punctuation; a word does not
+# ("a basic step-by-step guide", "the token JavaScript reads" stay as written).
+_CREDENTIAL = r"(?=\S*[\d+/=])"
+# NAME=… where the name says it holds a secret (API_KEY=…, -c a.b.api_key=…,
+# --ServerApp.token=…); "==" is a comparison, not an assignment.
+_SECRET_ASSIGNMENT = (
+    r"(?<![\w.-])((?:--?)?[\w.-]*(?i:key|token|secret|passw|auth|cookie|credential)[\w.-]*=)(?!=)"
+)
+# A free-text value: no spaces, quotes, brackets or separators (so code such as
+# ``token=get_token(1)`` is not taken for a secret).
+_VALUE = r"[^\s'\"()\[\]{},;]"
+
+
+def _aws(match):
+    return "[REDACTED]" + (match.group(1) + "[REDACTED]" if match.group(1) else "")
+
+
+REDACTIONS = (
+    # Credentials in URLs: https://user:password@host, postgres://user:password@host/db.
+    (re.compile(r"(?<=://)[^/\s@]+@"), "[REDACTED]@"),
+    # Authorization schemes: "Bearer …", "Basic …", "token …" (credential-looking values).
+    (re.compile(r"(?i)(bearer\s+)[A-Za-z0-9._~+/-]+=*"), r"\1[REDACTED]"),
+    (re.compile(r"\b((?i:basic|token))(\s+)" + _CREDENTIAL + r"\S{8,}"), r"\1\2[REDACTED]"),
+    # Known token formats: OpenAI/Anthropic keys, JWTs, GitHub, Slack, Google, Hugging Face.
+    (
+        re.compile(r"\b(?:sk-[A-Za-z0-9_-]{12,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_.-]+)"),
+        "[REDACTED]",
+    ),
+    (
+        re.compile(
+            r"\b(?:gh[pousr]_\w{20,}|github_pat_\w{20,}|xox[abposr]-[\w-]{10,}|AIza[\w-]{30,}"
+            r"|hf_\w{20,})"
+        ),
+        "[REDACTED]",
+    ),
+    # AWS access key ids, with the 40-character secret key that usually follows one.
+    (
+        re.compile(
+            r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b(?:([\s:=,;'\"]+)[A-Za-z0-9/+]{40}(?![A-Za-z0-9/+]))?"
+        ),
+        _aws,
+    ),
+    # Secret assignments in free text when the value looks like one (letters and digits,
+    # six or more): PGPASSWORD=hunter2. Command lines mask every such value (redact_args).
+    (
+        re.compile(
+            _SECRET_ASSIGNMENT + rf"(['\"]?)(?={_VALUE}*\d)(?={_VALUE}*[A-Za-z]){_VALUE}{{6,}}"
+        ),
+        r"\1\2[REDACTED]",
+    ),
+)
+_ASSIGNMENT = re.compile(_SECRET_ASSIGNMENT + r"\S+")
+# Flags whose value is a secret only when it looks like one: -p is a password for some
+# tools (mysql -p…) but a prompt, port or plugin for others; -u/--user may carry user:password.
+_MAYBE_PASSWORD = {"-p"}
+_USER = {"-u", "--user"}
+
 
 def redact(text):
     text = text or ""
-    text = re.sub(r"(?i)(bearer\s+)[A-Za-z0-9._-]+", r"\1[REDACTED]", text)
-    return re.sub(
-        r"\b(?:sk-[A-Za-z0-9_-]{12,}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_.-]+)", "[REDACTED]", text
+    for pattern, replacement in REDACTIONS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _password_like(value):
+    """One word of eight or more characters mixing letters and digits, not a path."""
+    return (
+        len(value) >= 8
+        and not any(c.isspace() for c in value)
+        and "/" not in value
+        and bool(re.search(r"\d", value))
+        and bool(re.search(r"[A-Za-z]", value))
     )
+
+
+def redact_args(argv):
+    """Command-line arguments with their secrets masked: the value of every secret-looking
+    flag (``--api-key X``, ``--password=X``, ``--server.cookieSecret X``) and assignment
+    (``API_KEY=X``, ``-c a.b.api_key=X``), of ``-p`` when it looks like a password, the
+    password in ``-u user:password``, then everything ``redact`` masks in free text."""
+    shown, mask = [], None
+    for arg in argv:
+        arg = str(arg)
+        if mask == "value" or (mask == "password" and _password_like(arg)):
+            shown.append("[REDACTED]")
+        elif mask == "user" and ":" in arg:
+            shown.append(arg.split(":", 1)[0] + ":[REDACTED]")
+        elif arg.startswith("-") and SECRET_NAME.search(arg.split("=", 1)[0]):
+            name, eq, _ = arg.partition("=")
+            shown.append(name + "=[REDACTED]" if eq else arg)
+            mask = None if eq else "value"
+            continue
+        elif arg[:2] in _MAYBE_PASSWORD and len(arg) > 2 and _password_like(arg[2:]):
+            shown.append(arg[:2] + "[REDACTED]")
+        else:
+            shown.append(_ASSIGNMENT.sub(r"\1[REDACTED]", arg))
+            mask = "password" if arg in _MAYBE_PASSWORD else "user" if arg in _USER else None
+            continue
+        mask = None
+    return [redact(a) for a in shown]
 
 
 def clean_environment(home=None):

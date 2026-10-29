@@ -1,9 +1,38 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {useArena} from '../App';
+import {usePolled} from '../polled';
 import {useSpeech} from '../speech';
-import {NEEDS_TASK, STAGES, ago, buildPhrase, clock, duration, goalClass, goalElapsed, goalView, integratedCommit, pendingApprovals, pickableProjects, planTasks, seconds, shortSha, type ChatMessage, type Conversation, type ConversationDetail, type GoalView, type PlanMilestone, type Spec} from '../types';
+import {
+  NEEDS_TASK,
+  STAGES,
+  STORY_TONE,
+  ago,
+  buildPhrase,
+  clock,
+  duration,
+  goalClass,
+  goalElapsed,
+  goalSignal,
+  goalView,
+  integratedCommit,
+  isLive,
+  pendingApprovals,
+  pickableProjects,
+  plainError,
+  planTasks,
+  seconds,
+  shortSha,
+  type ChatMessage,
+  type Conversation,
+  type ConversationDetail,
+  type GoalStory,
+  type GoalView,
+  type PlanMilestone,
+  type Spec,
+} from '../types';
 import {Chip, Eyebrow, Glyph, Icon, LiveDot, Mark, StageBar} from '../ui';
 import {useBuildProgress} from './Overview';
+import {MacActivityView} from './Mac';
 
 // Talk to the director like a colleague. Sending never starts a build: a build begins only
 // when the host reports one (the owner's own explicit words and the director's agreement).
@@ -210,11 +239,12 @@ function Meta({m}: {m: ChatMessage}) {
 }
 
 // The reply that started a build becomes that build's card, updated in place from the
-// snapshot: stage bar, the agent and model on it and its last live line while it runs; then
-// the outcome: Review when it waits for the owner's decision, "Integrating…" (or
-// "Integration failed") while a project that integrates automatically puts it on main,
-// "Integrated · sha" once there, or the state it stopped in, each one tap from the build.
-// Until the snapshot carries the new request the card says the build started.
+// snapshot and the build's story: stage bar, the agent and model on it and, in the host's
+// plain words, what it is doing while it runs; then the outcome: Review when it waits for the
+// owner's decision, "Merging into main" (or "Merge failed") while a project that integrates
+// automatically puts it on main, "Merged into main" once there (the commit only in the chip's
+// tooltip), or why it stopped, each one tap from the build. Never a raw command, reason or
+// hash. Until the snapshot carries the new request the card says the build started.
 function BuildCard({m}: {m: ChatMessage}) {
   const {data, openGoal} = useArena();
   const goal = m.goal_id ? (data.goals || []).find(g => g.id === m.goal_id) : undefined;
@@ -238,30 +268,37 @@ function BuildCard({m}: {m: ChatMessage}) {
 
 function LiveBuildCard({view}: {view: GoalView}) {
   const {data, now, openGoal, setModal} = useArena();
-  const {status, stage, liveAttempt, currentTask, lastLine, agentLine} = useBuildProgress(view);
+  const live = isLive(view);
+  // The build's story, read as the build's own screen reads it: on this build's changes, and
+  // every few seconds (only while the page is visible) while it is live.
+  const {data: story} = usePolled<GoalStory>(`goals/${view.goal.id}/story`, live, goalSignal(view, data));
+  const {status, stage, liveAttempt, currentTask, lastLine, quiet, agentLine} = useBuildProgress(view, story);
   const cls = goalClass(view);
   const sha = cls === 'done' ? integratedCommit(view) : '';
   // Review only where the owner decides, as needsYou counts it: a pending approval on a
   // project that integrates manually. Under automatic integration the policy has already
-  // accepted the verified candidate (its approval is "accept", the task "ready for
-  // approval" until it is on main), so once nothing else runs or asks the owner, the card
-  // says it is integrating, or that integration failed.
+  // accepted the verified candidate (the task reads "ready for approval" until it is on main),
+  // so the card says it is merging, or that the merge failed.
   const manual = view.project?.integration_policy !== 'auto_local_main';
   const approval = manual ? pendingApprovals(view, data)[0] : undefined;
   const asksOwner = view.tasks.some(t => NEEDS_TASK.includes(t.state) && t.state !== 'ready_for_approval');
-  const verified = !manual && cls === 'needs' && !asksOwner ? view.tasks.find(t => t.state === 'ready_for_approval') : undefined;
-  const publication = verified
-    ? data.approvals.filter(a => a.task_id === verified.id || (a.covered_tasks || []).includes(verified.id)).sort((a, b) => (b.created || 0) - (a.created || 0))[0]?.publication
-    : undefined;
-  const failed = publication?.state === 'failed';
-  const label = sha ? `Integrated · ${shortSha(sha, 7)}` : verified ? (failed ? 'Integration failed' : 'Integrating…') : status.label;
-  const tone = verified ? (failed ? 'blocked' : 'running') : status.tone;
-  // Running: the agent, model and elapsed, then its last live line. Queued: the task in front
-  // and its state. Waiting on the owner or stopped: that task and the reason it records.
-  const stopped = cls === 'history' || cls === 'needs';
-  const focus = view.tasks.find(t => NEEDS_TASK.includes(t.state)) || currentTask;
-  const what = liveAttempt || cls === 'active' ? agentLine : stopped ? focus?.title || '' : '';
-  const line = liveAttempt ? lastLine : failed ? publication?.reason || focus?.reason || '' : stopped ? focus?.reason || '' : '';
+  const mergeFailed = !manual && !asksOwner && !live && view.stuck.size > 0;
+  const merging = !manual && !asksOwner && cls === 'needs' && live;
+  const label = sha ? 'Merged into main' : mergeFailed ? 'Merge failed' : merging ? 'Merging into main' : story?.status_label || status.label;
+  const tone = sha ? 'done' : mergeFailed ? 'blocked' : merging ? 'running' : story ? STORY_TONE[story.status] || status.tone : status.tone;
+  const block = story?.blocks?.find(b => b.id === (view.tasks.find(t => NEEDS_TASK.includes(t.state))?.id || currentTask?.id));
+  const stopped = cls === 'history' || mergeFailed;
+  // Running: the agent, model and elapsed, then what it is doing. Queued: the block in front
+  // and its state. Waiting on the owner: that block and what it waits for. Stopped: why, from
+  // the story's plain failure; a generic sentence until the story answers, never the raw reason.
+  const what = liveAttempt || cls === 'active' ? agentLine : cls === 'needs' && !merging ? block?.title || '' : '';
+  const line = liveAttempt
+    ? lastLine
+    : stopped
+      ? story?.failure?.what_failed || (mergeFailed ? 'Arena could not merge the verified change into main.' : view.shown.some(t => t.state === 'blocked' || t.state === 'interrupted') ? 'This build stopped before it finished.' : 'This build was stopped before it finished.')
+      : cls === 'needs' && !merging
+        ? story?.needs_you?.[0]?.text || 'This build is waiting for you.'
+        : '';
   return (
     <div className="build-card chat-build" role="group" aria-label={`Build: ${view.title}`}>
       <div className="row">
@@ -271,12 +308,14 @@ function LiveBuildCard({view}: {view: GoalView}) {
       <span className="clamp2">{view.title}</span>
       <StageBar stage={stage} total={STAGES.length} tone={tone} label={`Stage ${Math.min(stage + 1, STAGES.length)} of ${STAGES.length}: ${STAGES[Math.min(stage, STAGES.length - 1)]}`} />
       <span className="build-meta small">
-        <Chip tone={tone}>{label}</Chip>
+        <Chip tone={tone} title={sha ? `Commit ${shortSha(sha, 7)} on main` : undefined}>
+          {label}
+        </Chip>
         <span className="num">{duration(goalElapsed(view, now))}</span>
       </span>
       {what && <span className="small muted clamp2 build-agent">{what}</span>}
       {line && (
-        <span className={'small clamp2 ' + (liveAttempt ? 'build-last' : 'muted')} aria-live={liveAttempt ? 'polite' : undefined}>
+        <span className={'small clamp3 ' + (liveAttempt && !quiet ? 'build-last' : 'muted')} aria-live={liveAttempt ? 'polite' : undefined}>
           {line}
         </span>
       )}
@@ -325,6 +364,7 @@ function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSe
         </div>
       )}
       {m.build_started && <BuildCard m={m} />}
+      {m.mac_activity && <MacActivityView data={m.mac_activity} compact />}
       {m.error && ((last && !!m.retry_text) || !!m.detail) && (
         <div className="msg-actions">
           {last && m.retry_text && (
@@ -347,7 +387,7 @@ function Bubble({m, spec, onSend, busy, last}: {m: ChatMessage; spec: Spec; onSe
 }
 
 export function Chat() {
-  const {data, now, online, disabled, post, get, notify, chatPing} = useArena();
+  const {data, now, online, disabled, post, get, notify, chatPing, back, chatIntent, clearChatIntent} = useArena();
   const [id, setId] = useState<string | null>(remembered);
   const [detail, setDetail] = useState<ConversationDetail | null>(null);
   const [pending, setPending] = useState<ChatMessage | null>(null);
@@ -410,7 +450,7 @@ export function Chat() {
   }, [chatPing.n]);
   useEffect(() => {
     if (!id || !thinking) return;
-    const t = window.setInterval(() => load(id), 2000);
+    const t = window.setInterval(() => document.visibilityState !== 'hidden' && load(id), 2000);
     return () => window.clearInterval(t);
   }, [id, thinking]);
 
@@ -458,40 +498,83 @@ export function Chat() {
   // project the host chose before anything can be sent: a first message only ever goes to
   // a project the owner has seen on the chip. Sending waits until the thread exists.
   const opening = useRef(false);
+  const handled = useRef(0);
   useEffect(() => {
     if (id || !online || opening.current) return;
+    if (chatIntent?.projectId && handled.current !== chatIntent.n) return; // the intent opens it
     opening.current = true;
     setStarting(true);
     create()
-      .catch(e => notify(String(e)))
+      .catch(e => notify(plainError(e)))
       .finally(() => {
         opening.current = false;
         setStarting(false);
       });
   }, [id, online]);
 
-  const send = async (raw: string) => {
+  // `about` names the block or build a question is about (from its screen): the host gives
+  // the director that story and moves the conversation to its project.
+  const send = async (raw: string, about?: {task_id: string} | {goal_id: string}, into?: string) => {
     const text = raw.trim();
-    if (!text || sending || starting || !online) return;
+    if (!text || sending || (starting && !into) || !online) return;
     setSending(true);
     try {
-      let cid = id;
+      let cid = into || id;
       // No thread (starting one failed): this message starts one on no project, which is
       // what the chip shows, never on a project the owner has not seen.
       if (!cid) cid = (await create({project_id: null})).id;
       setPending({id: -1, time: now, role: 'user', text});
       setDraft('');
-      await post(`conversations/${cid}/messages`, {text, revision: 0});
+      await post(`conversations/${cid}/messages`, {text, revision: 0, ...(about ? {about} : {})});
       await load(cid);
     } catch (e) {
       setPending(null);
       setDraft(d => d || raw);
-      notify(String(e));
+      notify(plainError(e));
     } finally {
       setSending(false);
       box.current?.focus({preventScroll: true});
     }
   };
+
+  // A hand-off from another screen (Home's box, a block's question, a Ready project's ▷,
+  // Ask the director): sent once, when this screen can send. A project hand-off reuses this
+  // conversation when it is already on that project, else starts one on it.
+  useEffect(() => {
+    const intent = chatIntent;
+    if (!intent || handled.current === intent.n || !online || sending) return;
+    const projectId = intent.projectId;
+    if (projectId) {
+      if (opening.current || starting) return;
+      if (id && !thread) return; // first learn which project this conversation is on
+      handled.current = intent.n;
+      clearChatIntent();
+      (async () => {
+        try {
+          let cid = id;
+          if (!cid || thread?.project_id !== projectId) {
+            setStarting(true);
+            cid = (await create({project_id: projectId})).id;
+            setStarting(false);
+          }
+          if (intent.text) await send(intent.text, intent.about, cid);
+        } catch (e) {
+          setStarting(false);
+          notify(plainError(e));
+        }
+      })();
+      return;
+    }
+    if (!intent.text) {
+      handled.current = intent.n;
+      clearChatIntent();
+      return;
+    }
+    if (!id || starting) return; // the thread opens first (create-on-mount)
+    handled.current = intent.n;
+    clearChatIntent();
+    send(intent.text, intent.about);
+  }, [chatIntent, online, starting, sending, id, thread?.id]);
 
   const choose = async (projectId: string | null) => {
     setPicking(false);
@@ -501,7 +584,7 @@ export function Chat() {
       await load(cid);
       notify(projectId ? `Project selected: ${data.projects.find(p => p.id === projectId)?.name || ''}` : 'Project cleared · Arena will ask which one when it matters');
     } catch (e) {
-      notify(String(e));
+      notify(plainError(e));
     }
   };
 
@@ -514,7 +597,7 @@ export function Chat() {
       setDraft('');
       box.current?.focus({preventScroll: true});
     } catch (e) {
-      notify(String(e));
+      notify(plainError(e));
     } finally {
       setSending(false);
     }
@@ -539,7 +622,7 @@ export function Chat() {
   const stepLabel: Record<string, string> = {
     starting: 'Starting the director',
     'reading Arena status': 'Checking what Arena is doing',
-    'reading repository': `Reading ${project?.name || thread?.turn_repo || 'the repository'}`,
+    'reading repository': `Reading the code in ${project?.name || thread?.turn_repo || 'the project'}`,
     thinking: 'Thinking',
     answering: 'Writing the answer',
   };
@@ -556,6 +639,9 @@ export function Chat() {
   return (
     <div className="chat" aria-labelledby="chat-title">
       <div className="chat-head">
+        <button type="button" className="square-btn" aria-label="Back" onClick={back}>
+          <Icon name="back" size={20} />
+        </button>
         <Mark size={36} />
         <h2 id="chat-title" className="chat-title" title={title}>
           {title}
@@ -636,9 +722,10 @@ export function Chat() {
                   {thinkingFor !== null && <span className="num muted"> · {duration(thinkingFor)}</span>}
                 </span>
                 {stepDetail && (
-                  <code className="thinking-detail" title={stepDetail}>
-                    {stepDetail}
-                  </code>
+                  <details className="thinking-details">
+                    <summary>Details</summary>
+                    <code className="thinking-detail">{stepDetail}</code>
+                  </details>
                 )}
                 {stillWorking && <span className="small muted">A director turn can take a few minutes; you can leave and come back.</span>}
               </span>

@@ -445,7 +445,7 @@ export function MilestoneTree({view}: {view: GoalView}) {
 const TITLES: Record<string, string> = {active: 'Build in progress', needs: 'Build needs you', done: 'Build complete', history: 'Build history'};
 
 export function Build() {
-  const {data, now, goal, setGoal, setModal, disabled, action} = useArena();
+  const {data, now, goal, setGoal, setModal, disabled, action, back} = useArena();
   const [message, setMessage] = useState('');
   const [composing, setComposing] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -487,9 +487,15 @@ export function Build() {
     return (
       <>
         <div className="page-head">
-          <div>
-            <h2 className="page-title">Builds</h2>
-            <p className="page-sub">Each request, its stepper, the agents on it and their live output.</p>
+          <div className="advanced-head">
+            <button type="button" className="square-btn" aria-label="Back" onClick={back}>
+              <Icon name="back" size={20} />
+            </button>
+            <div>
+              <Eyebrow>Advanced · technical view</Eyebrow>
+              <h2 className="page-title">Builds</h2>
+              <p className="page-sub">Each request, its stepper, the agents on it and their live output.</p>
+            </div>
           </div>
         </div>
         <Empty title="No requests yet">
@@ -545,16 +551,22 @@ export function Build() {
   return (
     <>
       <div className="page-head build-head">
-        <div>
+        <div className="advanced-head">
+          <button type="button" className="square-btn" aria-label="Back" onClick={back}>
+            <Icon name="back" size={20} />
+          </button>
+          <div>
+          <Eyebrow>Advanced · technical view</Eyebrow>
           <div className="row wrap">
             <h2 className="page-title">{TITLES[cls]}</h2>
             <Chip tone={status.tone}>{status.label}</Chip>
-            {selected.archived && <Chip tone="off">Archived project</Chip>}
+            {selected.archived && <Chip tone="off">{selected.project?.archived ? 'Archived project' : 'Archived'}</Chip>}
           </div>
           <p className="page-sub clamp2">
             {selected.title}
             {selected.project ? ` · ${selected.project.name}` : ''}
           </p>
+          </div>
         </div>
         <div className="field inline">
           <label htmlFor="goal-pick">Request</label>

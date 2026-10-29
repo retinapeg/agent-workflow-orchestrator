@@ -60,7 +60,7 @@ print(json.dumps([r[0] for r in db.execute("SELECT a.id FROM attempts a WHERE a.
  await page.goto(base);
  await page.getByLabel('One-time pairing code').fill('real-state-one-use-code');
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('navigation',{name:'Primary'}).waitFor();
+ await page.getByRole('button',{name:/^Menu\b/}).waitFor();
 
  const system=await page.evaluate(async()=>(await (await fetch('/api/v1/system',{cache:'no-store'})).json()).workspaces);
  result.system=system;
@@ -85,10 +85,11 @@ print(json.dumps([r[0] for r in db.execute("SELECT a.id FROM attempts a WHERE a.
  result.wrongFolder={status:wrong.status,stderr:wrong.stderr.trim().replaceAll(away,'<elsewhere>'),created};
  if(wrong.status!==1||!wrong.stderr.includes('No Arena control state at')||created.length)throw Error('Hint command from the wrong folder: '+JSON.stringify(result.wrongFolder));
 
- // The Device session dialog (top-bar avatar on the phone; System status on wide screens).
- const device=page.getByRole('button',{name:'Device session',exact:true});
- await ((await device.isVisible())?device:page.getByRole('button',{name:'System status'})).click();
- const dialog=page.getByRole('dialog');await dialog.waitFor();
+ // The Device session dialog: from the ☰ menu on the phone (the sidebar on wide screens).
+ const menu=page.getByRole('button',{name:/^Menu\b/});
+ if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name:'Device session',exact:true}).click();}
+ else await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Device session',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Device session'});await dialog.waitFor();
  const row=dialog.locator('.facts > div',{hasText:'Workspaces on the Mac'});
  await page.waitForFunction(()=>[...document.querySelectorAll('.facts > div')].some(d=>d.textContent.includes('Workspaces on the Mac')&&!/Measuring/.test(d.textContent)),null,{timeout:15000});
  const line=(await row.locator('dd').innerText()).replace(/\u00a0/g,' ').trim();

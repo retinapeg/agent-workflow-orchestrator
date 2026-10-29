@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from .titles import display_title
+from .titles import goal_title
 
 INSTRUCTIONS_CHARS = 400
 REASON_CHARS = 300
@@ -58,23 +58,24 @@ def slim_task(task: dict) -> dict:
     return out
 
 
+def archive_flags(goal: dict) -> dict:
+    """Every goal says whether the owner archived it (older records lack the fields)."""
+    return {"archived": bool(goal.get("archived")), "archived_at": goal.get("archived_at")}
+
+
 def slim_goal(goal: dict) -> dict:
     out = {k: v for k, v in goal.items() if k != "specification"}
     request = goal.get("request") or ""
     out["request"] = request[:REQUEST_CHARS]
     out["request_truncated"] = len(request) > REQUEST_CHARS
-    out["display_title"] = display_title(goal.get("title")) or display_title(request) or "Request"
+    out["display_title"] = goal_title(goal) or "Request"
+    out.update(archive_flags(goal))
     return out
 
 
 def with_title(goal: dict) -> dict:
     """The full goal record plus ``display_title`` (detail endpoint)."""
-    return {
-        **goal,
-        "display_title": display_title(goal.get("title"))
-        or display_title(goal.get("request"))
-        or "Request",
-    }
+    return {**goal, "display_title": goal_title(goal) or "Request", **archive_flags(goal)}
 
 
 def plain_summary(summary) -> str:

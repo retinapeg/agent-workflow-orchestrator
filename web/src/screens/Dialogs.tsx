@@ -2,7 +2,7 @@ import React, {useEffect, useState} from 'react';
 import {useArena, type PostError} from '../App';
 import {TRANSCRIPT_QUERY, bytes, liveLineText, useLiveTail} from '../live';
 import {useSpeech} from '../speech';
-import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, attemptTone, cap, clock, duration, family, human, pickableProjects, seconds, stateLabel, when, type RecordData} from '../types';
+import {ACTIVE_ATTEMPT, RETRYABLE, UNSTOPPABLE, approvalLabel, attemptTone, cap, clock, duration, family, human, pickableProjects, seconds, stateLabel, stripLegacy, when, type RecordData} from '../types';
 import {Chip, Eyebrow, Facts, Icon, LiveDot, Sha} from '../ui';
 
 // What the agent did, as lines (GET attempts/{id}/live with the whole transcript), for a
@@ -478,14 +478,29 @@ function ReviewDialog({review, task}: {review: RecordData; task: RecordData}) {
   const pub = review.publication;
   const summary = director?.result?.review?.summary || independent?.result?.review?.summary || independent?.result?.reason || task.reason;
   const build = task.build_attempt && data.attempts.find(a => a.id === task.build_attempt);
+  const status = approvalLabel(review);
+  // The head says what this is in plain words; the evidence below (commits, checks, review,
+  // diff) is the technical record the owner opened this to inspect.
+  const lead =
+    pub?.state === 'integrated'
+      ? 'This change is on main.'
+      : pub?.state === 'failed'
+        ? 'Arena could not merge this change into main. Nothing on main was changed.'
+        : pub?.state === 'queued'
+          ? 'Arena is merging this change into main.'
+          : review.state === 'pending'
+            ? 'This change passed its checks and is waiting for your decision.'
+            : review.state === 'accept'
+              ? 'You accepted this change. It is not on main until you merge it.'
+              : '';
   return (
     <>
       <div className="row wrap">
-        <Chip tone={pub?.state === 'integrated' ? 'done' : pub?.state === 'failed' ? 'blocked' : 'decision'}>
-          {pub ? cap(pub.state) : review.state === 'accept' ? 'Accepted' : review.state === 'pending' ? 'Exact staged candidate' : cap(human(review.state))}
-        </Chip>
+        <Chip tone={status.tone}>{status.label}</Chip>
         {review.covered_tasks?.length > 1 && <span className="tag">Covers {review.covered_tasks.length} tasks</span>}
       </div>
+      {lead && <p className="lede">{lead}</p>}
+      <h3 className="section-title">Exact change</h3>
       <p className="path">
         Candidate <Sha value={review.candidate} n={40} />
         <br />
@@ -628,12 +643,12 @@ export function DialogBody() {
   const task = modal?.kind === 'task' ? data.tasks.find(t => t.id === modal.id) : null;
   const review = modal?.kind === 'review' ? data.approvals.find(a => a.id === modal.id) : null;
   const reviewedTask = review ? data.tasks.find(t => t.id === review.task_id) : null;
-  const title = modal?.kind === 'goal' ? 'New request' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : task?.title || reviewedTask?.title || 'Build control';
+  const title = modal?.kind === 'goal' ? 'New request' : modal?.kind === 'device' ? 'Device session' : modal?.kind === 'account' ? 'Worker slot setup' : modal?.kind === 'enrol' ? 'Add a project' : stripLegacy(task?.title || reviewedTask?.title || '') || 'Build control';
   const heartbeatAge = data.heartbeat ? now - data.heartbeat : null;
   return (
     <>
       <div className="dialog-head">
-        <h2>{title}</h2>
+        <h2 id="dialog-title">{title}</h2>
         <button className="close" aria-label="Close dialog" onClick={() => setModal(null)}>
           <Icon name="x" size={18} />
         </button>

@@ -1,0 +1,156 @@
+{
+ "generated": 1793240000.0,
+ "groups": {
+  "managed": [
+   {
+    "kind": "arena_build",
+    "label": "Arena is building “Document bell control, prefixed output and quiet mode”",
+    "repo": "~/Projects/arena-smoke-20261028",
+    "project": "Arena Smoke 20261028",
+    "folder": "~/Projects/agent-workflow-orchestrator/.arena-control/workspaces/attempt_02e0e9762c75e20c",
+    "pid": 4100,
+    "started": 1793239710.0,
+    "last_activity": 1793239980.0,
+    "headless": true,
+    "ports": [],
+    "evidence": [
+     "Matches Arena's record of this attempt (process id and start time)",
+     "Agent process: Codex (pid 4101)"
+    ],
+    "arena": {
+     "goal_id": "goal_a6faaa785f084d70",
+     "task_id": "task_4e54fb6538a128da",
+     "attempt_id": "attempt_02e0e9762c75e20c"
+    },
+    "subagents_recent": null
+   }
+  ],
+  "external": [
+   {
+    "kind": "claude",
+    "label": "Claude Code session",
+    "repo": "~/Projects/LeoOS",
+    "project": null,
+    "folder": "~/Projects/LeoOS",
+    "pid": 200,
+    "started": 1793234600.0,
+    "last_activity": 1793239880.0,
+    "headless": false,
+    "ports": [],
+    "evidence": [
+     "Process node (pid 200), started 1 h ago",
+     "Command: node /opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js",
+     "Working folder: ~/Projects/LeoOS",
+     "Repository: ~/Projects/LeoOS",
+     "Claude Code session files for this folder last changed 2 min ago",
+     "2 subagent session files changed in the last 10 minutes (inferred from session files)"
+    ],
+    "arena": null,
+    "subagents_recent": 2
+   },
+   {
+    "kind": "codex",
+    "label": "Codex session",
+    "repo": "~/Projects/Continuoum",
+    "project": null,
+    "folder": "~/Projects/Continuoum",
+    "pid": 300,
+    "started": 1793238500.0,
+    "last_activity": null,
+    "headless": false,
+    "ports": [],
+    "evidence": [
+     "Process node (pid 300), started 25 min ago",
+     "Command: node /opt/homebrew/bin/codex",
+     "Working folder: ~/Projects/Continuoum",
+     "Repository: ~/Projects/Continuoum"
+    ],
+    "arena": null,
+    "subagents_recent": null
+   },
+   {
+    "kind": "tests",
+    "label": "Test run (pytest)",
+    "repo": "~/Projects/Continuoum",
+    "project": null,
+    "folder": "~/Projects/Continuoum",
+    "pid": 301,
+    "started": 1793239940.0,
+    "last_activity": null,
+    "headless": null,
+    "ports": [],
+    "evidence": [
+     "Process python3 (pid 301), started 1 min ago",
+     "Command: python3 -m pytest -q",
+     "Working folder: ~/Projects/Continuoum",
+     "Repository: ~/Projects/Continuoum",
+     "Started from Codex (pid 300)"
+    ],
+    "arena": null,
+    "subagents_recent": null
+   },
+   {
+    "kind": "dev_server",
+    "label": "Development server (npm run dev)",
+    "repo": "~/Projects/AgentExchange",
+    "project": null,
+    "folder": "~/Projects/AgentExchange",
+    "pid": 600,
+    "started": 1793232800.0,
+    "last_activity": null,
+    "headless": null,
+    "ports": [
+     5173
+    ],
+    "evidence": [
+     "Process npm (pid 600), started 2 h ago",
+     "Command: npm run dev",
+     "Working folder: ~/Projects/AgentExchange",
+     "Repository: ~/Projects/AgentExchange",
+     "1 related child process",
+     "Listening on port 5173"
+    ],
+    "arena": null,
+    "subagents_recent": null
+   }
+  ],
+  "unknown": [
+   {
+    "kind": "claude",
+    "label": "Claude Code session",
+    "repo": null,
+    "project": null,
+    "folder": "~",
+    "pid": 950,
+    "started": 1793237000.0,
+    "last_activity": null,
+    "headless": false,
+    "ports": [],
+    "evidence": [
+     "Process claude (pid 950), started 50 min ago",
+     "Command: claude",
+     "Working folder: ~",
+     "No Claude Code session files were found for this folder"
+    ],
+    "arena": null,
+    "subagents_recent": 0
+   }
+  ]
+ },
+ "summary": [
+  "Arena is building Arena Smoke 20261028: 1 agent.",
+  "Claude is working in LeoOS (active 2 min ago).",
+  "A Codex session is open in Continuoum (started 25 min ago).",
+  "Codex is running tests for Continuoum.",
+  "A development server is running for AgentExchange on port 5173.",
+  "A Claude Code session is open in a folder outside any project (~)."
+ ],
+ "limitations": [
+  "Only your own processes were inspected; other users' processes are not visible to Arena.",
+  "Subagents inside a Claude Code session are inferred from its session files, not seen as processes.",
+  "Codex shows no activity times, so a running Codex process proves it is open, not that it is making progress.",
+  "Arena only looked: it did not stop, attach to or change anything."
+ ],
+ "partial": false,
+ "stale": false
+}

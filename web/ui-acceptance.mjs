@@ -1,5 +1,5 @@
 // Browser/API acceptance only. Dispatch is disabled and no agent is simulated.
-import {chromium} from '@playwright/test';
+// Navigation is the owner's: the ☰ Menu on a phone, the sidebar on a wide screen.
 import {spawn} from 'node:child_process';
 import {mkdtempSync,mkdirSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -7,16 +7,26 @@ const root=process.cwd(),state=mkdtempSync(tmpdir()+'/arena-ui-');
 const output=root+'/docs/build-evidence/ui-acceptance';mkdirSync(output,{recursive:true});
 const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.ui_server:create_app','--factory','--host','127.0.0.1','--port','8793'],{cwd:root,env:{...process.env,ARENA_UI_STATE:state,ARENA_UI_PORT:'8793'},stdio:'pipe'});
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
+// The repository's Playwright (the Mac has its browsers); where only another Playwright
+// build has browsers installed (a container), that one: ARENA_PLAYWRIGHT names its module.
+async function launch(){
+ try{return await (await import('@playwright/test')).chromium.launch()}
+ catch(error){try{return await (await import(process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs')).chromium.launch()}catch{throw error}}
+}
+const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
+const home=page=>page.getByLabel('Tell Arena what to build').waitFor();
 let browser;
 try{
  for(let n=0;n<40;n++){try{if((await fetch('http://127.0.0.1:8793')).ok)break}catch{}await new Promise(r=>setTimeout(r,250));}
- browser=await chromium.launch();
+ browser=await launch();
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true});
  let page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('http://127.0.0.1:8793');
  await page.getByLabel('One-time pairing code').fill('ui-fixture-one-use-code');
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+ await home(page);
+ // The direct request form lives on Projects; Home talks to the director.
+ await go(page,'Projects');
  await page.getByRole('button',{name:'New request',exact:true}).click();
  await page.getByLabel('What would you like to change?').fill('Queued UI test only; no worker is enrolled.');
  await page.getByRole('button',{name:'Build this for me',exact:true}).click();
@@ -24,13 +34,14 @@ try{
  const before=await page.evaluate(async()=>await(await fetch('/api/v1/overview')).json());
  if(before.tasks.length!==1||!before.paused)throw Error('Submission not persisted in paused fixture');
  await page.close();page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:8793');
- await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
- for(const tab of ['Overview','Projects','Agents','Review']){
-  await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:tab,exact:true}).click();
+ await home(page);
+ // Screenshot names keep the earlier tab names so the evidence lines up across rounds.
+ for(const [tab,file] of [['Home','overview'],['Projects','projects'],['Agents','agents'],['Review','review']]){
+  await go(page,tab);
   if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth))throw Error('Overflow on '+tab);
-  await page.screenshot({path:output+'/'+tab.toLowerCase()+'-390.png',fullPage:true});
+  await page.screenshot({path:output+'/'+file+'-390.png',fullPage:true});
  }
- await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Projects',exact:true}).click();
+ await go(page,'Projects');
  await page.getByLabel('Browser API fixture priority').selectOption('2');
  await page.getByRole('status').filter({hasText:'Priority updated'}).waitFor();
  const after=await page.evaluate(async()=>await(await fetch('/api/v1/overview')).json());
@@ -38,7 +49,7 @@ try{
  if(after.tasks[0].id!==before.tasks[0].id||after.attempts.length)throw Error('Reload duplicated or dispatched task');
  await page.setViewportSize({width:1440,height:1000});
  await page.screenshot({path:output+'/desktop-1440.png',fullPage:true});
- await page.getByRole('button',{name:'Device session'}).click();
+ await go(page,'Device session');
  await page.getByRole('button',{name:'Unpair this device'}).click();
  await page.getByLabel('One-time pairing code').waitFor();
  if((await page.request.get('http://127.0.0.1:8793/api/v1/overview')).status()!==401)throw Error('Logout did not revoke session');

@@ -18,6 +18,8 @@ from .store import Conflict, Store, encode, uid
 from .titles import display_title
 
 ACTIVE = {"leased", "running", "verifying", "reviewing", "recovering"}
+# Work the scheduler will pick up (or is holding back) without anyone acting.
+QUEUED = {"ready", "waiting_capacity", "waiting_dependency", "cooldown", "repair_queued"}
 SUCCESS = {"ready_for_approval", "completed"}
 FORBIDDEN = {".git", ".claude", ".codex", ".env", ".github", "AGENTS.md", "CLAUDE.md"}
 
@@ -831,6 +833,8 @@ class Engine:
                             complexity=item.get("complexity", "moderate"),
                             risk=item.get("risk", "medium"),
                             milestone=item.get("milestone", ""),
+                            # Why it matters to the owner, in the director's plain words.
+                            purpose=item.get("purpose", ""),
                             # Children start with fresh budgets; the parent's repair history
                             # belongs to the planning stage, not to each build.
                             repairs=0,

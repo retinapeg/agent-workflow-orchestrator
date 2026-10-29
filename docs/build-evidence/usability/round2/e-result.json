@@ -1,5 +1,5 @@
 {
-  "state": "/tmp/arena-real-UfgfdY",
+  "state": "/tmp/arena-real-vLMc4j",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
@@ -20,9 +20,9 @@
     "bytes": 22069248,
     "prunable_count": 3,
     "prunable_bytes": 6316032,
-    "oldest": 1792370137,
+    "oldest": 1792381728,
     "days": 7,
-    "measured": 1793234138.0981038
+    "measured": 1793245728.820848
   },
   "dryRun": {
     "count": 6,

@@ -2,14 +2,28 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Annotated
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 from .engine import safe_scope, within
+
+PURPOSE_CHARS = 300
+
+
+def _purpose(value):
+    """Why a task matters to the owner, shown on the phone. Cosmetic, so it never fails a
+    plan: anything but text is dropped and long text is cut to PURPOSE_CHARS."""
+    if not isinstance(value, str):
+        return ""
+    text = " ".join(value.split())
+    return text if len(text) <= PURPOSE_CHARS else text[: PURPOSE_CHARS - 1] + "…"
 
 
 class PlannedTask(BaseModel):
     model_config = ConfigDict(extra="forbid")
     title: str = Field(min_length=1, max_length=200)
+    purpose: Annotated[str, BeforeValidator(_purpose)] = Field(default="", max_length=PURPOSE_CHARS)
     instructions: str = Field(min_length=1, max_length=10000)
     scope: list[str] = Field(min_length=1, max_length=32)
     dependencies: list[int] = Field(default_factory=list, max_length=8)
@@ -155,10 +169,13 @@ acceptance (testable product criteria string array; each must be verifiable from
 diff, the frozen checks or a reviewer reading the code - never demand reports or artifacts
 this pipeline does not produce), constraints (safety string array),
 strategy (single|parallel|sequential|clarify), question (empty except clarify),
-tasks [{title,instructions,scope:[relative paths],dependencies:[zero-based task indices],
-acceptance:[testable criteria],complexity:simple|moderate|complex,risk:low|medium|high,
-milestone:"M2.1 — Frontend"}].
+tasks [{title,purpose,instructions,scope:[relative paths],dependencies:[zero-based task
+indices],acceptance:[testable criteria],complexity:simple|moderate|complex,
+risk:low|medium|high,milestone:"M2.1 — Frontend"}].
 Up to eight tasks. A clarify response has no tasks.
+purpose: one plain-English sentence for the owner saying why this task matters to them (what
+they will be able to do or see once it lands), with no file names, code or jargon; at most
+300 characters.
 Milestones: give every task a milestone code and short title ("M2 — Implementation",
 "M2.1 — Backend", "M2.3.1 — Schema migration"). Codes nest with dots; choose the actual
 milestones and depth the request needs (a small change is one milestone; a new product may

@@ -4,7 +4,9 @@
 // service on 8791 are never touched. ARENA_SLICES=A,B limits the sections that run (the
 // other slices keep their last recorded result in result.json); ARENA_REAL_DB names the
 // database to copy (default .arena-control/control.sqlite3); ARENA_EVIDENCE redirects the
-// output (a trial run that must not replace the recorded evidence).
+// output (a trial run that must not replace the recorded evidence). Round 3: navigation is the
+// owner's ☰ Menu (no bottom navigation); a build opens as its plain-English story, and its
+// technical view (#goal-pick) is one step further, under the story's ⋯ → Advanced.
 import {spawn, spawnSync} from 'node:child_process';
 import {randomBytes} from 'node:crypto';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -22,7 +24,12 @@ const server=spawn(root+'/.venv/bin/python',['-m','uvicorn','tests.control.real_
 let serverLog='';server.stdout.on('data',d=>serverLog+=d);server.stderr.on('data',d=>serverLog+=d);
 let previous={};try{previous=JSON.parse(readFileSync(output+'/result.json','utf8'))}catch{}
 let browser;const result={state,viewport:390,userAgent:ANDROID,dispatch:false,ran:wanted,platform:process.platform,slices:{...(previous.slices||{})}};
-const nav=page=>page.getByRole('navigation',{name:'Primary'});
+// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
+const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
+// The app is up (paired, snapshot read): its menu button is on screen.
+const appUp=page=>page.getByRole('button',{name:/^Menu\b/}).waitFor();
+// The technical view of a build opened as a story: ⋯ → Advanced.
+const advanced=async page=>{await page.getByRole('button',{name:'Build options',exact:true}).click();await page.getByRole('menuitem',{name:'Advanced',exact:true}).click();await page.locator('#goal-pick').waitFor();};
 const overflow=page=>page.evaluate(()=>document.documentElement.scrollWidth>innerWidth);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const uptime=async s=>{const wait=(ready+s)*1000-Date.now();if(wait>0)await sleep(wait)};
@@ -43,8 +50,12 @@ for role,text,data in p["messages"]:
     db.execute("INSERT INTO messages(conversation_id,time,role,text,data) VALUES(?,?,?,?,?)",(p["id"],time.time(),role,text,json.dumps(data)))`,{id,conv,messages});return id};
 const api=(page,path)=>page.evaluate(async p=>{const r=await fetch('/api/v1/'+p,{cache:'no-store'});return r.ok?await r.json():{__status:r.status}},path);
 // Open one conversation in Chat the way the app does: the remembered thread on this device.
-const openChat=async(page,id)=>{await page.evaluate(i=>localStorage.setItem('arena.conversation',i),id);await page.reload();await nav(page).waitFor();await nav(page).getByRole('button',{name:'Chat',exact:true}).click();await page.getByLabel('Message Arena').waitFor();};
+const openChat=async(page,id)=>{await page.evaluate(i=>localStorage.setItem('arena.conversation',i),id);await page.reload();await appUp(page);await go(page,'Chats');await page.getByLabel('Message Arena').waitFor();};
 const flat=async loc=>(await loc.innerText()).replace(/\s+/g,' ').trim();
+// Round 3: Chat's default view is plain English. No commit hash, file name, path, exit code or
+// shell command ("$ …", "pytest …") outside a disclosure the owner opens.
+const MACHINERY=[[/\b(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/,'a commit hash'],[/\b[\w-]+\.(?:py|tsx?|jsx?|json|toml|ya?ml|sh|md|css|html)\b/,'a file name'],[/(?:^|\s)(?:~|\.{0,2})\/[\w.-]+\/[\w./-]+/,'a path'],[/Traceback|exit=-?\d+|exit code|timeout=True|stderr/i,'terminal output'],[/(?:^|\s)\$ |\bpytest\b|\brg -n\b|\bgit log\b/,'a shell command']];
+const machinery=text=>MACHINERY.map(([re,what])=>{const m=re.exec(text);return m?`${what} ("${m[0].trim()}")`:''}).filter(Boolean);
 try{
  for(let n=0;n<80;n++){if(server.exitCode!==null)throw Error('Fixture server exited with '+server.exitCode+' (is port '+port+' free?)\n'+serverLog.slice(-800));try{if((await fetch(base)).ok){ready=Date.now()/1000;break}}catch{}await sleep(250);}
  if(!ready)throw Error('Fixture server never answered\n'+serverLog.slice(-800));
@@ -54,7 +65,7 @@ try{
  await page.goto(base);
  await page.getByLabel('One-time pairing code').fill('real-state-one-use-code');
  await page.getByRole('button',{name:'Pair device',exact:true}).click();
- await nav(page).waitFor();
+ await appUp(page);
 
  if(wanted.includes('A')){
   // A. "Since you were away": the paired session was last seen 12 hours ago, or before the
@@ -64,12 +75,17 @@ try{
   const r={};
   await page.goto('about:blank');await sleep(1500);
   sql(`UPDATE sessions SET last_seen=MIN(strftime('%s','now')-43200,(SELECT MAX(json_extract(data,'$.updated')) FROM tasks)-600)`);
-  await page.goto(base);await nav(page).waitFor();
-  const session=await api(page,'session');r.awaySince=session.away_since;
+  // Home is the screen the app opens on, and showing the summary marks the absence seen, so
+  // the host is asked first (same device cookie, before the app loads).
+  const session=await (await page.request.get(base+'/api/v1/session')).json();r.awaySince=session.away_since;
   if(typeof session.away_since!=='number')throw Error('Session does not report the absence: '+JSON.stringify(session));
-  await nav(page).getByRole('button',{name:'Overview',exact:true}).click();
+  await page.goto(base);await appUp(page);
+  await go(page,'Home');
+  // Round 3: a compact one-line banner that expands into the same rows.
   const panel=page.locator('.away-panel');await panel.waitFor({timeout:10000});
-  const rows=panel.locator('.list-row');r.rows=await rows.count();
+  r.line=(await panel.locator('.away-toggle').innerText()).replace(/\s+/g,' ').trim();
+  await panel.getByRole('button',{name:/Since you were away/}).click();
+  const rows=panel.locator('.list-row');await rows.first().waitFor();r.rows=await rows.count();
   r.labels=(await rows.locator('.tone').allInnerTexts()).slice(0,12);
   if(!r.rows)throw Error('Away panel has no rows');
   if(await overflow(page))throw Error('Horizontal overflow on Home with the away panel');
@@ -82,11 +98,11 @@ try{
   // One tap opens the build.
   const first=await rows.first().locator('b').innerText();
   await rows.first().click();
-  await page.locator('#goal-pick').waitFor();
-  r.opened={row:first,build:await page.locator('.page-sub').first().innerText()};
+  await page.locator('.screen.story .story-title').waitFor();
+  r.opened={row:first,build:await page.locator('.screen.story .story-title').innerText()};
   await page.screenshot({path:output+'/a-tap-into-build-390.png'});
-  await nav(page).getByRole('button',{name:'Overview',exact:true}).click();
-  await page.getByRole('heading',{name:'Build control.',exact:true}).waitFor();
+  await go(page,'Home');
+  await page.getByLabel('Tell Arena what to build').waitFor();
   if(await page.locator('.away-panel').count())throw Error('Away panel shown again after it was seen');
   result.slices.A=r;console.log('A',JSON.stringify(r));
  }
@@ -98,7 +114,10 @@ try{
   const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
   const goals=[...snap.goals].sort((a,b)=>b.created-a.created);
   const integrated=goals.find(g=>!archivedIds.has(g.project_id)&&snap.tasks.some(t=>t.goal_id===g.id&&t.integrated_commit));
-  await nav(page).getByRole('button',{name:'Build',exact:true}).click();
+  // The technical view, from Builds → Advanced (the build's record lives there).
+  await go(page,'Builds');
+  await page.locator('details.advanced > summary').click();
+  await page.getByRole('button',{name:'Technical view',exact:true}).click();
   await page.locator('#goal-pick').waitFor();
   await page.locator('#goal-pick').selectOption(integrated.id);
   // The first row of the Agent stack is the first non-cancelled child task (by creation).
@@ -149,17 +168,26 @@ try{
   const thinkingId=seedChat({title:asked,project_id:project?.id||null,status:'thinking',step:'reading repository',step_detail:'rg -n "bell" src/',step_since:Date.now()/1000-4,turn_started:Date.now()/1000-30,turn_repo:'arena-smoke-20261028',commands:3},[['user',asked,{}]]);
   await openChat(page,thinkingId);
   const bubble=page.locator('.msg.thinking');await bubble.waitFor({timeout:15000});
-  await page.waitForFunction(()=>document.querySelector('.msg.thinking .thinking-detail'),null,{timeout:10000});
+  await page.waitForFunction(()=>document.querySelector('.msg.thinking details.thinking-details'),null,{timeout:10000});
   const early=await flat(bubble);await sleep(2300);const later=await flat(bubble);
   r.thinking={early,later,project:project?.name||null};
-  if(!/^Reading /.test(early)||!early.includes('rg -n "bell" src/')||/Still working/.test(early))throw Error('Thinking bubble does not show the step and command: '+early);
+  // Round 3: the plain step ("Reading the code in <project>"); the command stays folded under
+  // a closed "Details" disclosure until the owner opens it.
+  const reading='Reading the code in '+(project?.name||'arena-smoke-20261028');
+  if(!early.startsWith(reading)||early.includes('rg -n')||/Still working/.test(early))throw Error('Thinking bubble is not the plain step: '+early);
+  if(machinery(early).length)throw Error('Thinking bubble shows '+machinery(early).join(', '));
+  if(await bubble.locator('details.thinking-details').evaluate(d=>d.open))throw Error('The command is shown by default');
+  await bubble.locator('details.thinking-details > summary').click();
+  r.thinking.details=await flat(bubble.locator('details.thinking-details'));
+  if(!r.thinking.details.includes('rg -n "bell" src/'))throw Error('Details does not hold the command: '+r.thinking.details);
+  await bubble.locator('details.thinking-details > summary').click();
   if(!(secs(later)>secs(early)&&secs(early)>=29))throw Error('Elapsed time is not live: '+early+' → '+later);
   // Past 90 s the bubble says it is still working (the host's turn start moves back 70 s).
   await uptime(101);
   py(`db.execute("UPDATE conversations SET rev=rev+1,data=json_set(data,'$.turn_started',?) WHERE id=?",(time.time()-100,p["id"]))`,{id:thinkingId});
   await page.waitForFunction(()=>{const t=document.querySelector('.msg.thinking')?.innerText||'';const m=/(?:(\d+)m )?(\d+)s\b/.exec(t);return /Still working/.test(t)&&!!m&&Number(m[1]||0)*60+Number(m[2])>=100},null,{timeout:10000});
   r.thinking.still=await flat(bubble);
-  if(!r.thinking.still.includes('rg -n "bell" src/')||secs(r.thinking.still)<100)throw Error('Still-working line lost the step: '+r.thinking.still);
+  if(!r.thinking.still.includes(reading)||r.thinking.still.includes('rg -n')||secs(r.thinking.still)<100)throw Error('Still-working line lost the step: '+r.thinking.still);
   if(await overflow(page))throw Error('Horizontal overflow on Chat while thinking');
   await page.screenshot({path:output+'/c-director-thinking-390.png'});
   // An error: plain language, the technical detail folded away, Retry on the newest only.
@@ -200,12 +228,14 @@ db.execute("DROP TABLE acceptance_accounts")`);
 
  if(wanted.includes('D')){
   // D. Chat as the front door. The reply that started a build is that build's card, kept
-  // current from the snapshot: "Integrated · sha" once on main; Review only where the owner
-  // decides (a pending approval on a project that integrates manually); "Integrating…" or
-  // "Integration failed" on a project that integrates automatically, never Review; live with
-  // the agent, model and its last line while an attempt runs. A build is seeded in the copy
-  // and moved through those states (cloned from the newest integrated build's records). And
-  // a new chat shows the project it starts on before anything is sent.
+  // current from the snapshot and the build's story, in plain English (Round 3): "Merged into
+  // main" once on main (the commit only in the chip's tooltip); Review only where the owner
+  // decides (a pending approval on a project that integrates manually); "Merging into main" or
+  // "Merge failed" (with the story's plain reason) on a project that integrates automatically,
+  // never Review; live with the agent, model and what it is doing in the host's words (never
+  // the raw command) while an attempt runs. A build is seeded in the copy and moved through
+  // those states (cloned from the newest integrated build's records). And a new chat shows
+  // the project it starts on before anything is sent.
   const r={};
   const snap=await api(page,'overview');
   const archivedIds=new Set(snap.projects.filter(p=>p.archived).map(p=>p.id));
@@ -221,17 +251,23 @@ db.execute("DROP TABLE acceptance_accounts")`);
   // Waits for the card to say `text` (the snapshot is polled; the live tail every 2.5 s).
   const cardSays=async(text,what)=>{try{await page.waitForFunction(t=>{const c=[...document.querySelectorAll('.chat-build')].pop();return !!c&&c.textContent.replace(/\s+/g,' ').includes(t)},text,{timeout:20000})}catch{throw Error(what+' · card: '+(await flat(card()).catch(()=>'(none)')))}};
   const noOverflow=async where=>{if(await overflow(page))throw Error('Horizontal overflow on Chat with '+where)};
+  // The card's default view: plain English only.
+  const plainCard=async where=>{const text=await flat(card());const found=machinery(text);if(found.length)throw Error(`The ${where} card shows ${found.join(', ')}: ${text}`);return text};
+  const story=goal=>api(page,'goals/'+goal+'/story');
 
-  // 1. An integrated build: "Integrated · sha", no Review, one tap opens that build.
+  // 1. An integrated build: "Merged into main", the commit only in the chip's tooltip, no
+  // Review, one tap opens that build.
   const builtChat=seedChat({title:'Add bell control',project_id:project.id},[['user','Build it.',{}],['assistant','Starting the build.',{build_started:true,goal_id:integrated.id,task_id:done.id,project:project.name}]]);
   await openChat(page,builtChat);
-  await cardSays('Integrated · '+sha,'Integrated build');
-  r.integrated={goal:integrated.id,sha,card:await flat(card()),review:await reviews()};
+  await cardSays('Merged into main','Integrated build');
+  r.integrated={goal:integrated.id,sha,card:await plainCard('integrated'),review:await reviews(),tooltip:await card().locator('.chip[title]').getAttribute('title')};
   if(r.integrated.review)throw Error('Review offered on an integrated build');
+  if(r.integrated.card.includes(sha)||r.integrated.tooltip!=='Commit '+sha+' on main')throw Error('The commit is not (only) in the tooltip: '+JSON.stringify(r.integrated));
   await noOverflow('an integrated build card');
   await page.screenshot({path:output+'/d-chat-build-card-390.png'});
   await card().getByRole('button',{name:'Open the build',exact:true}).click();
-  await page.locator('#goal-pick').waitFor();
+  await page.locator('.screen.story').waitFor();
+  await advanced(page);
   r.integrated.opened=await page.locator('#goal-pick').inputValue();
   if(r.integrated.opened!==integrated.id)throw Error('Open the build opened '+r.integrated.opened);
 
@@ -267,9 +303,12 @@ db.execute("INSERT INTO approvals(id,task_id,state,data) VALUES(?,?,?,?)",(p["ap
 task=row("tasks",p["task"]);task.update(reason="Combined checks passed; exact staging commit awaits acceptance",staged=p["candidate"],approval_id=p["approval"],updated=now-20)
 put("tasks",p["task"],task,"ready_for_approval")`);
    await openChat(page,seededChat);
-   await cardSays('Ready for approval','Manual approval');
-   r.review={goal:ids.goal,task:ids.task,card:await flat(card()),review:await reviews()};
+   // The story's status and its plain need ("A verified change is waiting for your approval.").
+   const waiting=await story(ids.goal);
+   await cardSays(waiting.needs_you?.[0]?.text||'waiting for your approval','Manual approval');
+   r.review={goal:ids.goal,task:ids.task,card:await plainCard('review'),review:await reviews(),status:waiting.status_label};
    if(r.review.review!==1)throw Error('No Review on a build waiting for the owner: '+r.review.card);
+   if(!r.review.card.includes(waiting.status_label))throw Error('The card does not show the story status '+waiting.status_label+': '+r.review.card);
    await noOverflow('a build waiting for review');
    await page.screenshot({path:output+'/d-chat-review-card-390.png'});
    await card().getByRole('button',{name:'Review',exact:true}).click();
@@ -286,17 +325,21 @@ approval.update(decision={"decision":"accept","by":"integration_policy","policy"
 put("approvals",p["approval"],approval,"accept")
 task=row("tasks",p["task"]);task.update(reason="Verified; integrating into local main under the project's policy",updated=now)
 put("tasks",p["task"],task)`);
-   await cardSays('Integrating…','Automatic integration');
-   r.auto={card:await flat(card()),review:await reviews()};
+   await cardSays('Merging into main','Automatic integration');
+   r.auto={card:await plainCard('merging'),review:await reviews()};
    if(r.auto.review)throw Error('Review offered while integrating automatically: '+r.auto.card);
    await page.screenshot({path:output+'/d-chat-integrating-card-390.png'});
    // ...and when that integration fails, the card says so (still no Review).
    step(`approval=row("approvals",p["approval"])
 approval["publication"].update(state="failed",reason="Source main moved since the candidate was verified; nothing was changed")
 put("approvals",p["approval"],approval)`);
-   await cardSays('Integration failed','Failed automatic integration');
-   r.autoFailed={card:await flat(card()),review:await reviews()};
-   if(r.autoFailed.review||!r.autoFailed.card.includes('Source main moved'))throw Error('Failed integration card: '+r.autoFailed.card);
+   await cardSays('Merge failed','Failed automatic integration');
+   // Why, from the story's plain failure; never the raw publication reason.
+   const failed=await story(ids.goal);
+   if(!failed.failure?.what_failed)throw Error('The story records no failure for the failed merge: '+JSON.stringify(failed.failure));
+   await cardSays(failed.failure.what_failed,'Failed integration, plain reason');
+   r.autoFailed={card:await plainCard('failed merge'),review:await reviews(),what:failed.failure.what_failed};
+   if(r.autoFailed.review||r.autoFailed.card.includes('Source main moved'))throw Error('Failed integration card: '+r.autoFailed.card);
 
    // 4. Live: an attempt runs; the card shows the agent, model, elapsed and its last line.
    mkdirSync(ids.artifact,{recursive:true});
@@ -307,8 +350,11 @@ put("tasks",p["task"],task,"running")
 attempt={k:v for k,v in row("attempts",p["tplAttempt"]).items() if k not in ("result","ended","identity")}
 attempt.update(created=now-75,model="gpt-6.1-sol",effort="high",phase="build",artifact_dir=p["artifact"],identity=None,reason="Routed to Codex")
 db.execute("INSERT INTO attempts(id,task_id,account_id,token,state,data) VALUES(?,?,?,?,?,?)",(p["attempt"],p["task"],p["account"],0,"running",json.dumps(attempt)))`);
-   await cardSays('pytest -q tests/test_bell.py','Live build');
-   r.live={card:await flat(card()),agent:codex.name,review:await reviews(),watch:await card().getByRole('button',{name:'Watch the build',exact:true}).count()};
+   // What the agent is doing, in the host's words (the story's `now`), never the command.
+   let now=null;for(let n=0;n<30&&!now;n++){now=(await story(ids.goal)).blocks?.find(b=>b.id===ids.task)?.now||null;if(!now)await sleep(500)}
+   if(!now)throw Error('The story has no plain "now" for the live block');
+   await cardSays(now,'Live build');
+   r.live={card:await plainCard('live'),now,agent:codex.name,review:await reviews(),watch:await card().getByRole('button',{name:'Watch the build',exact:true}).count()};
    if(!r.live.card.includes(codex.name+' · gpt-6.1-sol · high')||r.live.review||r.live.watch!==1)throw Error('Live card: '+JSON.stringify(r.live));
    await noOverflow('a live build card');
    await page.screenshot({path:output+'/d-chat-live-card-390.png'});
@@ -317,9 +363,11 @@ db.execute("INSERT INTO attempts(id,task_id,account_id,token,state,data) VALUES(
    step(`db.execute("UPDATE attempts SET state='passed',data=json_set(data,'$.ended',?) WHERE id=?",(now,p["attempt"]))
 task=row("tasks",p["task"]);task.update(reason="Verified candidate integrated into local main",integrated_commit="c0ffee0"+"1"*33,updated=now)
 put("tasks",p["task"],task,"completed")`);
-   await cardSays('Integrated · c0ffee0','Integrated after the live build');
-   r.live.after=await flat(card());
+   await cardSays('Merged into main','Integrated after the live build');
+   r.live.after=await plainCard('merged');
+   r.live.tooltip=await card().locator('.chip[title]').getAttribute('title');
    if(await reviews())throw Error('Review offered on an integrated build: '+r.live.after);
+   if(r.live.tooltip!=='Commit c0ffee0 on main')throw Error('The merged commit is not in the tooltip: '+r.live.tooltip);
   }finally{
    step('policy(p["policy"])');  // the copy's project keeps its own integration policy
   }
@@ -333,8 +381,8 @@ put("tasks",p["task"],task,"completed")`);
   const expected=expectedId?fresh.projects.find(p=>p.id===expectedId).name:'No project selected';
   const known=new Set(listed.map(c=>c.id));
   await page.evaluate(()=>localStorage.removeItem('arena.conversation'));
-  await page.reload();await nav(page).waitFor();
-  await nav(page).getByRole('button',{name:'Chat',exact:true}).click();
+  await page.reload();await appUp(page);
+  await go(page,'Chats');
   try{await page.waitForFunction(()=>!!localStorage.getItem('arena.conversation'),null,{timeout:15000})}catch{throw Error('No chat was started from the empty state; the chip says: '+(await page.locator('.chat-project').innerText()).trim())}
   await page.waitForFunction(n=>(document.querySelector('.chat-project')?.textContent||'').trim()===n,expected,{timeout:15000}).catch(()=>{});
   const createdId=await page.evaluate(()=>localStorage.getItem('arena.conversation'));

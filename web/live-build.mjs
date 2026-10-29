@@ -1,9 +1,14 @@
 // One real build through the phone UI: submit, close the browser, reconnect, watch,
 // optionally accept and integrate. Real subscription agents only; nothing is mocked.
-import {chromium} from '@playwright/test';
 import {execFileSync} from 'node:child_process';
-import {appendFileSync, mkdirSync, writeFileSync} from 'node:fs';
+import {appendFileSync, mkdirSync, writeFileSync, existsSync} from 'node:fs';
 import {resolve} from 'node:path';
+// The repository's Playwright on the Mac; where only another Playwright build has browsers
+// (a container), that one: ARENA_PLAYWRIGHT names its module.
+const PLAYWRIGHT=process.env.ARENA_PLAYWRIGHT||'/opt/npm-tools/node_modules/playwright/index.mjs';
+const {chromium}=await import(existsSync(PLAYWRIGHT)?PLAYWRIGHT:'@playwright/test');
+// Open a screen from the menu: the ☰ sheet on a phone, the sidebar on a wide screen.
+const go=async(page,name)=>{const menu=page.getByRole('button',{name:/^Menu\b/}),side=page.getByRole('navigation',{name:'Primary'});await menu.or(side).first().waitFor();if(await menu.isVisible()){await menu.click();await page.getByRole('dialog',{name:'Menu'}).getByRole('button',{name,exact:true}).click();}else await side.getByRole('button',{name,exact:true}).click();};
 
 if (process.env.ARENA_LIVE !== '1') throw Error('ARENA_LIVE=1 is required: this drives real subscription agents');
 const root = process.cwd();
@@ -48,7 +53,7 @@ try {
   let {context, page} = await open(browser);
   await page.getByLabel('One-time pairing code').fill(code);
   await page.getByRole('button', {name: 'Pair device', exact: true}).click();
-  await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
+  await page.getByLabel('Tell Arena what to build').waitFor();
   log('Paired a phone-sized browser session');
   const before = await overview(page);
   let goalId = attachGoal, t0 = Date.now();
@@ -60,6 +65,7 @@ try {
     result.instructions = before.goals.find((g) => g.id === attachGoal)?.request;
     log(`Attached to existing request ${attachGoal}: ${describe(existing)}`);
   } else {
+    await go(page, 'Projects');
     await page.getByRole('button', {name: 'New request', exact: true}).click();
     if (projectId !== 'auto') await page.getByLabel('Your project').selectOption(projectId);
     await page.getByLabel('What would you like to change?').fill(instructions);
@@ -92,7 +98,7 @@ try {
   // 3. Reconnect in a fresh browser with the same paired device cookie.
   browser = await chromium.launch();
   ({context, page} = await open(browser, storageState));
-  await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
+  await page.getByLabel('Tell Arena what to build').waitFor();
   let snapshot = await overview(page);
   let tasks = mine(snapshot, goalId);
   if (!tasks.length) throw Error('Reconnected view does not show the submitted request');
@@ -176,12 +182,12 @@ try {
     result.source_repo = project.repo;
     result.zero_click = true;
     log(`Integrated automatically into ${project.repo} main at ${main} (${auto.length} policy decision(s), no taps)`);
-    await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Review', exact: true}).click();
+    await go(page,'Review');
     await page.waitForTimeout(500);
     await page.screenshot({path: evidence + '/06-integrated.png', fullPage: true});
   } else if (integrate) {
     // 5. Accept the exact staged commit and integrate it into the source's local main, from the phone UI.
-    await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Review', exact: true}).click();
+    await go(page,'Review');
     const inspect = async () => {
       snapshot = await overview(page);
       const approval = snapshot.approvals.filter((a) => ['pending', 'accept'].includes(a.state) && tasks.some((t) => t.id === a.task_id)).at(-1);
@@ -217,8 +223,8 @@ try {
     await page.close();
     page = await context.newPage();
     await page.goto(url);
-    await page.getByRole('navigation',{name:'Primary'}).waitFor();await page.getByRole('navigation',{name:'Primary'}).getByRole('button',{name:'Overview',exact:true}).click().catch(()=>{});await page.getByRole('heading', {name: 'Build control.', exact: true}).waitFor();
-    await page.getByRole('navigation', {name: 'Primary'}).getByRole('button', {name: 'Projects', exact: true}).click();
+    await page.getByLabel('Tell Arena what to build').waitFor();
+    await go(page,'Projects');
     await page.screenshot({path: evidence + '/06-integrated.png', fullPage: true});
   }
   if (errors.length) throw Error('Browser errors: ' + errors.join('\n'));

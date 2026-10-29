@@ -1,5 +1,5 @@
 {
-  "state": "/tmp/arena-real-lrTnA5",
+  "state": "/tmp/arena-real-082SgL",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
@@ -8,14 +8,15 @@
   "slices": {
     "A": {
       "awaySince": 1793188609.825794,
+      "line": "Since you were away 1 stopped",
       "rows": 1,
       "labels": [
-        "Blocked"
+        "Stopped"
       ],
       "seenAfterView": null,
       "opened": {
-        "row": "Add to an existing project: What repo are we in?",
-        "build": "Add to an existing project: What repo are we in? · Arena"
+        "row": "Arena can run its queued builds unattended overnight in a bounded…",
+        "build": "Arena can run its queued builds unattended overnight in a bounded…"
       }
     },
     "B": {
@@ -34,10 +35,11 @@
     },
     "C": {
       "thinking": {
-        "early": "Reading Arena Smoke 20261028 · 30s rg -n \"bell\" src/",
-        "later": "Reading Arena Smoke 20261028 · 32s rg -n \"bell\" src/",
+        "early": "Reading the code in Arena Smoke 20261028 · 30s Details",
+        "later": "Reading the code in Arena Smoke 20261028 · 32s Details",
         "project": "Arena Smoke 20261028",
-        "still": "Still working · Reading Arena Smoke 20261028 · 1m 40s rg -n \"bell\" src/ A director turn can take a few minutes; you can leave and come back."
+        "details": "Details rg -n \"bell\" src/",
+        "still": "Still working · Reading the code in Arena Smoke 20261028 · 1m 40s Details A director turn can take a few minutes; you can leave and come back."
       },
       "error": {
         "text": "The director took longer than 4 minutes and was stopped. Nothing was changed. Tap Retry to ask again.",
@@ -62,15 +64,17 @@
       "integrated": {
         "goal": "goal_a6faaa785f084d70",
         "sha": "f1707f8",
-        "card": "Arena Smoke 20261028 Add optional silent completion, a Pomodoro: countdown prefix and a… Integrated · f1707f8 9m 35s Open the build",
+        "card": "Arena Smoke 20261028 Add optional silent completion, a Pomodoro: countdown prefix and a… Merged into main 9m 35s Open the build",
         "review": 0,
+        "tooltip": "Commit f1707f8 on main",
         "opened": "goal_a6faaa785f084d70"
       },
       "review": {
-        "goal": "goal_2bf98bd9a9aa43f9",
-        "task": "task_03576faa93b23ac7",
-        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Ready for approval 5m 00s Queue requests overnight and run them economically Combined checks passed; exact staging commit awaits acceptance Review Open the build",
+        "goal": "goal_e2d50f4fff95f92f",
+        "task": "task_6efe4ea634676097",
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Needs you 5m 00s Queue requests overnight and run them economically A verified change is waiting for your approval. Review Open the build",
         "review": 1,
+        "status": "Needs you",
         "dialog": {
           "title": "Queue requests overnight and run them economically",
           "accept": 1,
@@ -78,19 +82,22 @@
         }
       },
       "auto": {
-        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Integrating… 5m 00s Queue requests overnight and run them economically Verified; integrating into local main under the project's policy Open the build",
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Merging into main 5m 00s Open the build",
         "review": 0
       },
       "autoFailed": {
-        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Integration failed 5m 05s Queue requests overnight and run them economically Source main moved since the candidate was verified; nothing was changed Open the build",
-        "review": 0
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Merge failed 5m 00s Queue requests overnight and run them economically: Arena could not merge the verified change into the project. Open the build",
+        "review": 0,
+        "what": "Queue requests overnight and run them economically: Arena could not merge the verified change into the project."
       },
       "live": {
-        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Building 5m 10s Codex · gpt-6.1-sol · high · 1m 19s Codex · testing $ pytest -q tests/test_bell.py Watch the build",
+        "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Building 5m 10s Codex · gpt-6.1-sol · high · 1m 19s Running the tests Watch the build",
+        "now": "Running the tests",
         "agent": "Codex",
         "review": 0,
         "watch": 1,
-        "after": "Arena Smoke 20261028 Add a persistent overnight queue mode Integrated · c0ffee0 5m 10s Open the build"
+        "after": "Arena Smoke 20261028 Add a persistent overnight queue mode Merged into main 5m 10s Open the build",
+        "tooltip": "Commit c0ffee0 on main"
       },
       "newChat": {
         "expected": "Arena Smoke 20261028",
