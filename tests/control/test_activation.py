@@ -429,3 +429,30 @@ def test_activation_plist_uses_absolute_state_directory(tmp_path, monkeypatch):
     home_arg = data["ProgramArguments"][data["ProgramArguments"].index("--home") + 1]
     assert Path(home_arg).is_absolute() and Path(home_arg) == (tmp_path / "home").resolve()
     assert data["StandardOutPath"].startswith(str(tmp_path.resolve()))
+
+
+def test_cli_activate_defaults_the_repository_to_the_one_holding_the_state(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    home = repo / ".arena-control"
+    home.mkdir()
+    seen = {}
+
+    def fake_activate(home_arg, repo_arg, sha, **kw):
+        seen.update(home=home_arg, repo=repo_arg, sha=sha, port=kw["port"])
+        return {"sha": sha, "result": "activated"}
+
+    monkeypatch.setattr(activation, "activate", fake_activate)
+    assert activation.main(["--home", str(home), "activate", SHA, "--port", "8791"]) == 0
+    assert seen == {"home": home.resolve(), "repo": repo.resolve(), "sha": SHA, "port": 8791}
+    assert activation.default_repo(home) == repo.resolve()
+
+
+def test_cli_activate_without_a_containing_repository_still_requires_repo(tmp_path, monkeypatch):
+    home = tmp_path / "state"
+    home.mkdir()
+    monkeypatch.setattr(activation, "activate", lambda *a, **k: pytest.fail("must not activate"))
+    with pytest.raises(SystemExit) as exc:
+        activation.main(["--home", str(home), "activate", SHA, "--port", "8791"])
+    assert exc.value.code == 2
+    assert activation.default_repo(home) is None

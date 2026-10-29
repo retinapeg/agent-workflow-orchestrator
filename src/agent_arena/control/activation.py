@@ -524,6 +524,16 @@ def prune_releases(repo: Path, keep: set[str], *, run=subprocess.run, spare=KEEP
     return removed
 
 
+def default_repo(home: Path) -> Path | None:
+    """The canonical repository when the state directory lives inside it (<repo>/.arena-control).
+
+    Only the direct parent is considered, and only when it is a git checkout, so a state
+    directory elsewhere still needs an explicit --repo.
+    """
+    parent = Path(home).expanduser().resolve().parent
+    return parent if (parent / ".git").exists() else None
+
+
 def default_origin(home: Path, port: int) -> str:
     path = Path(home) / "connection.json"
     try:
@@ -710,7 +720,11 @@ def main(argv=None) -> int:
         description="Activate, roll back or inspect Arena releases for one state directory",
     )
     parser.add_argument("--home", type=Path, required=True)
-    parser.add_argument("--repo", type=Path, help="canonical repository (required to activate)")
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        help="canonical repository (default: the git repository that contains --home)",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     p = sub.add_parser("activate", help="check out, build, swap in and verify a commit")
     p.add_argument("sha")
@@ -737,11 +751,12 @@ def main(argv=None) -> int:
     os.umask(0o077)
     try:
         if args.command == "activate":
-            if not args.repo:
-                parser.error("--repo is required to activate")
+            repo = args.repo.expanduser().resolve() if args.repo else default_repo(home)
+            if repo is None:
+                parser.error("--repo is required to activate (no git repository contains --home)")
             result = activate(
                 home,
-                args.repo.expanduser().resolve(),
+                repo,
                 args.sha,
                 port=port,
                 origin=origin,
