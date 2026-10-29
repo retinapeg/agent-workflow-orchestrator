@@ -127,6 +127,10 @@ pre,
 .num {
   font-variant-numeric: tabular-nums;
 }
+/* One word of a shell command: a narrow screen wraps between words, never inside --home. */
+.nowrap {
+  white-space: nowrap;
+}
 .small {
   font-size: 13px;
 }

@@ -1,5 +1,5 @@
 {
-  "state": "/tmp/arena-real-B7eqEY",
+  "state": "/tmp/claude-0/-home-claude/c7acf598-d7bd-5a8a-852d-870def27aa4e/scratchpad/tmp/arena-real-QpxHU7",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
@@ -20,9 +20,9 @@
     "bytes": 22069248,
     "prunable_count": 3,
     "prunable_bytes": 6316032,
-    "oldest": 1792365751,
+    "oldest": 1792368740,
     "days": 7,
-    "measured": 1793229752.2282677
+    "measured": 1793232741.472046
   },
   "dryRun": {
     "count": 6,
@@ -36,7 +36,17 @@
     ]
   },
   "dryRunText": "6 workspaces in <copy>/workspaces using 21.0 MB.\nWould remove 3 (finished builds idle for at least 7 days), 6.0 MB:\n  attempt_014e80a9a7197932     1.0 MB  completed  idle 10.0 days  delete\n  attempt_02e0e9762c75e20c     2.0 MB  completed  idle 10.0 days  delete\n  attempt_04ef5d9c43b8f3ef     3.0 MB  completed  idle 10.0 days  delete\nKeeping 3 idle for less than 7 days.\nDry run: nothing was removed. Add --apply to remove them.\n",
+  "wrongFolder": {
+    "status": 1,
+    "stderr": "No Arena control state at <elsewhere>/.arena-control/control.sqlite3; nothing was changed. Run this in the Arena folder on the Mac, or pass --home with the full path of the control home.",
+    "created": []
+  },
   "line": "6 workspaces · 21.0 MB · 3 prunable (older than 7 days)",
-  "hint": "Measured just now. To free 6.0 MB, run on the Mac: python -m agent_arena.control --home .arena-control prune-workspaces --apply",
+  "hint": "Measured just now; 6.0 MB can be freed. In the Arena folder on the Mac: .venv/bin/python -m agent_arena.control --home .arena-control prune-workspaces (dry run; add --apply to remove)",
+  "wrap360": {
+    "command": ".venv/bin/python -m agent_arena.control --home .arena-control prune-workspaces",
+    "lines": 3,
+    "broken": []
+  },
   "passed": true
 }

@@ -227,8 +227,19 @@ def main(argv=None):
     p.add_argument("--origin")
     p.add_argument("--keep-awake", action="store_true")
     args = parser.parse_args(argv)
-    if args.command == "prune-workspaces" and not (math.isfinite(args.days) and args.days >= 0):
-        parser.error("--days must be a number of days, zero or more")
+    if args.command == "prune-workspaces":
+        if not (math.isfinite(args.days) and args.days >= 0):
+            parser.error("--days must be a number of days, zero or more")
+        # Before Store() would create an empty ledger: run from the wrong folder, a relative
+        # --home must say so instead of reporting an empty Mac.
+        ledger = args.home.expanduser().absolute() / "control.sqlite3"
+        if not ledger.is_file():
+            print(
+                f"No Arena control state at {ledger}; nothing was changed. Run this in the "
+                "Arena folder on the Mac, or pass --home with the full path of the control home.",
+                file=sys.stderr,
+            )
+            return 1
     connection_path = args.home.expanduser() / "connection.json"
     connection = json.loads(connection_path.read_text()) if connection_path.exists() else {}
     if hasattr(args, "port"):

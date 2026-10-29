@@ -1,25 +1,30 @@
 """Disk hygiene for attempt workspaces on the Mac.
 
 Every attempt clones its project's staging repository into ``<home>/workspaces/<attempt
-id>`` and nothing removed them, so a busy Mac accumulates gigabytes. A workspace matters
-only while its attempt runs and, for a build, until that build has been reviewed and
-integrated. What matters afterwards (transcript, prompt, diffs, check output, result) lives
-in ``<home>/attempts/<attempt id>/`` and is never touched here.
+id>`` (``git clone --no-hardlinks``: a plain directory, never a git worktree) and nothing
+removed them, so a busy Mac accumulates gigabytes. A workspace matters only while its
+attempt runs and, for a build, until that build has been reviewed and integrated. What
+matters afterwards (transcript, prompt, diffs, check output, result) lives in
+``<home>/attempts/<attempt id>/`` and is never touched here.
 
 A workspace is prunable when all of these hold:
 
 * it is a real directory named ``attempt_*`` directly under ``<home>/workspaces``; symbolic
   links and every other entry are reported, never followed or removed;
-* its attempt is in the ledger and not live (not in ``engine.ACTIVE``) and its task is
-  completed, cancelled or blocked (``PRUNABLE_TASK_STATES``);
+* its attempt is in the ledger and not live (not in ``engine.ACTIVE``), its stop was
+  confirmed (a result marked ``termination_unconfirmed`` means its agent may still be
+  running, even after the owner cancels the task), and its task is completed, cancelled or
+  blocked (``PRUNABLE_TASK_STATES``);
 * a retry would not read it: retrying a blocked review or director check fetches the build
   attempt's workspace again;
 * it has been idle for ``days``: the latest of the attempt's start and end, its task's last
   change and the directory's own modification time.
 
-``survey`` only reads. ``prune`` removes only with ``apply=True``: ``git worktree remove``
-for a workspace registered as a worktree of an enrolled repository (then ``git worktree
-prune``), otherwise ``shutil.rmtree``. ``UsageCache`` serves the totals to the phone and
+``survey`` only reads. ``prune`` removes only with ``apply=True``, with ``shutil.rmtree``
+alone: no git command runs. The survey pins the real path of ``<home>/workspaces``; the
+apply is refused as a whole if that directory has since become a symbolic link or resolves
+elsewhere, and each workspace is checked again, right before its removal, to be a plain
+directory directly under the pinned path. ``UsageCache`` serves the totals to the phone and
 walks the tree at most once per ``USAGE_TTL_SECONDS``.
 """
 
@@ -28,8 +33,8 @@ from __future__ import annotations
 import contextlib
 import os
 import shutil
+import sqlite3
 import stat
-import subprocess
 import threading
 import time
 from collections import Counter
@@ -37,7 +42,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from .engine import ACTIVE, git
+from .engine import ACTIVE
 from .store import Store
 
 PREFIX = "attempt_"
@@ -51,11 +56,11 @@ PRUNABLE_TASK_STATES = frozenset({"completed", "cancelled", "blocked"})
 RETRY_READS_BUILD = frozenset({"review", "direct"})
 USAGE_TTL_SECONDS = 300.0
 LOG = "maintenance.log"
-_GIT_ERRORS = (ValueError, OSError, subprocess.TimeoutExpired)
 
 # Why a workspace is kept, for the summary line of the dry run.
 KEPT = {
     "live": "live",
+    "unconfirmed": "whose stop was not confirmed",
     "unfinished": "whose task is not finished",
     "retry": "that a retry of a blocked review would read",
     "recent": "idle for less than {days}",
@@ -168,6 +173,10 @@ def judge(
     out.update(task_state=task["state"], last_activity=last, idle_days=round(idle / DAY, 2))
     if attempt["state"] in ACTIVE:
         return dict(out, verdict="keep", why="live", reason=f"live attempt ({attempt['state']})")
+    result = attempt.get("result")
+    if isinstance(result, dict) and result.get("termination_unconfirmed"):
+        # Stop on the interrupted task makes it cancelled, but the agent may still be running.
+        return dict(out, verdict="keep", why="unconfirmed", reason="stop not confirmed")
     if task["state"] not in PRUNABLE_TASK_STATES:
         return dict(out, verdict="keep", why="unfinished", reason=f"task is {task['state']}")
     if (
@@ -192,11 +201,11 @@ def judge(
     return dict(out, verdict="prune", why="prunable", reason=f"{task['state']}, idle {_idle(idle)}")
 
 
-def survey(store: Store, days: float = DEFAULT_DAYS, now: float | None = None) -> dict[str, Any]:
-    """Classify every entry under ``<home>/workspaces``. Changes nothing.
-
-    ``workspaces`` lists every real ``attempt_*`` directory with its verdict; ``skipped``
-    lists the other entries (symbolic links, other names), which are never touched."""
+def _survey(
+    store: Store, days: float = DEFAULT_DAYS, now: float | None = None
+) -> tuple[dict[str, Any], str | None]:
+    """``survey`` and the real path of ``<home>/workspaces`` as it was scanned (``None`` when
+    it was not). The path stays out of the report; ``prune`` pins the directory to it."""
     now = time.time() if now is None else now
     base = workspace_root(store.home)
     report: dict[str, Any] = dict(
@@ -206,9 +215,10 @@ def survey(store: Store, days: float = DEFAULT_DAYS, now: float | None = None) -
         report["refused"] = (
             f"{base} is a symbolic link; nothing outside the control home is followed or removed"
         )
-        return _totals(report)
+        return _totals(report), None
     if not base.is_dir():
-        return _totals(report)
+        return _totals(report), None
+    real_root = os.path.realpath(base)
     with contextlib.closing(store.connect()) as db:
         db.execute("BEGIN")
         attempts = {a["id"]: a for a in store.rows("attempts", db)}
@@ -243,7 +253,15 @@ def survey(store: Store, days: float = DEFAULT_DAYS, now: float | None = None) -
                 **judge(attempt, task, mtime, days, now),
             )
         )
-    return _totals(report)
+    return _totals(report), real_root
+
+
+def survey(store: Store, days: float = DEFAULT_DAYS, now: float | None = None) -> dict[str, Any]:
+    """Classify every entry under ``<home>/workspaces``. Changes nothing.
+
+    ``workspaces`` lists every real ``attempt_*`` directory with its verdict; ``skipped``
+    lists the other entries (symbolic links, other names), which are never touched."""
+    return _survey(store, days, now)[0]
 
 
 def _totals(report: dict[str, Any]) -> dict[str, Any]:
@@ -299,25 +317,6 @@ class UsageCache:
             return dict(self._value)
 
 
-def registered_worktrees(store: Store) -> dict[str, Path]:
-    """Real path of every worktree registered in an enrolled project's source or staging
-    repository, mapped to that repository (``git worktree list --porcelain``)."""
-    owners: dict[str, Path] = {}
-    for project in store.rows("projects"):
-        for key in ("repo", "staging"):
-            repo = project.get(key)
-            if not repo or not Path(repo).is_dir():
-                continue
-            try:
-                listing = git(repo, "worktree", "list", "--porcelain")
-            except _GIT_ERRORS:
-                continue
-            for line in listing.splitlines():
-                if line.startswith("worktree "):
-                    owners.setdefault(os.path.realpath(line[len("worktree ") :]), Path(repo))
-    return owners
-
-
 def _rmtree(path: Path) -> None:
     """``shutil.rmtree``; retried once after making every directory writable (a check may
     leave a read-only directory behind). Never follows symbolic links."""
@@ -359,66 +358,95 @@ def _recheck(store: Store, item: dict[str, Any], days: float, now: float) -> dic
     return judge(attempt, task, mtime, days, now)
 
 
+def _root_moved(root: str, real_root: str | None) -> str | None:
+    """Why the whole apply stops before removing anything: ``<home>/workspaces`` is no longer
+    the directory the survey scanned (now a symbolic link, or resolving somewhere else)."""
+    if Path(root).is_symlink():
+        return f"{root} became a symbolic link after the survey; nothing was removed"
+    if real_root is None or os.path.realpath(root) != real_root:
+        return f"{root} no longer resolves to the directory surveyed; nothing was removed"
+    return None
+
+
+def _in_place(path: Path, real_root: str | None) -> None:
+    """Raise unless ``path`` is still a plain directory directly under the pinned root."""
+    if path.is_symlink() or not path.is_dir():
+        raise OSError("no longer a plain directory; left alone")
+    if os.path.dirname(os.path.realpath(path)) != real_root:
+        raise OSError("resolves outside the workspaces directory; left alone")
+
+
 def prune(
     store: Store, days: float = DEFAULT_DAYS, apply: bool = False, now: float | None = None
 ) -> dict[str, Any]:
     """Survey, then (only with ``apply``) remove the prunable workspaces. Returns the report:
-    the survey plus ``applied``, ``removed``, ``removed_count``, ``removed_bytes``, ``errors``."""
+    the survey plus ``applied``, ``removed``, ``removed_count``, ``removed_bytes``,
+    ``already_gone``, ``errors`` and ``warnings``."""
     now = time.time() if now is None else now
-    report = survey(store, days, now)
-    report.update(applied=bool(apply), removed=[], removed_count=0, removed_bytes=0, errors=[])
+    report, real_root = _survey(store, days, now)
+    report.update(
+        applied=bool(apply),
+        removed=[],
+        removed_count=0,
+        removed_bytes=0,
+        already_gone=[],
+        errors=[],
+        warnings=[],
+    )
     plan = [w for w in report["workspaces"] if w["verdict"] == "prune"]
-    owners = registered_worktrees(store) if plan else {}
     for item in plan:
-        owner = owners.get(os.path.realpath(item["path"]))
-        item["method"] = "git worktree remove" if owner else "delete"
-        if owner:
-            item["repository"] = str(owner)
+        item["method"] = "delete"
     if not apply or report["refused"]:
         return report
-    base = os.path.realpath(report["root"])
-    touched: set[Path] = set()
+    if plan:
+        moved = _root_moved(report["root"], real_root)
+        if moved:
+            report["refused"] = moved
+            return report
     for item in plan:
         path = Path(item["path"])
         try:
-            if path.is_symlink() or not path.is_dir():
-                raise OSError("no longer a plain directory; left alone")
-            if os.path.dirname(os.path.realpath(path)) != base:
-                raise OSError("resolves outside the workspaces directory; left alone")
+            _in_place(path, real_root)
             fresh = _recheck(store, item, days, now)
             if fresh["verdict"] != "prune":
                 item.update(fresh, reason=fresh["reason"] + " (changed since the survey)")
                 continue
-            if item.get("repository"):
-                repo = Path(item["repository"])
-                touched.add(repo)
-                try:
-                    git(repo, "worktree", "remove", "--force", str(path))
-                except _GIT_ERRORS as exc:
-                    item["method"] = "delete (git worktree remove failed: " + str(exc)[:200] + ")"
-            if path.exists():
-                _rmtree(path)
+            _in_place(path, real_root)  # again, right before removing
+            _rmtree(path)
         except OSError as exc:
-            report["errors"].append(dict(name=item["name"], error=str(exc)[:500]))
+            if os.path.lexists(path):
+                report["errors"].append(dict(name=item["name"], error=str(exc)[:500]))
+            else:  # removed by someone else since the survey: nothing left to do
+                report["already_gone"].append(item["name"])
             continue
         report["removed"].append(item["name"])
         report["removed_bytes"] += item["bytes"]
-    for repo in sorted(touched):
-        with contextlib.suppress(*_GIT_ERRORS):
-            git(repo, "worktree", "prune")
     report["removed_count"] = len(report["removed"])
     _record(store, report)
     return _totals(report)
 
 
 def _record(store: Store, report: dict[str, Any]) -> None:
+    """The ``maintenance.log`` line first, then the ledger event. A ledger still locked after
+    the busy timeout costs only the event (noted in ``warnings``), never the log or summary."""
     count, size, errors = report["removed_count"], report["removed_bytes"], report["errors"]
+    gone = report["already_gone"]
     message = (
         f"Removed {count} finished build workspace{'' if count == 1 else 's'} "
         f"({human(size)}) idle for at least {days_text(report['days'])}"
+        + (f"; {len(gone)} already gone" if gone else "")
         + (f"; {len(errors)} could not be removed" if errors else "")
     )
-    if count or errors:
+    _log(
+        store.home,
+        "prune-workspaces: "
+        + message
+        + (" [" + ", ".join(report["removed"]) + "]" if report["removed"] else "")
+        + "".join(f"; {e['name']}: {e['error']}" for e in errors),
+    )
+    if not (count or errors):
+        return
+    try:
         with store.transaction() as db:
             store.event(
                 db,
@@ -427,15 +455,14 @@ def _record(store: Store, report: dict[str, Any]) -> None:
                 bytes=size,
                 days=report["days"],
                 errors=len(errors),
+                already_gone=len(gone),
                 reason=message,
             )
-    _log(
-        store.home,
-        "prune-workspaces: "
-        + message
-        + (" [" + ", ".join(report["removed"]) + "]" if report["removed"] else "")
-        + "".join(f"; {e['name']}: {e['error']}" for e in errors),
-    )
+    except sqlite3.Error as exc:
+        busy = "locked" in str(exc) or "busy" in str(exc)
+        note = f"ledger event not recorded ({'database busy' if busy else str(exc)[:200]})"
+        report["warnings"].append(note)
+        _log(store.home, "prune-workspaces: " + note)
 
 
 def render(report: dict[str, Any]) -> str:
@@ -450,12 +477,15 @@ def render(report: dict[str, Any]) -> str:
     ]
     plan = [w for w in report["workspaces"] if w.get("method") or w["verdict"] == "prune"]
     removed = set(report.get("removed", []))
+    gone = set(report.get("already_gone", []))
     if not plan:
         lines.append(f"Nothing to remove: no finished build's workspace has been idle for {days}.")
     elif report["applied"]:
         lines.append(
             f"Removed {report['removed_count']} of {len(plan)} prunable "
-            f"(finished builds idle for at least {days}), {human(report['removed_bytes'])}:"
+            f"(finished builds idle for at least {days}), {human(report['removed_bytes'])}"
+            + (f"; {len(gone)} already gone" if gone else "")
+            + ":"
         )
     else:
         lines.append(
@@ -463,16 +493,14 @@ def render(report: dict[str, Any]) -> str:
             f"{human(sum(w['bytes'] for w in plan))}:"
         )
     for w in plan:
+        flag = ""
+        if report["applied"] and w["verdict"] == "prune" and w["name"] not in removed:
+            flag = "  [already gone]" if w["name"] in gone else "  [not removed]"
         lines.append(
             f"  {w['name']}  {human(w['bytes']):>9}  {w.get('task_state', ''):<9}  "
             f"idle {w.get('idle_days', 0):.1f} days  {w.get('method', 'delete')}"
-            + (f" ({w['repository']})" if w.get("repository") else "")
             + (f"  [kept: {w['reason']}]" if w["verdict"] != "prune" else "")
-            + (
-                "  [not removed]"
-                if report["applied"] and w["verdict"] == "prune" and w["name"] not in removed
-                else ""
-            )
+            + flag
         )
     kept = Counter(
         w["why"] for w in report["workspaces"] if w["verdict"] == "keep" and w["why"] in KEPT
@@ -490,6 +518,8 @@ def render(report: dict[str, Any]) -> str:
             lines.append(f"  {w['name']}  {w['reason']}")
     for e in report.get("errors", []):
         lines.append(f"Could not remove {e['name']}: {e['error']}")
+    for note in report.get("warnings", []):
+        lines.append(f"Note: {note}.")
     if report["applied"] and report["removed_count"]:
         lines.append("Attempt evidence (transcripts, diffs, results) in attempts/ is untouched.")
     elif plan and not report["applied"]:

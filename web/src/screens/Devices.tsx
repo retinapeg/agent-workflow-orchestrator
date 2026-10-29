@@ -79,9 +79,10 @@ export function Devices({action, disabled, post}: {action: (path: string, body: 
 }
 
 // Attempt workspaces on the Mac (GET /api/v1/system; the host walks them at most every five
-// minutes). Removing them stays a Mac command by design: nothing on the phone deletes.
+// minutes). Removing them stays a Mac command by design: nothing on the phone deletes. The
+// hint is the dry run, from the Arena folder (where .venv and .arena-control live).
 type WorkspaceDisk = {count: number; bytes: number; prunable_count: number; prunable_bytes: number; oldest: number | null; days: number; measured: number};
-const PRUNE_COMMAND = 'python -m agent_arena.control --home .arena-control prune-workspaces --apply';
+const PRUNE_COMMAND = '.venv/bin/python -m agent_arena.control --home .arena-control prune-workspaces';
 const size = (n: number) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1024 ? `${Math.round(n / 1024)} KB` : `${n} B`);
 const counted = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 // Non-breaking inside each phrase, so a narrow screen wraps only between phrases.
@@ -90,6 +91,21 @@ const keep = (text: string) => text.replaceAll(' ', '\u00a0');
 function workspaceLine(w: WorkspaceDisk) {
   if (!w.count) return 'None';
   return `${keep(counted(w.count, 'workspace'))} · ${keep(size(w.bytes))} · ${keep(`${w.prunable_count} prunable`)} ${keep(`(older than ${counted(w.days, 'day')})`)}`;
+}
+
+// A shell command that wraps only between its words; the spaces and hyphens stay plain, so a
+// copy pastes exactly the command.
+function Command({text}: {text: string}) {
+  return (
+    <code>
+      {text.split(' ').map((word, i) => (
+        <React.Fragment key={i}>
+          {i > 0 && ' '}
+          <span className="nowrap">{word}</span>
+        </React.Fragment>
+      ))}
+    </code>
+  );
 }
 
 // The Device session facts with the workspaces line, measured when the dialog opens.
@@ -114,7 +130,7 @@ export function DeviceFacts({rows, now}: {rows: [string, React.ReactNode][]; now
       <Facts rows={[...rows, ['Workspaces on the Mac', disk ? workspaceLine(disk) : failed ? 'Not available' : 'Measuring…']]} />
       {disk && disk.count > 0 && (
         <p className="small muted">
-          Measured {ago(disk.measured, now)}. {disk.prunable_count ? `To free ${size(disk.prunable_bytes)}, run on the Mac:` : 'Nothing to free yet; later, run on the Mac:'} <code>{PRUNE_COMMAND}</code>
+          Measured {ago(disk.measured, now)}; {disk.prunable_count ? `${size(disk.prunable_bytes)} can be freed.` : 'nothing to free yet.'} In the Arena folder on the Mac: <Command text={PRUNE_COMMAND} /> (dry run; add <Command text="--apply" /> to remove)
         </p>
       )}
     </>
