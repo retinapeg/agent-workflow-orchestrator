@@ -1,33 +1,41 @@
-INFO:     Started server process [32019]
+INFO:     Started server process [8490]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 INFO:     Uvicorn running on http://127.0.0.1:8793 (Press CTRL+C to quit)
-INFO:     127.0.0.1:51980 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /assets/index-BSgpnFyG.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51982 - "GET /assets/index-v17PA11y.css HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /sw.js HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51982 - "GET /icon.svg HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:51983 - "POST /api/v1/pair HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51982 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "POST /api/v1/requests HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/goals/goal_dde1ccee97fccd14/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET / HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /assets/index-v17PA11y.css HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:51983 - "GET /assets/index-BSgpnFyG.js HTTP/1.1" 304 Not Modified
-INFO:     127.0.0.1:51983 - "GET /api/v1/session HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51983 - "GET /api/v1/events HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "POST /api/v1/projects/project_3d37db2c087f082e/policy HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /api/v1/overview HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /api/v1/devices HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "POST /api/v1/logout HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51981 - "GET /api/v1/overview HTTP/1.1" 401 Unauthorized
-INFO:     127.0.0.1:51984 - "GET /api/v1/overview HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59726 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /assets/index-gw_agBhF.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59734 - "GET /assets/index-Wqty4tV2.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /sw.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59734 - "GET /icon.svg HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59746 - "GET /manifest.webmanifest HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/session HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59750 - "POST /api/v1/pair HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59734 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "POST /api/v1/conversations HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/conversations/conv_c6b2c3aee980 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "POST /api/v1/requests HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/goals/goal_f9c89539468e8def/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59746 - "GET /assets/index-Wqty4tV2.css HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59750 - "GET /assets/index-gw_agBhF.js HTTP/1.1" 304 Not Modified
+INFO:     127.0.0.1:59750 - "GET /api/v1/session HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59746 - "GET /api/v1/events HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/conversations/conv_c6b2c3aee980 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/v1/conversations/conv_c6b2c3aee980 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/v1/conversations/conv_c6b2c3aee980 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "POST /api/v1/projects/project_19a3a918184581ef/policy HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/v1/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59730 - "GET /api/v1/system HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/devices HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "POST /api/v1/logout HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59750 - "GET /api/v1/overview HTTP/1.1" 401 Unauthorized
+INFO:     127.0.0.1:59764 - "GET /api/v1/overview HTTP/1.1" 401 Unauthorized

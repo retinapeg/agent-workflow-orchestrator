@@ -588,8 +588,8 @@ def test_a_busy_ledger_costs_only_the_event_never_the_log_or_the_summary(
     store, root, old = scene["store"], scene["root"], scene["old"]
     connect = Store.connect
 
-    def impatient(self):
-        db = connect(self)
+    def impatient(self, timeout=10.0):
+        db = connect(self, timeout)
         db.execute("PRAGMA busy_timeout=100")
         return db
 

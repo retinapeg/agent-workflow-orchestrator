@@ -1,5 +1,5 @@
 {
-  "state": "/tmp/arena-real-9zGoud",
+  "state": "/tmp/arena-real-lrTnA5",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
@@ -67,8 +67,8 @@
         "opened": "goal_a6faaa785f084d70"
       },
       "review": {
-        "goal": "goal_0d05674ed212220e",
-        "task": "task_7ad9b20ab93aef0b",
+        "goal": "goal_2bf98bd9a9aa43f9",
+        "task": "task_03576faa93b23ac7",
         "card": "Arena Smoke 20261028 Add a persistent overnight queue mode Ready for approval 5m 00s Queue requests overnight and run them economically Combined checks passed; exact staging commit awaits acceptance Review Open the build",
         "review": 1,
         "dialog": {

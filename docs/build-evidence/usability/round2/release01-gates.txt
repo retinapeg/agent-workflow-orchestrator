@@ -1,0 +1,19 @@
+Release 01 gates (cloud, Linux container) — 2026-10-29T00:37:29Z
+commit: integrated Round 2 C+D (+review fixes) and E (+review fixes)
+ruff check src tests: All checks passed!
+npm run build: passed
+ui-acceptance: BROWSER_API_ACCEPTANCE_PASSED
+usability-acceptance: USABILITY_ACCEPTANCE_PASSED (copy of live state, 390 px, Android UA)
+round2-acceptance A-D: ROUND2_ACCEPTANCE_PASSED
+round2-e-acceptance: ROUND2_E_ACCEPTANCE_PASSED
+pytest (full, before the prune-test fake fix):
+FAILED tests/control/test_control.py::test_restart_after_spawn_and_artifact_before_commit_does_not_duplicate
+FAILED tests/control/test_control.py::test_parallel_candidates_combine_before_dependent_and_review_is_independent
+FAILED tests/control/test_control.py::test_approval_bound_to_actual_candidate_and_base
+FAILED tests/control/test_control.py::test_rate_limit_cools_one_slot_without_stopping_other_project
+FAILED tests/control/test_prune.py::test_a_busy_ledger_costs_only_the_event_never_the_log_or_the_summary
+FAILED tests/test_process.py::test_ignoring_descendants_die_without_harming_unrelated_group[False]
+FAILED tests/test_process.py::test_ignoring_descendants_die_without_harming_unrelated_group[True]
+7 failed, 349 passed, 1 warning in 217.63s (0:03:37)
+Known in this container only (pass on the Mac: macOS sandbox / process groups): the 4 test_control.py cases and the 2 test_process.py cases.
+test_prune busy-ledger failure: merge interaction (test fake lacked the new Store.connect timeout parameter); fixed in this commit; test_prune + test_round2 + test_round2_fixes: 37 passed.

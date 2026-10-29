@@ -1,5 +1,5 @@
 {
-  "state": "/tmp/claude-0/-home-claude/c7acf598-d7bd-5a8a-852d-870def27aa4e/scratchpad/tmp/arena-real-QpxHU7",
+  "state": "/tmp/arena-real-UfgfdY",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
@@ -20,9 +20,9 @@
     "bytes": 22069248,
     "prunable_count": 3,
     "prunable_bytes": 6316032,
-    "oldest": 1792368740,
+    "oldest": 1792370137,
     "days": 7,
-    "measured": 1793232741.472046
+    "measured": 1793234138.0981038
   },
   "dryRun": {
     "count": 6,

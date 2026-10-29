@@ -1,10 +1,10 @@
 {
-  "state": "/var/folders/yq/_hrwmxwx6q904tfp_11yjxcw0000gn/T/arena-real-NAFO6Y",
+  "state": "/tmp/arena-real-xRZSV1",
   "viewport": 390,
   "userAgent": "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36",
   "dispatch": false,
   "checks": {
-    "overviewBytes": 194620,
+    "overviewBytes": 193464,
     "overviewBudget": 244600,
     "overviewRecords": {
       "attempts": 76,
