@@ -1,5 +1,7 @@
 # agent-workflow-orchestrator
 
+**Engineering decisions:** [docs/DECISIONS.md](docs/DECISIONS.md) records accepted policies for Codex-first compute routing, budgeted optional OpenRouter, Claude reserves, explicit Go Mad mode, and acceptance requirements. This is a policy record, not evidence the features have shipped. Check it before changing provider orchestration or billing.
+
 Do two coding agents catch each other's mistakes? Codex and Claude build the same task in separate worktrees, review each other's diffs, and plain code decides what passes.
 
 **Result:** In the one recorded live Codex-versus-Claude contest, Codex's review caught a Unicode lowercasing bug in Claude's first implementation, and Claude fixed it in revision. That is one observation, not a rate; it motivated the controlled experiment in [agent_reliability_lab](https://github.com/retinapeg/agent_reliability_lab).
