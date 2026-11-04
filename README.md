@@ -13,6 +13,8 @@
 | [Zero-tap build](docs/build-evidence/zero-tap-build/timeline.log) | "Stop malformed server addresses getting through. Keep valid connections working exactly as before." | 210 s | Automatic under the project's policy, no taps |
 | [Restart recovery](docs/build-evidence/restart-recovery/result.json) | Controller killed while two provider builds ran | Workers kept running; the restarted scheduler reconciled both | No duplicate or repeated build |
 
+**Since those runs (28–29 October):** the phone app became one conversation with the director, whose replies turn into live build cards; every attempt has a build story and a transcript; there is a Mac activity view, history and a project archive; and `prune-workspaces` reclaims the disk space finished builds leave behind. Acceptance evidence for these releases is in [`docs/build-evidence/usability/`](docs/build-evidence/usability/).
+
 ## How a request flows
 
 1. **Request:** the phone sends one sentence, which is persisted as a goal plus a director `plan` task.
@@ -35,7 +37,7 @@
 
 ## Stack
 
-Python 3.11, FastAPI, SQLite, launchd login service; React 19, TypeScript and Vite for the UI, with live updates over server-sent events and dictation in the browser. Model routing picks provider, model and effort per task from the advertised model catalog, task risk and recorded outcomes. Full detail is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The threat model is in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and operation is covered in [docs/MOBILE_BUILD_CONTROL.md](docs/MOBILE_BUILD_CONTROL.md).
+Python 3.11, FastAPI, SQLite, launchd login service; React 19, TypeScript and Vite for the UI, with live updates over server-sent events and dictation in the browser. Model routing picks provider, model and effort per task from the advertised model catalog, task risk and recorded outcomes. The codebase is about 38,000 lines of Python (14,000 of them tests) and 8,000 of TypeScript, with 350+ tests. Full detail is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The threat model is in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md), and operation is covered in [docs/MOBILE_BUILD_CONTROL.md](docs/MOBILE_BUILD_CONTROL.md).
 
 ```bash
 pip install -e '.[dev,control]' && pytest -q
