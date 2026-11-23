@@ -15,6 +15,7 @@ files the compiled specification through the existing request path.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -30,6 +31,7 @@ from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 from . import discovery, enrolment, story
 from .engine import git
 from .intent import STOPWORDS, normalize, resolve_project
+from .isolation import exposed_agent_files, isolated_view
 from .status import arena_status
 from .store import encode
 from .worker import auth_status, invocation, redact
@@ -84,8 +86,9 @@ _UNSET = object()
 
 class TurnError(Exception):
     """A director turn that produced no answer, with a plain-language message for the owner
-    and a short kind for the UI (no_account, auth, timeout, cli). Any other failure is kind
-    "error"; a turn closed by recovery is "interrupted". Every one carries retry_text."""
+    and a short kind for the UI (no_account, auth, isolation, timeout, cli). Any other
+    failure is kind "error"; a turn closed by recovery is "interrupted". Every one carries
+    retry_text."""
 
     def __init__(self, kind, message, detail=""):
         super().__init__(message)
@@ -742,6 +745,20 @@ class Director:
             git(scratch, "init", "-q", "-b", "main")
         return scratch
 
+    def _view(self, stack, repo):
+        """The isolated copy of repo the director reads this turn, removed with the stack."""
+        try:
+            if not (repo / ".git").exists() and not exposed_agent_files(repo):
+                return repo  # A plain folder with nothing for an assistant to pick up.
+            return stack.enter_context(isolated_view(repo, self.store.home / "chat-views"))
+        except (OSError, ValueError) as exc:
+            raise TurnError(
+                "isolation",
+                f"Arena couldn't open {repo.name} without its own coding-assistant "
+                "instruction files, so it didn't read it. Nothing was changed.",
+                redact(str(exc))[-400:],
+            ) from None
+
     def _turn(self, conversation_id, text, token, about=None):
         try:
             self._answer(conversation_id, text, **({"about": about} if about else {}))
@@ -781,23 +798,27 @@ class Director:
                     f"{account['name']} is not signed in on the Mac. Sign in there, then tap "
                     "Retry.",
                 )
-            argv = invocation(account, cwd, "plan")
             scratch = cwd == self.store.home / "chat-scratch"
             self._step(
                 conversation_id,
                 "thinking" if scratch else "reading repository",
                 turn_repo=None if scratch else cwd.name,
             )
-            started = time.time()
-            process = self.runner.run(
-                argv,
-                cwd=cwd,
-                env=env,
-                stdin_text=prompt,
-                timeout_seconds=TURN_TIMEOUT_SECONDS,
-                max_output_bytes=2_000_000,
-                on_output=self._progress(conversation_id, str(cwd), scratch=scratch),
-            )
+            with contextlib.ExitStack() as views:
+                # A repository is read through a throwaway copy of its committed state that
+                # leaves out its own assistant instructions: they must not steer the director.
+                run_in = cwd if scratch else self._view(views, cwd)
+                argv = invocation(account, run_in, "plan")
+                started = time.time()
+                process = self.runner.run(
+                    argv,
+                    cwd=run_in,
+                    env=env,
+                    stdin_text=prompt,
+                    timeout_seconds=TURN_TIMEOUT_SECONDS,
+                    max_output_bytes=2_000_000,
+                    on_output=self._progress(conversation_id, str(run_in), scratch=scratch),
+                )
             if getattr(process, "timed_out", False):
                 raise TurnError(
                     "timeout",

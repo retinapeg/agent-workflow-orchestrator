@@ -20,7 +20,7 @@ import stat
 import subprocess
 from pathlib import Path
 
-from .engine import FORBIDDEN, git
+from .engine import forbidden, git
 from .store import Conflict
 from .worker import redact
 
@@ -289,7 +289,7 @@ def manifest(path, name):
     scope = [
         entry
         for entry in found["scope"]
-        if entry not in FORBIDDEN and not any(c in entry for c in "*?[]\\\n\x00")
+        if not forbidden(entry) and not any(c in entry for c in "*?[]\\\n\x00")
     ]
     if not scope:
         raise Conflict(f"{name} has no files Arena could work on.")

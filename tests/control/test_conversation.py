@@ -3,6 +3,7 @@
 import json
 import subprocess
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 from agent_arena.control import conversation
@@ -15,11 +16,19 @@ class FakeRunner:
     """Stands in for ProcessRunner: returns a scripted director answer per prompt."""
 
     def __init__(self, answers):
-        self.answers, self.prompts, self.cwds = list(answers), [], []
+        self.answers, self.prompts, self.cwds, self.seen = list(answers), [], [], []
 
     def run(self, argv, *, cwd, env, stdin_text, timeout_seconds, max_output_bytes, **kw):
         self.prompts.append(stdin_text)
         self.cwds.append(cwd)
+        # What the CLI could open in its working directory while it ran.
+        self.seen.append(
+            sorted(
+                p.relative_to(cwd).as_posix()
+                for p in Path(cwd).rglob("*")
+                if ".git" not in p.relative_to(cwd).parts
+            )
+        )
         answer = self.answers.pop(0)
         line = json.dumps(
             {
@@ -152,7 +161,10 @@ def test_chat_answers_selects_projects_and_only_builds_on_explicit_words(tmp_pat
     wait_idle(store, conv["id"])
     last = conversation.messages(store, conv["id"])[-1]
     assert last.get("offer_build") is True and not last.get("build_started")
-    assert runner.cwds[-1] == source.resolve() or str(runner.cwds[-1]) == project["repo"]
+    # The repository is read through a throwaway copy of its committed state, removed after.
+    view = runner.cwds[-1]
+    assert view.name == source.name and view.parent.parent == store.home / "chat-views"
+    assert not view.exists() and "src/initial.txt" in runner.seen[-1]
     assert not [t for t in store.rows("tasks")]
     assert store.get("conversations", conv["id"])["spec"]["outcome"].startswith("Add src/hello.txt")
     # Explicit words launch the existing request path with the compiled specification.

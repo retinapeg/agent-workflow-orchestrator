@@ -21,7 +21,31 @@ ACTIVE = {"leased", "running", "verifying", "reviewing", "recovering"}
 # Work the scheduler will pick up (or is holding back) without anyone acting.
 QUEUED = {"ready", "waiting_capacity", "waiting_dependency", "cooldown", "repair_queued"}
 SUCCESS = {"ready_for_approval", "completed"}
-FORBIDDEN = {".git", ".claude", ".codex", ".env", ".github", "AGENTS.md", "CLAUDE.md"}
+# What coding-assistant CLIs (Codex, Claude Code, Gemini CLI) pick up from a repository by
+# themselves, as instructions or configuration, at any depth. Workers never see these (every
+# clone a CLI runs in leaves them out: isolation.py) and may never write them.
+AGENT_FILES = frozenset(
+    {
+        "AGENTS.md",
+        "AGENTS.override.md",
+        "CLAUDE.md",
+        "CLAUDE.local.md",
+        "GEMINI.md",
+        ".agents",
+        ".claude",
+        ".codex",
+        ".gemini",
+        ".mcp.json",
+    }
+)
+FORBIDDEN = frozenset({".git", ".env", ".github"} | AGENT_FILES)
+_FORBIDDEN_FOLDED = frozenset(name.casefold() for name in FORBIDDEN)
+
+
+def forbidden(path):
+    """Whether any component of a relative path is a controller, secret or coding-assistant
+    file. Case-insensitive, because macOS file systems usually are: Claude.md is CLAUDE.md."""
+    return any(part.casefold() in _FORBIDDEN_FOLDED for part in PurePosixPath(path).parts)
 
 
 def git(repo, *args, input=None, strip=True):
@@ -69,7 +93,7 @@ def safe_scope(paths):
             or p.is_absolute()
             or ".." in p.parts
             or path in {".", "*"}
-            or any(x in FORBIDDEN for x in p.parts)
+            or forbidden(path)
             or any(c in path for c in "*?[]\\\n\x00")
         ):
             raise ValueError(

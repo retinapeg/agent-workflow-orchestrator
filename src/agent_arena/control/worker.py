@@ -20,7 +20,8 @@ import psutil
 from agent_arena.process import ProcessRunner, ProcessTerminationError, sanitized_environment
 from agent_arena.run_mode import parse_claude_stream, parse_codex_stream
 
-from .engine import atomic_json, git, identity, within
+from .engine import atomic_json, forbidden, git, identity, within
+from .isolation import exposed_agent_files, hidden, hide_agent_files
 from .store import Store, encode
 
 # Every secret pattern Arena masks lives here. ``redact`` handles free text (transcripts,
@@ -398,24 +399,41 @@ def main(home, attempt_id):
             )
             return 1
         workspace.parent.mkdir(parents=True, exist_ok=True)
-        git(workspace.parent, "clone", "--no-hardlinks", "--", project["staging"], str(workspace))
+        git(
+            workspace.parent,
+            "clone",
+            "--no-hardlinks",
+            "--no-checkout",
+            "--",
+            project["staging"],
+            str(workspace),
+        )
         git(workspace, "remote", "remove", "origin")
         if attempt["phase"] in {"review", "direct"}:
             author = store.get("attempts", task["build_attempt"])
             git(workspace, "fetch", "--no-tags", author["workspace"], attempt["base"])
-        git(workspace, "checkout", "--detach", attempt["base"])
-        # No provider configuration/startup hooks from enrolled source are inherited.
-        tracked = git(workspace, "ls-files").splitlines()
-        if any(
-            p == "AGENTS.md" or p == "CLAUDE.md" or p.startswith((".codex/", ".claude/"))
-            for p in tracked
-        ):
+        # The project's own assistant instructions and configuration (AGENTS.md, CLAUDE.md,
+        # .claude/ …) never reach the CLI: they are left out of this working tree before the
+        # first checkout, and every commit made here still carries them unchanged.
+        try:
+            hide_agent_files(workspace)
+        except ValueError as exc:
             result.update(
                 status="needs_permission",
-                reason="Project has agent startup instructions/configuration; "
-                "explicit audited isolation required",
+                reason="git could not leave the project's assistant instruction files out of "
+                "the worker's clone; no provider invoked: " + redact(str(exc))[-500:],
             )
             return 1
+        git(workspace, "checkout", "--detach", attempt["base"])
+        exposed = exposed_agent_files(workspace)
+        if exposed:
+            result.update(
+                status="needs_permission",
+                reason="Assistant instruction files are still in the worker's clone; no "
+                "provider invoked: " + ", ".join(exposed[:5]),
+            )
+            return 1
+        tracked = git(workspace, "ls-files").splitlines()
         if task.get("director") and attempt["phase"] in {"plan", "replan"}:
             from .planning import DIRECTOR_PROMPT, director_context
 
@@ -714,6 +732,11 @@ def main(home, attempt_id):
         )
         if not changed:
             raise ValueError("No candidate changes were produced for this build task")
+        if any(forbidden(p) for p in changed):
+            raise ValueError(
+                "Candidate wrote a coding assistant's instruction/configuration file or a "
+                "controller file: " + ", ".join(sorted(p for p in changed if forbidden(p))[:5])
+            )
         if any(
             not within(p, task["scope"])
             or within(p, project["protected"])
@@ -722,10 +745,11 @@ def main(home, attempt_id):
         ):
             raise ValueError("Candidate exceeded its declared file scope or changed a frozen check")
         # Recheck frozen files after execution too: tests must not alter their own referee.
+        # (Hidden assistant files are not on disk, and no candidate may change them.)
         frozen_before = {
             p: hashlib.sha256((workspace / p).read_bytes()).hexdigest()
             for p in tracked
-            if within(p, project["protected"])
+            if within(p, project["protected"]) and not hidden(p)
         }
         fingerprint = candidate_fingerprint(workspace)
         result["checks"] = checks_run(project, workspace, artifact, runner=runner)
